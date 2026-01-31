@@ -1,4 +1,7 @@
 using System.Text.Json.Serialization;
+using DBH.EHR.Service.Data;
+using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,9 +27,63 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// TODO: Stage 1 - Add DbContexts and MongoDB client
+// ============================================================================
+// Database Configuration
+// ============================================================================
+
+// PostgreSQL Primary (Read-Write)
+builder.Services.AddDbContext<EhrPrimaryDbContext>(options =>
+{
+    options.UseNpgsql(builder.Configuration.GetConnectionString("PostgresPrimary"));
+});
+
+// PostgreSQL Replica (Read-Only)
+builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
+{
+    options.UseNpgsql(builder.Configuration.GetConnectionString("PostgresReplica"));
+});
+
+// MongoDB Client (singleton - manages connection pool internally)
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var connectionString = builder.Configuration["MongoDB:ConnectionString"];
+    return new MongoClient(connectionString);
+});
+
+// MongoDB Context
+builder.Services.AddSingleton<MongoDbContext>(sp =>
+{
+    var client = sp.GetRequiredService<IMongoClient>();
+    var databaseName = builder.Configuration["MongoDB:DatabaseName"] ?? "dbh_ehr";
+    return new MongoDbContext(client, databaseName);
+});
+
+// TODO: Stage 2 - Add Repositories and Services
 
 var app = builder.Build();
+
+// ============================================================================
+// Database Initialization
+// ============================================================================
+
+// Auto-migrate PostgreSQL Primary (creates tables if not exist)
+using (var scope = app.Services.CreateScope())
+{
+    var primaryDb = scope.ServiceProvider.GetRequiredService<EhrPrimaryDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        logger.LogInformation("Applying PostgreSQL migrations to primary...");
+        await primaryDb.Database.MigrateAsync();
+        logger.LogInformation("PostgreSQL migrations completed successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Migration failed (tables may already exist via init script). Ensuring tables exist...");
+        await primaryDb.Database.EnsureCreatedAsync();
+    }
+}
 
 // ============================================================================
 // HTTP Pipeline
@@ -51,4 +108,4 @@ app.MapGet("/health", () => Results.Ok(new
 .WithName("HealthCheck")
 .WithTags("Health");
 
-app.Run();
+await app.RunAsync();
