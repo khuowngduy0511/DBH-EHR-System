@@ -45,7 +45,7 @@ services:
   # ===========================================================================
   pg_primary:
     build:
-      context: ./postgres/primary
+      context: ./infrastructure/postgres/primary
       dockerfile: Dockerfile
     container_name: dbh_pg_primary
     environment:
@@ -56,7 +56,7 @@ services:
       POSTGRES_REPLICATION_PASSWORD: repl_secret_2024
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     networks:
@@ -72,7 +72,7 @@ services:
   # ===========================================================================
   pg_replica:
     build:
-      context: ./postgres/replica
+      context: ./infrastructure/postgres/replica
       dockerfile: Dockerfile
     container_name: dbh_pg_replica
     environment:

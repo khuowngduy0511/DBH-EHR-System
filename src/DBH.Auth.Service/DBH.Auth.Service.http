@@ -1,6 +1,11 @@
-@DBH.Auth.Service_HostAddress = http://localhost:5048
+@baseUrl = http://localhost:5048
 
-GET {{DBH.Auth.Service_HostAddress}}/weatherforecast/
+### Health Check
+GET {{baseUrl}}/health
+Accept: application/json
+
+### Database Configuration
+GET {{baseUrl}}/config/databases
 Accept: application/json
 
 ###
