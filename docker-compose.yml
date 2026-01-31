@@ -1,0 +1,208 @@
+version: '3.8'
+
+# =============================================================================
+# DBH-EHR System - Distributed Database Infrastructure
+# =============================================================================
+# Docker-only demo for distributed/replicated databases:
+# - PostgreSQL: Primary + Replica (streaming replication)
+# - MongoDB: Replica Set (mongo1 primary, mongo2 secondary, arbiter)
+# - Auth Service: ASP.NET Core 8 API (optional)
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # ASP.NET Core Auth Service (Optional - use with 'api' profile)
+  # ===========================================================================
+  auth_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Auth.Service/Dockerfile
+    container_name: dbh_auth_service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=dbh_ehr;Username=dbh_admin;Password=dbh_secret_2024"
+      CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
+    ports:
+      - "8080:8080"
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      mongo1:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    profiles:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
+  # PostgreSQL Primary (Read-Write)
+  # ===========================================================================
+  pg_primary:
+    build:
+      context: ./postgres/primary
+      dockerfile: Dockerfile
+    container_name: dbh_pg_primary
+    environment:
+      POSTGRES_USER: dbh_admin
+      POSTGRES_PASSWORD: dbh_secret_2024
+      POSTGRES_DB: dbh_ehr
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_secret_2024
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbh_admin -d dbh_ehr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # PostgreSQL Replica (Read-Only)
+  # ===========================================================================
+  pg_replica:
+    build:
+      context: ./postgres/replica
+      dockerfile: Dockerfile
+    container_name: dbh_pg_replica
+    environment:
+      POSTGRES_USER: dbh_admin
+      POSTGRES_PASSWORD: dbh_secret_2024
+      POSTGRES_DB: dbh_ehr
+      POSTGRES_PRIMARY_HOST: pg_primary
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_secret_2024
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbh_admin -d dbh_ehr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # MongoDB Replica Set - Primary Node
+  # ===========================================================================
+  mongo1:
+    image: mongo:7.0
+    container_name: dbh_mongo1
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    environment:
+      MONGO_INITDB_DATABASE: dbh_ehr
+    volumes:
+      - mongo1_data:/data/db
+      - ./mongo/init-replica-set.js:/docker-entrypoint-initdb.d/init-replica-set.js:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # MongoDB Replica Set - Secondary Node
+  # ===========================================================================
+  mongo2:
+    image: mongo:7.0
+    container_name: dbh_mongo2
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    volumes:
+      - mongo2_data:/data/db
+    ports:
+      - "27018:27017"
+    depends_on:
+      - mongo1
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # MongoDB Replica Set - Arbiter Node
+  # ===========================================================================
+  mongo_arb:
+    image: mongo:7.0
+    container_name: dbh_mongo_arb
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    volumes:
+      - mongo_arb_data:/data/db
+    ports:
+      - "27019:27017"
+    depends_on:
+      - mongo1
+    networks:
+      - dbh_network
+
+  # ===========================================================================
+  # MongoDB Replica Set Initializer (one-shot container)
+  # ===========================================================================
+  mongo_init:
+    image: mongo:7.0
+    container_name: dbh_mongo_init
+    depends_on:
+      mongo1:
+        condition: service_healthy
+      mongo2:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    command: >
+      mongosh --host mongo1:27017 --eval '
+        rs.initiate({
+          _id: "rs0",
+          members: [
+            { _id: 0, host: "mongo1:27017", priority: 2 },
+            { _id: 1, host: "mongo2:27017", priority: 1 },
+            { _id: 2, host: "mongo_arb:27017", arbiterOnly: true }
+          ]
+        });
+        print("Replica set initiated successfully");
+      '
+    restart: "no"
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  dbh_network:
+    driver: bridge
+    name: dbh_ehr_network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  pg_primary_data:
+    name: dbh_pg_primary_data
+  pg_replica_data:
+    name: dbh_pg_replica_data
+  mongo1_data:
+    name: dbh_mongo1_data
+  mongo2_data:
+    name: dbh_mongo2_data
+  mongo_arb_data:
+    name: dbh_mongo_arb_data
