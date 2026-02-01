@@ -1,5 +1,8 @@
 using System.Text.Json.Serialization;
 using DBH.EHR.Service.Data;
+using DBH.EHR.Service.Repositories.Mongo;
+using DBH.EHR.Service.Repositories.Postgres;
+using DBH.EHR.Service.Services;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Driver;
 
@@ -58,7 +61,19 @@ builder.Services.AddSingleton<MongoDbContext>(sp =>
     return new MongoDbContext(client, databaseName);
 });
 
-// TODO: Stage 2 - Add Repositories and Services
+// ============================================================================
+// Repositories
+// ============================================================================
+
+builder.Services.AddScoped<IChangeRequestRepository, ChangeRequestRepository>();
+builder.Services.AddScoped<IEhrIndexRepository, EhrIndexRepository>();
+builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
+
+// ============================================================================
+// Services
+// ============================================================================
+
+builder.Services.AddScoped<IEhrService, EhrService>();
 
 var app = builder.Build();
 
