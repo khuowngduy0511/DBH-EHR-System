@@ -1,12 +1,17 @@
-version: '3.8'
-
 # =============================================================================
 # DBH-EHR System - Distributed Database Infrastructure
 # =============================================================================
 # Docker-only demo for distributed/replicated databases:
-# - PostgreSQL: Primary + Replica (streaming replication)
+# - PostgreSQL: Primary + Replica (streaming replication) using Bitnami image
 # - MongoDB: Replica Set (mongo1 primary, mongo2 secondary, arbiter)
 # - Auth Service: ASP.NET Core 8 API (optional)
+# =============================================================================
+# 
+# USAGE:
+#   1. Copy .env.example to .env and fill in your values
+#   2. Run: docker-compose up -d
+#   3. (Optional) Run with API: docker-compose --profile api up -d
+#
 # =============================================================================
 
 services:
@@ -19,8 +24,8 @@ services:
       dockerfile: src/DBH.Auth.Service/Dockerfile
     container_name: dbh_auth_service
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=dbh_ehr;Username=dbh_admin;Password=dbh_secret_2024"
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
     ports:
       - "8080:8080"
@@ -41,49 +46,49 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  # PostgreSQL Primary (Read-Write)
+  # PostgreSQL Primary (Read-Write) - Bitnami with built-in replication
   # ===========================================================================
   pg_primary:
-    build:
-      context: ./infrastructure/postgres/primary
-      dockerfile: Dockerfile
+    image: bitnami/postgresql:16
     container_name: dbh_pg_primary
     environment:
-      POSTGRES_USER: dbh_admin
-      POSTGRES_PASSWORD: dbh_secret_2024
-      POSTGRES_DB: dbh_ehr
-      POSTGRES_REPLICATION_USER: replicator
-      POSTGRES_REPLICATION_PASSWORD: repl_secret_2024
+      # Database credentials
+      POSTGRESQL_USERNAME: ${POSTGRES_USER}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRESQL_DATABASE: ${POSTGRES_DB}
+      # Replication configuration (built-in Bitnami feature)
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: ${POSTGRES_REPLICATION_USER}
+      POSTGRESQL_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
     volumes:
-      - pg_primary_data:/var/lib/postgresql/data
-      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+      - pg_primary_data:/bitnami/postgresql
     ports:
       - "5432:5432"
     networks:
       - dbh_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dbh_admin -d dbh_ehr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # ===========================================================================
-  # PostgreSQL Replica (Read-Only)
+  # PostgreSQL Replica (Read-Only) - Auto-syncs from Primary
   # ===========================================================================
   pg_replica:
-    build:
-      context: ./infrastructure/postgres/replica
-      dockerfile: Dockerfile
+    image: bitnami/postgresql:16
     container_name: dbh_pg_replica
     environment:
-      POSTGRES_USER: dbh_admin
-      POSTGRES_PASSWORD: dbh_secret_2024
-      POSTGRES_DB: dbh_ehr
-      POSTGRES_PRIMARY_HOST: pg_primary
-      POSTGRES_REPLICATION_USER: replicator
-      POSTGRES_REPLICATION_PASSWORD: repl_secret_2024
+      # Replication configuration (slave mode)
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: pg_primary
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: ${POSTGRES_REPLICATION_USER}
+      POSTGRESQL_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD}
+      # Password required for health check
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - pg_replica_data:/var/lib/postgresql/data
+      - pg_replica_data:/bitnami/postgresql
     ports:
       - "5433:5432"
     depends_on:
@@ -92,7 +97,7 @@ services:
     networks:
       - dbh_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dbh_admin -d dbh_ehr"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -105,10 +110,9 @@ services:
     container_name: dbh_mongo1
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
     environment:
-      MONGO_INITDB_DATABASE: dbh_ehr
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-dbh_ehr}
     volumes:
       - mongo1_data:/data/db
-      - ./mongo/init-replica-set.js:/docker-entrypoint-initdb.d/init-replica-set.js:ro
     ports:
       - "27017:27017"
     networks:
@@ -186,7 +190,6 @@ services:
 # =============================================================================
 # Networks
 # =============================================================================
-
 networks:
   dbh_network:
     driver: bridge

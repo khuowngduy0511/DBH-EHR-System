@@ -6,11 +6,11 @@
 # =============================================================================
 # SECRETS & CONFIGURATION 
 # =============================================================================
-# dotenv files
+# dotenv files (except .env.example which is the template)
 .env
-.env.*
 .env.local
 .env.*.local
+!.env.example
 
 # Ignore environment-specific settings (keep appsettings.json as template)
 **/appsettings.Development.json
@@ -24,10 +24,8 @@ secrets.json
 **/secrets/
 
 # =============================================================================
-# DOCKER DATA VOLUMES
+# DOCKER DATA VOLUMES (if any local data folders)
 # =============================================================================
-infrastructure/postgres/data/
-infrastructure/mongo/data/
 **/data/
 
 # =============================================================================
