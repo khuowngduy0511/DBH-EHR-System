@@ -3,21 +3,19 @@ using DBH.EHR.Service.Models.Entities;
 
 namespace DBH.EHR.Service.Services;
 
+
 public interface IEhrService
 {
-    /// <summary>
-    /// Create a new EHR change request.
-    /// Writes document to MongoDB primary, creates PENDING request in PostgreSQL primary.
-    /// </summary>
-    Task<CreateEhrResponseDto> CreateChangeRequestAsync(CreateEhrRequestDto request);
+    Task<CreateEhrRecordResponseDto> CreateEhrRecordAsync(CreateEhrRecordDto request);
+
+    Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId, bool useReplica = false);
     
-    /// <summary>
-    /// Get a change request by ID
-    /// </summary>
-    Task<ChangeRequest?> GetChangeRequestAsync(Guid requestId);
+    Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false);
+
+    Task<IEnumerable<EhrRecordResponseDto>> GetHospitalEhrRecordsAsync(Guid hospitalId, bool useReplica = false);
     
-    /// <summary>
-    /// Get all change requests for a patient
-    /// </summary>
-    Task<IEnumerable<ChangeRequest>> GetChangeRequestsByPatientAsync(string patientId);
+    Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId, bool useReplica = false);
+    
+    Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId, int? version = null, bool useReplica = false);
+    
 }

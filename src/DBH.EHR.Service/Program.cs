@@ -65,8 +65,7 @@ builder.Services.AddSingleton<MongoDbContext>(sp =>
 // Repositories
 // ============================================================================
 
-builder.Services.AddScoped<IChangeRequestRepository, ChangeRequestRepository>();
-builder.Services.AddScoped<IEhrIndexRepository, EhrIndexRepository>();
+builder.Services.AddScoped<IEhrRecordRepository, EhrRecordRepository>();
 builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
 
 // ============================================================================

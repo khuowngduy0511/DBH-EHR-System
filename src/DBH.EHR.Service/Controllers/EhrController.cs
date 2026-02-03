@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.EHR.Service.Controllers;
 
+
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
@@ -18,87 +19,98 @@ public class EhrController : ControllerBase
         _logger = logger;
     }
 
+    //EHR Records
+
     /// <summary>
-    /// Create a new EHR change request.
-    /// Stores document in MongoDB (primary) and creates PENDING request in PostgreSQL (primary).
-    /// Requires approval from both HospitalA and HospitalB before being applied to ehr_index.
+    /// Tạo EHR mới - Ghi PG Primary + Mongo Primary
     /// </summary>
-    /// <param name="request">The EHR request containing patient info and document</param>
-    /// <returns>Created change request with offchain document ID and node metadata</returns>
-    [HttpPost("requests")]
-    [ProducesResponseType(typeof(CreateEhrResponseDto), StatusCodes.Status201Created)]
+    [HttpPost("records")]
+    [ProducesResponseType(typeof(CreateEhrRecordResponseDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<CreateEhrResponseDto>> CreateRequest([FromBody] CreateEhrRequestDto request)
+    public async Task<ActionResult<CreateEhrRecordResponseDto>> CreateEhrRecord([FromBody] CreateEhrRecordDto request)
     {
         if (!ModelState.IsValid)
-        {
             return BadRequest(ModelState);
-        }
 
         _logger.LogInformation(
-            "POST /api/ehr/requests - Creating request for patient {PatientId}",
-            request.PatientId);
+            "POST /api/ehr/records - Tạo EHR cho bệnh nhân {PatientId} bởi bác sĩ {DoctorId}",
+            request.PatientId, request.CreatedByDoctorId);
 
-        var result = await _ehrService.CreateChangeRequestAsync(request);
+        var result = await _ehrService.CreateEhrRecordAsync(request);
 
-        _logger.LogInformation(
-            "Created change request {RequestId} with offchain doc {DocId}",
-            result.ChangeRequestId, result.OffchainDocId);
-
-        return CreatedAtAction(
-            nameof(GetRequest),
-            new { id = result.ChangeRequestId },
-            result);
+        return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.EhrId }, result);
     }
 
     /// <summary>
-    /// Get a change request by ID
+    /// Lấy EHR theo ID
     /// </summary>
-    [HttpGet("requests/{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [HttpGet("records/{ehrId:guid}")]
+    [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> GetRequest(Guid id)
+    public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(Guid ehrId, [FromQuery] bool useReplica = false)
     {
-        var request = await _ehrService.GetChangeRequestAsync(id);
+        var record = await _ehrService.GetEhrRecordAsync(ehrId, useReplica);
         
-        if (request == null)
-        {
-            return NotFound(new { Message = $"Change request {id} not found" });
-        }
+        if (record == null)
+            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 
-        return Ok(new
-        {
-            request.Id,
-            request.PatientId,
-            request.Purpose,
-            request.RequestedScope,
-            request.TtlMinutes,
-            Status = request.Status.ToString(),
-            Approvals = request.ApprovalsList,
-            request.OffchainDocId,
-            request.CreatedAt,
-            request.UpdatedAt
-        });
+        return Ok(record);
     }
 
     /// <summary>
-    /// Get all change requests for a patient
+    /// Lấy EHR của bệnh nhân
     /// </summary>
-    [HttpGet("requests/patient/{patientId}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult> GetRequestsByPatient(string patientId)
+    [HttpGet("records/patient/{patientId:guid}")]
+    [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetPatientEhrRecords(
+        Guid patientId, 
+        [FromQuery] bool useReplica = false)
     {
-        var requests = await _ehrService.GetChangeRequestsByPatientAsync(patientId);
-        
-        return Ok(requests.Select(r => new
-        {
-            r.Id,
-            r.PatientId,
-            r.Purpose,
-            Status = r.Status.ToString(),
-            Approvals = r.ApprovalsList,
-            r.OffchainDocId,
-            r.CreatedAt
-        }));
+        var records = await _ehrService.GetPatientEhrRecordsAsync(patientId, useReplica);
+        return Ok(records);
+    }
+
+    /// <summary>
+    /// Lấy EHR theo bệnh viện
+    /// </summary>
+    [HttpGet("records/hospital/{hospitalId:guid}")]
+    [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetHospitalEhrRecords(
+        Guid hospitalId, 
+        [FromQuery] bool useReplica = false)
+    {
+        var records = await _ehrService.GetHospitalEhrRecordsAsync(hospitalId, useReplica);
+        return Ok(records);
+    }
+
+    //  EHR Versions 
+
+    /// <summary>
+    /// Lấy tất cả versions của EHR
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/versions")]
+    [ProducesResponseType(typeof(IEnumerable<EhrVersionDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<EhrVersionDto>>> GetEhrVersions(
+        Guid ehrId, 
+        [FromQuery] bool useReplica = false)
+    {
+        var versions = await _ehrService.GetEhrVersionsAsync(ehrId, useReplica);
+        return Ok(versions);
+    }
+
+    // EHR Files
+
+    /// <summary>
+    /// Lấy files của EHR
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/files")]
+    [ProducesResponseType(typeof(IEnumerable<EhrFileDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<EhrFileDto>>> GetEhrFiles(
+        Guid ehrId,
+        [FromQuery] int? version = null,
+        [FromQuery] bool useReplica = false)
+    {
+        var files = await _ehrService.GetEhrFilesAsync(ehrId, version, useReplica);
+        return Ok(files);
     }
 }

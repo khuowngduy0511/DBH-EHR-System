@@ -1,6 +1,7 @@
-@DBH.EHR.Service_HostAddress = http://localhost:5286
+@baseUrl = http://localhost:5286/api/ehr
 
-GET {{DBH.EHR.Service_HostAddress}}/weatherforecast/
+### ============ HEALTH CHECK ============
+
+GET http://localhost:5286/health
 Accept: application/json
 
-###
