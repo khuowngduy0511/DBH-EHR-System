@@ -33,14 +33,16 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
+    // Swagger endpoints của các downstream services (proxy qua gateway)
+    c.SwaggerEndpoint("/services/ehr/swagger/v1/swagger.json", "DBH EHR Service API v1");
+    // c.SwaggerEndpoint("/services/auth/swagger/v1/swagger.json", "DBH Auth Service API v1");
+    
+    // Gateway's own swagger
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Gateway API v1");
     
-    // Swagger endpoints của các services (proxy qua gateway)
-    c.SwaggerEndpoint("/api/auth/swagger/v1/swagger.json", "Auth Service API");
-    c.SwaggerEndpoint("/api/ehr/swagger/v1/swagger.json", "EHR Service API");
-    
     c.RoutePrefix = "swagger";
-    c.DocumentTitle = "DBH-EHR API Gateway";
+    c.DocumentTitle = "DBH-EHR System APIs";
+    c.DisplayRequestDuration();
 });
 
 app.UseCors("AllowAll");

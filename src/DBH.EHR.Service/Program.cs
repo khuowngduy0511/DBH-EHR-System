@@ -26,7 +26,7 @@ builder.Services.AddSwaggerGen(options =>
     { 
         Title = "DBH EHR Service API", 
         Version = "v1",
-        Description = "Distributed EHR Service demonstrating PostgreSQL Primary/Replica + MongoDB Replica Set"
+        Description = "EHR Service cho hệ thống DBH-EHR"
     });
 });
 
@@ -107,7 +107,7 @@ app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "DBH EHR Service API v1");
-    c.RoutePrefix = string.Empty; // Serve Swagger UI at root
+    c.RoutePrefix = "swagger"; // Serve Swagger UI at /swagger
 });
 
 app.MapControllers();

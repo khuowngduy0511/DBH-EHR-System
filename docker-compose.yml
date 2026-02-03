@@ -24,12 +24,12 @@ services:
       dockerfile: DBH.Gateway/Dockerfile
     container_name: dbh_gateway
     environment:
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_ENVIRONMENT: Production
     ports:
       - "5000:5000"
     depends_on:
-      - auth_service
-      - ehr_service
+      ehr_service:
+        condition: service_healthy
     networks:
       - dbh_network
     profiles:
@@ -42,34 +42,34 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  # ASP.NET Core Auth Service
+  # ASP.NET Core Auth Service (TODO: implement later)
   # ===========================================================================
-  auth_service:
-    build:
-      context: ./src
-      dockerfile: DBH.Auth.Service/Dockerfile
-    container_name: dbh_auth_service
-    environment:
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
-      CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
-    expose:
-      - "8080"
-    depends_on:
-      pg_primary:
-        condition: service_healthy
-      mongo1:
-        condition: service_healthy
-    networks:
-      - dbh_network
-    profiles:
-      - api
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+  # auth_service:
+  #   build:
+  #     context: ./src
+  #     dockerfile: DBH.Auth.Service/Dockerfile
+  #   container_name: dbh_auth_service
+  #   environment:
+  #     ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+  #     CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+  #     CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
+  #   expose:
+  #     - "8080"
+  #   depends_on:
+  #     pg_primary:
+  #       condition: service_healthy
+  #     mongo1:
+  #       condition: service_healthy
+  #   networks:
+  #     - dbh_network
+  #   profiles:
+  #     - api
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
 
   # ===========================================================================
   # ASP.NET Core EHR Service
@@ -85,8 +85,8 @@ services:
       ConnectionStrings__PostgresReplica: "Host=pg_replica;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       MongoDB__ConnectionString: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
       MongoDB__DatabaseName: ${MONGO_INITDB_DATABASE:-dbh_ehr}
-    expose:
-      - "5050"
+    ports:
+      - "5050:5050"
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -109,7 +109,7 @@ services:
   # PostgreSQL Primary (Read-Write) - Bitnami with built-in replication
   # ===========================================================================
   pg_primary:
-    image: bitnami/postgresql:16
+    image: bitnami/postgresql:latest
     container_name: dbh_pg_primary
     environment:
       # Database credentials
@@ -123,7 +123,7 @@ services:
     volumes:
       - pg_primary_data:/bitnami/postgresql
     ports:
-      - "5432:5432"
+      - "5442:5432"
     networks:
       - dbh_network
     healthcheck:
@@ -136,7 +136,7 @@ services:
   # PostgreSQL Replica (Read-Only) - Auto-syncs from Primary
   # ===========================================================================
   pg_replica:
-    image: bitnami/postgresql:16
+    image: bitnami/postgresql:latest
     container_name: dbh_pg_replica
     environment:
       # Replication configuration (slave mode)
@@ -150,7 +150,7 @@ services:
     volumes:
       - pg_replica_data:/bitnami/postgresql
     ports:
-      - "5433:5432"
+      - "5443:5432"
     depends_on:
       pg_primary:
         condition: service_healthy

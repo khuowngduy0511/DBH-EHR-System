@@ -82,6 +82,21 @@ public class EhrService : IEhrService
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
         
         //Lưu document vào Mongo Primary 
+        // Parse metadata chỉ khi nó là JSON object
+        BsonDocument? metadataBson = null;
+        if (metadataJson != null)
+        {
+            try
+            {
+                metadataBson = BsonDocument.Parse(metadataJson);
+            }
+            catch
+            {
+                // Nếu metadata không phải JSON object, wrap nó
+                metadataBson = new BsonDocument("value", metadataJson);
+            }
+        }
+        
         var ehrDocument = new EhrDocument
         {
             EhrId = savedRecord.EhrId,
@@ -93,9 +108,7 @@ public class EhrService : IEhrService
             DataHash = dataHash,
             Version = 1,
             CreatedBy = request.CreatedByDoctorId,
-            Metadata = metadataJson != null 
-                ? BsonDocument.Parse(metadataJson) 
-                : null
+            Metadata = metadataBson
         };
         
         var savedDocument = await _ehrDocumentRepo.CreateAsync(ehrDocument);

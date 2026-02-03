@@ -6,7 +6,7 @@ namespace DBH.EHR.Service.Controllers;
 
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("[controller]")]
 [Produces("application/json")]
 public class EhrController : ControllerBase
 {
