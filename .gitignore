@@ -3,9 +3,34 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-# dotenv files
+# =============================================================================
+# SECRETS & CONFIGURATION 
+# =============================================================================
+# dotenv files (except .env.example which is the template)
 .env
+.env.local
+.env.*.local
+!.env.example
 
+# Ignore environment-specific settings (keep appsettings.json as template)
+**/appsettings.Development.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+
+# User secrets
+secrets.json
+**/secrets/
+
+# =============================================================================
+# DOCKER DATA VOLUMES (if any local data folders)
+# =============================================================================
+**/data/
+
+# =============================================================================
+# USER-SPECIFIC FILES
+# =============================================================================
 # User-specific files
 *.rsuser
 *.suo

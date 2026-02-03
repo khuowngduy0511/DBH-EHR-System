@@ -1,0 +1,50 @@
+@gateway_url = http://localhost:5000
+
+### ========== GATEWAY INFO ==========
+
+### Gateway Info
+GET {{gateway_url}}/
+
+### Gateway Health Check
+GET {{gateway_url}}/health
+
+### ========== EHR SERVICE (via Gateway) ==========
+
+### Tạo EHR mới
+POST {{gateway_url}}/api/ehr/records
+Content-Type: application/json
+
+{
+  "patientId": "11111111-1111-1111-1111-111111111111",
+  "createdByDoctorId": "22222222-2222-2222-2222-222222222222",
+  "encounterId": "33333333-3333-3333-3333-333333333333",
+  "hospitalId": "44444444-4444-4444-4444-444444444444",
+  "reportType": "LAB",
+  "data": {
+    "testName": "Complete Blood Count",
+    "results": {
+      "wbc": 7500,
+      "rbc": 4.8,
+      "hemoglobin": 14.2
+    }
+  }
+}
+
+### Lấy EHR theo ID (thay {ehrId} bằng ID thực)
+@ehrId = 00000000-0000-0000-0000-000000000000
+GET {{gateway_url}}/api/ehr/records/{{ehrId}}
+
+### Lấy EHR theo Patient ID
+@patientId = 11111111-1111-1111-1111-111111111111
+GET {{gateway_url}}/api/ehr/records/patient/{{patientId}}
+
+### Lấy EHR versions
+GET {{gateway_url}}/api/ehr/records/{{ehrId}}/versions
+
+### Lấy EHR files
+GET {{gateway_url}}/api/ehr/records/{{ehrId}}/files
+
+### ========== AUTH SERVICE (via Gateway) ==========
+
+### Auth Health Check
+GET {{gateway_url}}/api/auth/health

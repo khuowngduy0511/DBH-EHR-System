@@ -1,0 +1,7 @@
+@baseUrl = http://localhost:5286/api/ehr
+
+### ============ HEALTH CHECK ============
+
+GET http://localhost:5286/health
+Accept: application/json
+
