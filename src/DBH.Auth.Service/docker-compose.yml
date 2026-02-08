@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  auth-db:
+    image: postgres:18
+    container_name: dbh_auth_db
+    environment:
+      - POSTGRES_USER=dbh_admin
+      - POSTGRES_PASSWORD=dbh_123
+      - POSTGRES_DB=dbh_ehr
+    command: -p 5431
+    ports:
+      - "5431:5431"
+    volumes:
+      - postgres_auth_data_v3:/var/lib/postgresql
+    restart: always
+
+  auth-service:
+    build:
+      context: ../../
+      dockerfile: src/DBH.Auth.Service/Dockerfile
+    container_name: dbh_auth_service
+    environment:
+      - ConnectionStrings__PostgreSQL=Host=auth-db;Port=5431;Database=dbh_ehr;Username=dbh_admin;Password=dbh_123
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "5001:8080"
+    depends_on:
+      - auth-db
+    restart: always
+
+volumes:
+  postgres_auth_data_v3:
