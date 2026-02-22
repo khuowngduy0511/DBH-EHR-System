@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Shared Domain cho DBH-EHR System - Mỗi service có Models riêng theo Database-per-Service pattern</Description>
   </PropertyGroup>
 
 </Project>
