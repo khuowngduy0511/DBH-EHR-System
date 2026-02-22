@@ -1,95 +1,101 @@
-using System.Text.Json.Serialization;
-using DBH.Auth.Service.Data;
-using Microsoft.EntityFrameworkCore;
 
-var builder = WebApplication.CreateBuilder(args);
+    using System.Text;
+    using DBH.Auth.Service.Data;
+    using DBH.Auth.Service.Repositories;
+    using DBH.Auth.Service.Services;
+    using Microsoft.AspNetCore.Authentication.JwtBearer;
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.IdentityModel.Tokens;
+    using Microsoft.OpenApi.Models;
 
-// ============================================================================
-// Service Configuration
-// ============================================================================
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
+    // Add services to the container.
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+
+    // Swagger Configuration with JWT Support
+    builder.Services.AddSwaggerGen(c =>
     {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        c.SwaggerDoc("v1", new OpenApiInfo { Title = "DBH.Auth.Service", Version = "v1" });
+        c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Description = "Bearer token",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        });
+        c.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
     });
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new() 
-    { 
-        Title = "DBH Auth Service API", 
-        Version = "v1",
-        Description = "Authentication & Authorization Service cho hệ thống DBH-EHR"
-    });
-});
 
-// ============================================================================
-// Database Configuration (Auth Service own database)
-// ============================================================================
+    // Database Configuration
+    var pgConnectionString = builder.Configuration.GetConnectionString("PostgreSQL");
+    builder.Services.AddDbContext<AuthDbContext>(options =>
+        options.UseNpgsql(pgConnectionString));
 
-var connectionString = builder.Configuration.GetConnectionString("AuthDb")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    // Repositories
+    builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
 
-builder.Services.AddDbContext<AuthDbContext>(options =>
-{
-    options.UseNpgsql(connectionString, npgsqlOptions =>
+    // Auth Services
+    builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddScoped<IAuthService, AuthService>();
+
+    // JWT Authentication Configuration
+    var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+    var secretKey = jwtSettings["Key"];
+
+    builder.Services.AddAuthentication(options =>
     {
-        npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorCodesToAdd: null);
-        npgsqlOptions.CommandTimeout(60);
-    });
-});
-
-var app = builder.Build();
-
-// ============================================================================
-// Database Initialization
-// ============================================================================
-
-using (var scope = app.Services.CreateScope())
-{
-    var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
-    try
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
     {
-        logger.LogInformation("Applying PostgreSQL migrations to Auth database...");
-        await authDb.Database.MigrateAsync();
-        logger.LogInformation("Auth database migrations completed successfully");
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidAudience = jwtSettings["Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
+        };
+    });
+
+    var app = builder.Build();
+
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
     }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Migration failed. Ensuring tables exist...");
-        await authDb.Database.EnsureCreatedAsync();
-    }
-}
 
-// ============================================================================
-// HTTP Pipeline
-// ============================================================================
+    app.UseHttpsRedirection();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "DBH Auth Service API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-app.MapControllers();
+    app.MapControllers();
 
-// Health check endpoint
-app.MapGet("/health", () => Results.Ok(new { 
-    Status = "healthy", 
-    Service = "DBH.Auth.Service",
-    Timestamp = DateTime.UtcNow 
-}))
-.WithName("HealthCheck")
-.WithTags("Health");
+    app.MapGet("/health", () => Results.Ok("Auth Service is healthy"));
 
-await app.RunAsync();
+    app.Run();
 
