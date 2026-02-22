@@ -1,0 +1,298 @@
+# DBH-EHR System - Docker Compose for Development
+# Decentralized Blockchain Healthcare System for Secure EHR Management
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # API GATEWAY
+  # ============================================================================
+  gateway:
+    build:
+      context: .
+      dockerfile: src/DBH.Gateway/Dockerfile
+    container_name: dbh_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+    depends_on:
+      - auth_service
+      - organization_service
+      - ehr_service
+      - consent_service
+      - audit_service
+      - notification_service
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # MICROSERVICES
+  # ============================================================================
+  
+  auth_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Auth.Service/Dockerfile
+    container_name: dbh_auth_service
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5001
+      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  organization_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Organization.Service/Dockerfile
+    container_name: dbh_organization_service
+    ports:
+      - "5002:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5002
+      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ehr_service:
+    build:
+      context: .
+      dockerfile: src/DBH.EHR.Service/Dockerfile
+    container_name: dbh_ehr_service
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5003
+      - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
+      - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
+      - MongoDB__DatabaseName=dbh_fhir
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      mongo1:
+        condition: service_started
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  consent_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Consent.Service/Dockerfile
+    container_name: dbh_consent_service
+    ports:
+      - "5004:5004"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5004
+      - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
+      - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  audit_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Audit.Service/Dockerfile
+    container_name: dbh_audit_service
+    ports:
+      - "5005:5005"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5005
+      - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notification_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Notification.Service/Dockerfile
+    container_name: dbh_notification_service
+    ports:
+      - "5006:5006"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5006
+      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # DATABASES
+  # ============================================================================
+
+  pg_primary:
+    image: postgres:15-alpine
+    container_name: dbh_pg_primary
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=dbh_123
+      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo1:
+    image: mongo:7.0
+    container_name: dbh_mongo1
+    ports:
+      - "27017:27017"
+    command: mongod --replSet rs0 --bind_ip_all
+    volumes:
+      - mongo1_data:/data/db
+    networks:
+      - dbh_network
+
+  mongo2:
+    image: mongo:7.0
+    container_name: dbh_mongo2
+    ports:
+      - "27018:27017"
+    command: mongod --replSet rs0 --bind_ip_all
+    volumes:
+      - mongo2_data:/data/db
+    networks:
+      - dbh_network
+
+  mongo_init:
+    image: mongo:7.0
+    container_name: dbh_mongo_init
+    depends_on:
+      - mongo1
+      - mongo2
+    command: >
+      mongosh --host mongo1:27017 --eval "
+        rs.initiate({
+          _id: 'rs0',
+          members: [
+            { _id: 0, host: 'mongo1:27017', priority: 2 },
+            { _id: 1, host: 'mongo2:27017', priority: 1 }
+          ]
+        })
+      "
+    networks:
+      - dbh_network
+
+  # ============================================================================
+  # MESSAGE QUEUE
+  # ============================================================================
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: dbh_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=dbh_123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ============================================================================
+  # CACHE
+  # ============================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: dbh_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ============================================================================
+# VOLUMES & NETWORKS
+# ============================================================================
+
+volumes:
+  pg_primary_data:
+  mongo1_data:
+  mongo2_data:
+  rabbitmq_data:
+  redis_data:
+
+networks:
+  dbh_network:
+    driver: bridge

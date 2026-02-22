@@ -4,6 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Shared Infrastructure cho DBH-EHR System - Mỗi service có DbContext riêng theo Database-per-Service pattern</Description>
   </PropertyGroup>
+
+
 
 </Project>
