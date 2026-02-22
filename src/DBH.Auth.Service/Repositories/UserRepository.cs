@@ -25,10 +25,8 @@ public class UserRepository : GenericRepository<User>, IUserRepository
             .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
             .Include(u => u.DoctorProfile)
-            .Include(u => u.PharmacistProfile)
-            .Include(u => u.NurseProfile)
             .Include(u => u.PatientProfile)
-            .Include(u => u.ReceptionistProfile)
+            .Include(u => u.StaffProfile)  // Gộp Nurse, Pharmacist, LabTech, Receptionist
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }
 }

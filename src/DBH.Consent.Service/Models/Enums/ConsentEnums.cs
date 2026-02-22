@@ -19,7 +19,8 @@ public enum ConsentPermission
 {
     READ,
     WRITE,
-    READ_WRITE
+    DOWNLOAD,
+    FULL_ACCESS
 }
 
 /// <summary>

@@ -1,0 +1,1243 @@
+// ============================================
+// DBH-EHR SYSTEM - MICROSERVICES ARCHITECTURE
+// ============================================
+// Database-per-Service Pattern
+// - Auth Service: dbh_auth
+// - Organization Service: dbh_organization
+// - EHR Service: dbh_ehr (PostgreSQL + MongoDB)
+// - Consent Service: dbh_consent
+// - Audit Service: dbh_audit
+// - Notification Service: dbh_notification
+// - Scheduling Service: dbh_scheduling (Appointments, Encounters)
+// - Payment Service: dbh_payment (Billing, Invoices, Insurance)
+// - AI/RAG Service: dbh_rag (Documents, Embeddings, Vector Index)
+// ============================================
+
+// ============== ENUMS =======================
+
+// === AUTH SERVICE ENUMS ===
+Enum user_status_t {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+Enum role_name_t {
+  PATIENT
+  DOCTOR
+  NURSE
+  PHARMACIST
+  RECEPTIONIST
+  LAB_TECH
+  ADMIN
+  SYSTEM_ADMIN
+}
+
+Enum provider_type_t {
+  LOCAL
+  GOOGLE
+  DID
+}
+
+Enum mfa_method_t {
+  TOTP
+  SMS
+}
+
+Enum verification_status_t {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// === ORGANIZATION SERVICE ENUMS ===
+Enum organization_type_t {
+  HOSPITAL
+  CLINIC
+  LAB
+  PHARMACY
+  IMAGING_CENTER
+  HEALTH_CENTER
+  PUBLIC
+  PRIVATE
+  SPECIALIZED
+}
+
+Enum organization_status_t {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+  PENDING_VERIFICATION
+}
+
+Enum hospital_level_t {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+Enum membership_status_t {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+  PENDING
+}
+
+Enum employment_type_t {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+Enum department_status_t {
+  ACTIVE
+  INACTIVE
+}
+
+// === EHR SERVICE ENUMS ===
+Enum tx_status_t {
+  PENDING
+  COMMITTED
+  FAILED
+}
+
+Enum report_type_t {
+  LAB
+  PRESCRIPTION
+  VITAL_SIGNS
+  DIAGNOSIS
+  PROCEDURE
+  IMAGING
+  IMMUNIZATION
+  ALLERGY
+  DISCHARGE_SUMMARY
+  CONSULTATION
+  CLINICAL_NOTE
+  OTHER
+}
+
+Enum subscription_status_t {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+Enum access_action_t {
+  VIEW
+  DOWNLOAD
+  UPDATE
+}
+
+Enum verify_status_t {
+  PASS
+  FAIL
+}
+
+// === CONSENT SERVICE ENUMS ===
+Enum grantee_type_t {
+  DOCTOR
+  ORGANIZATION
+  EMERGENCY
+  RESEARCHER
+  INSURANCE
+}
+
+Enum consent_permission_t {
+  READ
+  WRITE
+  READ_WRITE
+}
+
+Enum consent_purpose_t {
+  TREATMENT
+  RESEARCH
+  INSURANCE
+  LEGAL
+  EMERGENCY
+  PUBLIC_HEALTH
+}
+
+Enum consent_status_t {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  PENDING
+}
+
+Enum access_request_status_t {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+  CANCELLED
+}
+
+// === AUDIT SERVICE ENUMS ===
+Enum audit_action_t {
+  REQUEST
+  VIEW
+  DOWNLOAD
+  UPDATE
+  CREATE
+  DELETE
+  GRANT_CONSENT
+  REVOKE_CONSENT
+  EMERGENCY_ACCESS
+  LOGIN
+  LOGOUT
+  MFA_VERIFY
+}
+
+Enum audit_result_t {
+  SUCCESS
+  DENIED
+  HASH_MISMATCH
+  CONSENT_EXPIRED
+  ERROR
+}
+
+Enum actor_type_t {
+  PATIENT
+  DOCTOR
+  NURSE
+  ADMIN
+  SYSTEM
+  ORGANIZATION
+}
+
+Enum target_type_t {
+  EHR
+  CONSENT
+  FILE
+  USER
+  ORGANIZATION
+  SYSTEM
+}
+
+// === NOTIFICATION SERVICE ENUMS ===
+Enum notification_type_t {
+  EHR_ACCESS
+  CONSENT_REQUEST
+  CONSENT_RESPONSE
+  EHR_UPDATE
+  APPOINTMENT_REMINDER
+  SECURITY_ALERT
+  SYSTEM_NOTIFICATION
+}
+
+Enum notification_priority_t {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+Enum notification_channel_t {
+  PUSH
+  EMAIL
+  SMS
+  IN_APP
+}
+
+Enum notification_status_t {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// === SCHEDULING SERVICE ENUMS ===
+Enum appointment_status_t {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+Enum encounter_status_t {
+  WAITING
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+// === PAYMENT SERVICE ENUMS ===
+Enum payment_status_t {
+  PENDING
+  PAID
+  PARTIAL
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+Enum payment_method_t {
+  CASH
+  CREDIT_CARD
+  BANK_TRANSFER
+  E_WALLET
+  INSURANCE
+}
+
+Enum service_type_t {
+  CONSULTATION
+  LAB_TEST
+  IMAGING
+  MEDICATION
+  PROCEDURE
+  EHR_STORAGE
+  EHR_ACCESS
+  FOLLOW_UP
+}
+
+Enum billing_cycle_t {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  PER_ENCOUNTER
+}
+
+Enum insurance_claim_status_t {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// === AI/RAG SERVICE ENUMS ===
+Enum ingestion_status_t {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============================================
+// AUTH SERVICE (dbh_auth)
+// ============================================
+
+Table users {
+  user_id uuid [pk]
+  full_name varchar(255)
+  email varchar(255) [unique]
+  phone varchar(50)
+  password varchar(255)
+  status user_status_t
+  ip_address varchar(255) [null]
+  public_key varchar(255) [null]
+  created_at timestamp
+  
+  Indexes {
+    email [unique]
+    phone
+  }
+}
+
+Table roles {
+  role_id int [pk]
+  role_name role_name_t [unique]
+}
+
+Table user_roles {
+  user_id uuid [ref: > users.user_id]
+  role_id int [ref: > roles.role_id]
+  
+  Indexes {
+    (user_id, role_id) [pk]
+  }
+}
+
+Table permissions {
+  permission_id uuid [pk]
+  name varchar(200)
+  description text [null]
+  created_at timestamp
+}
+
+Table role_permissions {
+  role_id int [ref: > roles.role_id]
+  permission_id uuid [ref: > permissions.permission_id]
+  
+  Indexes {
+    (role_id, permission_id) [pk]
+  }
+}
+
+Table user_credentials {
+  credential_id uuid [pk]
+  user_id uuid [ref: > users.user_id]
+  provider provider_type_t
+  credential_value varchar(255) [null]
+  verified boolean
+  verified_at timestamp [null]
+  created_at timestamp
+  
+  Indexes {
+    (user_id, provider) [unique]
+  }
+}
+
+Table user_security {
+  user_id uuid [pk, ref: - users.user_id]
+  mfa_enabled boolean
+  mfa_method mfa_method_t [null]
+  last_password_change timestamp [null]
+  last_mfa_enroll_at timestamp [null]
+}
+
+Table sessions {
+  session_id uuid [pk]
+  user_id uuid [ref: > users.user_id]
+  device_info varchar(500) [null]
+  ip_address varchar(100) [null]
+  issued_at timestamp
+  expires_at timestamp
+  revoked boolean [default: false]
+  
+  Indexes {
+    (user_id, revoked, expires_at)
+  }
+}
+
+// === PROFILE TABLES (Auth Service) ===
+
+Table doctors {
+  doctor_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  hospital_id uuid [null] // Reference to Organization Service
+  specialty varchar(255) [null]
+  license_number varchar(100) [null]
+  license_image varchar(255) [null]
+  verified_status verification_status_t [default: 'PENDING']
+  verified_at timestamp [null]
+  created_at timestamp
+}
+
+Table patients {
+  patient_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  dob date [null]
+  gender varchar(20) [null]
+  blood_type varchar(10) [null]
+  created_at timestamp
+}
+
+Table nurses {
+  nurse_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  hospital_id uuid [null]
+  specialty varchar(255) [null]
+  license_number varchar(100) [null]
+  verified_status verification_status_t [default: 'PENDING']
+  created_at timestamp
+}
+
+Table pharmacists {
+  pharmacist_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  hospital_id uuid [null]
+  license_number varchar(100) [null]
+  verified_status verification_status_t [default: 'PENDING']
+  created_at timestamp
+}
+
+Table receptionists {
+  receptionist_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  hospital_id uuid [null]
+  created_at timestamp
+}
+
+Table lab_techs {
+  lab_tech_id uuid [pk]
+  user_id uuid [unique, ref: - users.user_id]
+  hospital_id uuid [null]
+  license_number varchar(100) [null]
+  verified_status verification_status_t [default: 'PENDING']
+  created_at timestamp
+}
+
+// ============================================
+// ORGANIZATION SERVICE (dbh_organization)
+// ============================================
+
+Table organizations {
+  org_id uuid [pk]
+  org_did varchar(255) [null] // DID: did:fabric:org:{identifier}
+  org_name varchar(255) [not null]
+  org_code varchar(50) [null]
+  org_type organization_type_t
+  level hospital_level_t [null] // Hospital level classification
+  license_number varchar(100) [null]
+  tax_id varchar(50) [null]
+  
+  // Contact Info
+  phone varchar(50) [null]
+  email varchar(255) [null]
+  website varchar(255) [null]
+  logo_url varchar(500) [null]
+  
+  // Address (FHIR format)
+  address jsonb [null]
+  province varchar(100) [null]
+  district varchar(100) [null]
+  ward varchar(100) [null]
+  latitude decimal(10,8) [null]
+  longitude decimal(11,8) [null]
+  
+  // Facilities & Services
+  specialties jsonb [null] // List of available specialties
+  facilities jsonb [null] // Available facilities
+  description text [null]
+  operating_hours jsonb [null] // {mon: {open: "08:00", close: "17:00"}, ...}
+  
+  // Hyperledger Fabric Integration
+  fabric_msp_id varchar(100) [null]
+  fabric_channel_peers jsonb [null]
+  fabric_ca_url varchar(500) [null]
+  
+  status organization_status_t
+  verified_at timestamp [null]
+  verified_by uuid [null] // User ID from Auth Service
+  settings jsonb [null]
+  
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    org_did [unique]
+    org_code
+    (org_type, status)
+    (province, district)
+    (latitude, longitude)
+  }
+}
+
+Table organization_specialties {
+  org_id uuid [ref: > organizations.org_id]
+  specialty_code varchar(50)
+  specialty_name varchar(255)
+  is_available boolean [default: true]
+  created_at timestamp
+  
+  Indexes {
+    (org_id, specialty_code) [pk]
+    (specialty_code, is_available)
+  }
+}
+
+Table departments {
+  department_id uuid [pk]
+  org_id uuid [ref: > organizations.org_id]
+  department_name varchar(100) [not null]
+  department_code varchar(20) [null]
+  description varchar(500) [null]
+  head_user_id uuid [null] // User ID from Auth Service
+  parent_department_id uuid [null, ref: > departments.department_id]
+  floor varchar(20) [null]
+  room_numbers varchar(100) [null]
+  phone_extension varchar(20) [null]
+  status department_status_t
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (org_id, department_code)
+  }
+}
+
+Table memberships {
+  membership_id uuid [pk]
+  user_id uuid [not null] // User ID from Auth Service
+  org_id uuid [ref: > organizations.org_id]
+  department_id uuid [null, ref: > departments.department_id]
+  employee_id varchar(50) [null]
+  job_title varchar(100) [null]
+  employment_type employment_type_t [null]
+  license_number varchar(100) [null]
+  specialty varchar(100) [null]
+  qualifications jsonb [null]
+  start_date date
+  end_date date [null]
+  status membership_status_t
+  org_permissions jsonb [null]
+  notes varchar(1000) [null]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (user_id, org_id, status)
+    (org_id, status)
+    (org_id, end_date) // Find current employees
+  }
+}
+
+Table doctor_specialties {
+  doctor_id uuid // Doctor ID from Auth Service
+  specialty_code varchar(50)
+  years_of_experience int [null]
+  certification_number varchar(100) [null]
+  is_primary boolean [default: false]
+  created_at timestamp
+  
+  Indexes {
+    (doctor_id, specialty_code) [pk]
+    (specialty_code, doctor_id)
+  }
+}
+
+Table doctor_schedules {
+  schedule_id uuid [pk]
+  doctor_id uuid // Doctor ID from Auth Service
+  org_id uuid [ref: > organizations.org_id]
+  day_of_week int // 0-6 (0=Sunday)
+  start_time time
+  end_time time
+  room_number varchar(50) [null]
+  is_available boolean [default: true]
+  valid_from date
+  valid_to date [null]
+  created_at timestamp
+  
+  Indexes {
+    (doctor_id, org_id, day_of_week, is_available)
+    (org_id, day_of_week, is_available)
+  }
+}
+
+// ============================================
+// EHR SERVICE (dbh_ehr - PostgreSQL)
+// ============================================
+
+Table ehr_records {
+  ehr_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  encounter_id uuid [null]
+  hospital_id uuid [null] // Org ID from Organization Service
+  created_by_doctor uuid [not null] // Doctor ID from Auth Service
+  current_version int [default: 1]
+  created_at timestamp
+  
+  Indexes {
+    (patient_id, created_at)
+    encounter_id
+    (hospital_id, created_at)
+  }
+}
+
+Table ehr_versions {
+  version_id uuid [pk]
+  ehr_id uuid [ref: > ehr_records.ehr_id]
+  version int
+  file_hash varchar(255) [null] // SHA-256 hash
+  changed_by uuid [null] // User ID from Auth Service
+  change_reason text [null]
+  previous_version_id uuid [null, ref: > ehr_versions.version_id]
+  blockchain_tx_hash varchar(255) [null]
+  tx_status tx_status_t [null]
+  created_at timestamp
+  
+  Indexes {
+    (ehr_id, version) [unique]
+    blockchain_tx_hash [unique]
+  }
+}
+
+Table ehr_files {
+  file_id uuid [pk]
+  ehr_id uuid [ref: > ehr_records.ehr_id]
+  version int
+  report_type report_type_t
+  file_url varchar(1000) [null] // S3/IPFS path
+  file_hash varchar(255) [null]
+  mime_type varchar(100) [null]
+  size_bytes bigint [null]
+  created_by uuid [null] // User ID from Auth Service
+  metadata jsonb [null]
+  created_at timestamp
+  
+  Indexes {
+    (ehr_id, version, report_type)
+    (created_by, created_at)
+  }
+}
+
+Table ehr_access_log {
+  access_id uuid [pk]
+  ehr_id uuid [ref: > ehr_records.ehr_id]
+  version int
+  accessed_by uuid [not null] // User ID from Auth Service
+  access_action access_action_t
+  consent_id uuid [null] // Consent ID from Consent Service
+  ip_address varchar(100) [null]
+  verify_status verify_status_t
+  accessed_at timestamp
+  
+  Indexes {
+    (ehr_id, accessed_at)
+    (accessed_by, accessed_at)
+  }
+}
+
+Table ehr_subscriptions {
+  subscription_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  ehr_id uuid [null, ref: > ehr_records.ehr_id]
+  plan_id uuid [null]
+  start_date date
+  end_date date [null]
+  auto_renew boolean [default: false]
+  status subscription_status_t
+  next_billing_date date [null]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, status)
+    (ehr_id, status)
+  }
+}
+
+// ============================================
+// EHR SERVICE - MongoDB (dbh_ehr_fhir)
+// ============================================
+// Collection: ehr_documents
+// {
+//   "_id": ObjectId,
+//   "ehr_id": UUID,
+//   "version_id": UUID,
+//   "file_id": UUID,
+//   "patient_id": UUID,
+//   "report_type": String,
+//   "data": BSON Document (FHIR-compatible JSON),
+//   "data_hash": String,
+//   "version": Int,
+//   "created_by": UUID,
+//   "metadata": BSON Document,
+//   "created_at": DateTime,
+//   "updated_at": DateTime
+// }
+
+// ============================================
+// CONSENT SERVICE (dbh_consent)
+// ============================================
+
+Table consents {
+  consent_id uuid [pk]
+  blockchain_consent_id varchar(100) [not null, unique]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  patient_did varchar(255) [not null]
+  grantee_id uuid [not null] // User/Org ID
+  grantee_did varchar(255) [not null]
+  grantee_type grantee_type_t
+  ehr_id uuid [null] // EHR ID (null = all patient records)
+  permission consent_permission_t
+  purpose consent_purpose_t
+  conditions jsonb [null]
+  granted_at timestamp
+  expires_at timestamp [null]
+  status consent_status_t
+  revoked_at timestamp [null]
+  revoke_reason varchar(500) [null]
+  grant_tx_hash varchar(66) [null]
+  revoke_tx_hash varchar(66) [null]
+  blockchain_block_num bigint [null]
+  last_synced_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, grantee_id, status)
+    (patient_did, grantee_did, status)
+    ehr_id
+    expires_at
+    grant_tx_hash
+  }
+}
+
+Table access_requests {
+  request_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  patient_did varchar(255) [not null]
+  requester_id uuid [not null] // User ID from Auth Service
+  requester_did varchar(255) [not null]
+  requester_type grantee_type_t
+  organization_id uuid [null] // Org ID from Organization Service
+  ehr_id uuid [null]
+  permission consent_permission_t
+  purpose consent_purpose_t
+  reason varchar(1000) [not null]
+  requested_duration_days int [default: 30]
+  status access_request_status_t
+  consent_id uuid [null, ref: > consents.consent_id]
+  responded_at timestamp [null]
+  response_reason varchar(500) [null]
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, status)
+    (requester_id, status)
+    expires_at
+  }
+}
+
+// ============================================
+// AUDIT SERVICE (dbh_audit)
+// ============================================
+
+Table audit_logs {
+  audit_id uuid [pk]
+  blockchain_audit_id varchar(100) [not null]
+  actor_did varchar(255) [not null]
+  actor_user_id uuid [null] // User ID from Auth Service
+  actor_type actor_type_t
+  action audit_action_t
+  target_type target_type_t
+  target_id uuid [null]
+  patient_did varchar(255) [null]
+  patient_id uuid [null]
+  consent_id uuid [null]
+  organization_id uuid [null]
+  result audit_result_t
+  metadata jsonb [null]
+  error_message varchar(1000) [null]
+  ip_address varchar(100) [null]
+  user_agent text [null]
+  session_id varchar(100) [null]
+  blockchain_timestamp timestamp
+  blockchain_tx_hash varchar(66) [null]
+  blockchain_block_num bigint [null]
+  synced_at timestamp
+  created_at timestamp
+  
+  Indexes {
+    (actor_user_id, created_at)
+    (patient_id, created_at)
+    (target_type, target_id)
+    blockchain_tx_hash [unique]
+  }
+}
+
+// ============================================
+// NOTIFICATION SERVICE (dbh_notification)
+// Schema: notification
+// ============================================
+
+Table notifications {
+  id uuid [pk]
+  recipient_did varchar(200) [not null]
+  recipient_user_id uuid [null] // User ID from Auth Service
+  title varchar(500) [not null]
+  body varchar(2000) [null]
+  type notification_type_t
+  priority notification_priority_t
+  channel notification_channel_t
+  status notification_status_t
+  reference_id varchar(100) [null]
+  reference_type varchar(50) [null]
+  action_url varchar(500) [null]
+  data jsonb [null]
+  created_at timestamp
+  sent_at timestamp [null]
+  read_at timestamp [null]
+  expires_at timestamp [null]
+  retry_count int [default: 0]
+  error_message varchar(1000) [null]
+  external_message_id varchar(200) [null]
+  
+  Indexes {
+    (recipient_user_id, status, created_at)
+    (recipient_did, status)
+    expires_at
+  }
+
+  Note: 'Schema: notification'
+}
+
+Table device_tokens {
+  id uuid [pk]
+  user_did varchar(200) [not null]
+  user_id uuid [null] // User ID from Auth Service
+  fcm_token varchar(500) [not null]
+  device_name varchar(200) [null]
+  device_type varchar(20) [not null] // ios, android, web
+  os_version varchar(50) [null]
+  app_version varchar(20) [null]
+  is_active boolean [default: true]
+  created_at timestamp
+  updated_at timestamp
+  last_used_at timestamp [null]
+  
+  Indexes {
+    (user_did, is_active)
+    fcm_token
+  }
+
+  Note: 'Schema: notification'
+}
+
+Table notification_preferences {
+  id uuid [pk]
+  user_did varchar(200) [not null, unique]
+  user_id uuid [null] // User ID from Auth Service
+  
+  // Type preferences
+  ehr_access_enabled boolean [default: true]
+  consent_request_enabled boolean [default: true]
+  ehr_update_enabled boolean [default: true]
+  appointment_reminder_enabled boolean [default: true]
+  security_alert_enabled boolean [default: true]
+  system_notification_enabled boolean [default: true]
+  
+  // Channel preferences
+  push_enabled boolean [default: true]
+  email_enabled boolean [default: true]
+  sms_enabled boolean [default: false]
+  in_app_enabled boolean [default: true]
+  
+  // Quiet hours
+  quiet_hours_enabled boolean [default: false]
+  quiet_hours_start int [default: 22] // 0-23
+  quiet_hours_end int [default: 7] // 0-23
+  timezone varchar(50) [default: 'Asia/Ho_Chi_Minh']
+  
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    user_did [unique]
+    user_id
+  }
+
+  Note: 'Schema: notification'
+}
+
+// ============================================
+// CROSS-SERVICE NOTES
+// ============================================
+// 
+// Các service liên kết với nhau qua ID, KHÔNG dùng FK trực tiếp
+// vì mỗi service có database riêng biệt.
+//
+// Mapping:
+// - users.user_id ↔ memberships.user_id
+// - patients.patient_id ↔ ehr_records.patient_id
+// - doctors.doctor_id ↔ ehr_records.created_by_doctor
+// - organizations.org_id ↔ ehr_records.hospital_id
+// - consents.consent_id ↔ ehr_access_log.consent_id
+// - consents.consent_id ↔ audit_logs.consent_id
+//
+// Blockchain Integration:
+// - ehr_versions.blockchain_tx_hash → Hyperledger Fabric
+// - consents.grant_tx_hash → Hyperledger Fabric
+// - audit_logs.blockchain_tx_hash → Hyperledger Fabric
+//
+
+// ============================================
+// SCHEDULING SERVICE (dbh_scheduling)
+// ============================================
+
+Table appointments {
+  appointment_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  doctor_id uuid [not null] // Doctor ID from Auth Service
+  org_id uuid [not null] // Organization ID
+  department_id uuid [null]
+  scheduled_at timestamp
+  duration_minutes int [default: 30]
+  status appointment_status_t
+  reason text [null]
+  notes text [null]
+  confirmed_at timestamp [null]
+  cancelled_at timestamp [null]
+  cancel_reason varchar(500) [null]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, scheduled_at)
+    (doctor_id, scheduled_at)
+    (org_id, scheduled_at, status)
+  }
+}
+
+Table encounters {
+  encounter_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  doctor_id uuid [not null] // Doctor ID from Auth Service
+  appointment_id uuid [null] // Optional link to appointment
+  org_id uuid [not null] // Organization ID
+  department_id uuid [null]
+  
+  status encounter_status_t
+  reason_for_visit text [null]
+  chief_complaint text [null]
+  diagnosis varchar(500) [null]
+  diagnosis_codes jsonb [null] // ICD-10 codes
+  treatment_plan text [null]
+  
+  admitted_at timestamp
+  discharged_at timestamp [null]
+  discharge_notes text [null]
+  
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, admitted_at)
+    (doctor_id, admitted_at)
+    (org_id, admitted_at, status)
+  }
+}
+
+// ============================================
+// PAYMENT SERVICE (dbh_payment)
+// ============================================
+
+Table billing_plans {
+  plan_id uuid [pk]
+  name varchar(255)
+  description text [null]
+  service_type service_type_t
+  base_amount decimal(15,2)
+  currency varchar(3) [default: 'VND']
+  billing_cycle billing_cycle_t
+  is_active boolean [default: true]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (service_type, billing_cycle, is_active)
+  }
+}
+
+Table invoices {
+  invoice_id uuid [pk]
+  invoice_number varchar(50) [unique]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  encounter_id uuid [null] // Encounter ID from Scheduling Service
+  org_id uuid [null] // Organization ID
+  
+  total_amount decimal(15,2)
+  tax_amount decimal(15,2) [default: 0]
+  discount_amount decimal(15,2) [default: 0]
+  final_amount decimal(15,2)
+  currency varchar(3) [default: 'VND']
+  
+  status payment_status_t
+  due_date date
+  issued_at timestamp [null]
+  paid_at timestamp [null]
+  notes text [null]
+  
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, status)
+    (encounter_id)
+    invoice_number [unique]
+  }
+}
+
+Table invoice_items {
+  item_id uuid [pk]
+  invoice_id uuid
+  ehr_id uuid [null] // EHR ID if applicable
+  service_type service_type_t
+  description varchar(500)
+  quantity decimal(10,2) [default: 1]
+  unit_price decimal(15,2)
+  total_amount decimal(15,2)
+  metadata jsonb [null] // {test_code: 'CBC', drug_code: 'ABC123'}
+  created_at timestamp
+  
+  Indexes {
+    invoice_id
+    (ehr_id, service_type)
+  }
+}
+
+Table payments {
+  payment_id uuid [pk]
+  invoice_id uuid
+  payment_method payment_method_t
+  transaction_id varchar(255) [null] // Gateway transaction ID
+  amount decimal(15,2)
+  currency varchar(3) [default: 'VND']
+  status payment_status_t
+  payment_gateway varchar(100) [null] // VNPAY, MOMO, etc.
+  gateway_response jsonb [null]
+  paid_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    invoice_id
+    transaction_id [unique]
+    (paid_at, status)
+  }
+}
+
+Table insurance_claims {
+  claim_id uuid [pk]
+  patient_id uuid [not null] // Patient ID from Auth Service
+  invoice_id uuid
+  insurance_provider varchar(255)
+  policy_number varchar(100)
+  claimed_amount decimal(15,2)
+  approved_amount decimal(15,2) [null]
+  status insurance_claim_status_t
+  submitted_at timestamp
+  processed_at timestamp [null]
+  notes text [null]
+  created_at timestamp
+  updated_at timestamp
+  
+  Indexes {
+    (patient_id, status)
+    invoice_id [unique]
+  }
+}
+
+Table payment_webhooks {
+  webhook_id uuid [pk]
+  payment_id uuid [null]
+  event_type varchar(100)
+  payload jsonb
+  status varchar(20) // RECEIVED, PROCESSED, FAILED
+  processed_at timestamp [null]
+  error_message text [null]
+  created_at timestamp
+  
+  Indexes {
+    (payment_id, event_type)
+  }
+}
+
+// ============================================
+// AI/RAG SERVICE (dbh_rag)
+// ============================================
+
+Table documents {
+  document_id uuid [pk]
+  title varchar(500)
+  source_type varchar(50) // EHR_FILE, EXTERNAL, MANUAL
+  source_id varchar(255) [null] // Link to ehr_files.file_id
+  storage_path varchar(1000)
+  language varchar(10) [default: 'vi']
+  checksum varchar(128)
+  size_bytes bigint
+  metadata jsonb [null]
+  created_at timestamp
+  
+  Indexes {
+    source_id
+    (source_type, created_at)
+  }
+}
+
+Table embeddings {
+  embedding_id uuid [pk]
+  document_id uuid
+  chunk_id int
+  model_name varchar(200)
+  index_id uuid [null]
+  vector_ref varchar(500) // Reference to vector DB
+  dim int // Dimension of embedding
+  quality_score float [null]
+  created_at timestamp
+  
+  Indexes {
+    (document_id, chunk_id)
+    index_id
+  }
+}
+
+Table vector_indexes {
+  index_id uuid [pk]
+  name varchar(200)
+  provider varchar(100) // PINECONE, WEAVIATE, MILVUS
+  namespace varchar(200) [null]
+  index_meta jsonb [null]
+  total_vectors bigint [default: 0]
+  last_sync_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table retrieval_logs {
+  log_id uuid [pk]
+  user_id uuid [null] // User ID from Auth Service
+  query text
+  top_k int
+  result_docs jsonb // Array of document IDs with scores
+  model_name varchar(200)
+  latency_ms int
+  created_at timestamp
+  audit_id uuid [null] // Link to audit_logs
+  
+  Indexes {
+    (user_id, created_at)
+  }
+}
+
+Table ingestion_jobs {
+  ingestion_id uuid [pk]
+  job_type varchar(100) // FULL, INCREMENTAL, SINGLE
+  source_type varchar(50)
+  source_ref varchar(500)
+  status ingestion_status_t
+  attempts int [default: 0]
+  started_at timestamp [null]
+  finished_at timestamp [null]
+  details jsonb [null]
+  error_message text [null]
+  index_id uuid [null]
+  created_at timestamp
+  
+  Indexes {
+    (status, created_at)
+    index_id
+  }
+}
+
+// ============================================
+// BLOCKCHAIN SERVICE (Shared/Gateway)
+// ============================================
+
+Table blockchain_transactions {
+  tx_hash varchar(255) [pk]
+  block_number bigint
+  entity_type varchar(50) // EHR, CONSENT, AUDIT
+  entity_id uuid
+  channel_name varchar(100) [null]
+  chaincode_name varchar(100) [null]
+  transaction_data jsonb [null]
+  status tx_status_t
+  created_at timestamp
+  confirmed_at timestamp [null]
+  
+  Indexes {
+    (entity_type, entity_id)
+    block_number
+  }
+}
+
+// ============================================
+// SYSTEM SETTINGS (Shared)
+// ============================================
+
+Table system_settings {
+  key varchar(200) [pk]
+  value jsonb
+  description text [null]
+  updated_at timestamp
+  updated_by uuid [null] // User ID from Auth Service
+}
+

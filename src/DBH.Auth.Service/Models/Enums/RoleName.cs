@@ -7,5 +7,6 @@ public enum RoleName
     Pharmacist,
     Nurse,
     Patient,
-    Receptionist
+    Receptionist,
+    LabTech
 }

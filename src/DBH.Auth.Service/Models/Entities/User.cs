@@ -37,8 +37,6 @@ public class User
     
     // Profiles
     public Doctor? DoctorProfile { get; set; }
-    public Pharmacist? PharmacistProfile { get; set; }
-    public Nurse? NurseProfile { get; set; }
     public Patient? PatientProfile { get; set; }
-    public Receptionist? ReceptionistProfile { get; set; }
+    public Staff? StaffProfile { get; set; }  // Gộp Nurse, Pharmacist, LabTech, Receptionist
 }

@@ -197,7 +197,7 @@ public class ConsentService : IConsentService
         // Check permission level if required
         if (request.RequiredPermission.HasValue)
         {
-            var hasPermission = consent.Permission == ConsentPermission.READ_WRITE ||
+            var hasPermission = consent.Permission == ConsentPermission.FULL_ACCESS ||
                 consent.Permission == request.RequiredPermission.Value;
 
             if (!hasPermission)

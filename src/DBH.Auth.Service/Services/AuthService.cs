@@ -135,17 +135,15 @@ public class AuthService : IAuthService
                 case Models.Enums.RoleName.Doctor:
                     if (user.DoctorProfile != null) profiles.Add(roleName.ToString(), user.DoctorProfile);
                     break;
-                case Models.Enums.RoleName.Nurse:
-                     if (user.NurseProfile != null) profiles.Add(roleName.ToString(), user.NurseProfile);
-                    break;
-                case Models.Enums.RoleName.Pharmacist:
-                     if (user.PharmacistProfile != null) profiles.Add(roleName.ToString(), user.PharmacistProfile);
-                    break;
                 case Models.Enums.RoleName.Patient:
-                     if (user.PatientProfile != null) profiles.Add(roleName.ToString(), user.PatientProfile);
+                    if (user.PatientProfile != null) profiles.Add(roleName.ToString(), user.PatientProfile);
                     break;
+                case Models.Enums.RoleName.Nurse:
+                case Models.Enums.RoleName.Pharmacist:
                 case Models.Enums.RoleName.Receptionist:
-                     if (user.ReceptionistProfile != null) profiles.Add(roleName.ToString(), user.ReceptionistProfile);
+                case Models.Enums.RoleName.LabTech:
+                    // Tất cả staff roles sử dụng chung StaffProfile
+                    if (user.StaffProfile != null) profiles.Add(roleName.ToString(), user.StaffProfile);
                     break;
             }
         }
