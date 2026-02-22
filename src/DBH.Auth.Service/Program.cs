@@ -1,76 +1,101 @@
-var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+    using System.Text;
+    using DBH.Auth.Service.Data;
+    using DBH.Auth.Service.Repositories;
+    using DBH.Auth.Service.Services;
+    using Microsoft.AspNetCore.Authentication.JwtBearer;
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.IdentityModel.Tokens;
+    using Microsoft.OpenApi.Models;
 
-// Read database connection strings from environment variables (Docker-friendly)
-var pgConnectionString = builder.Configuration.GetConnectionString("PostgreSQL") 
-    ?? Environment.GetEnvironmentVariable("CONNECTION_STRING_POSTGRESQL")
-    ?? "Host=pg_primary;Port=5432;Database=dbh_ehr;Username=dbh_admin;Password=dbh_secret_2024";
+    var builder = WebApplication.CreateBuilder(args);
 
-var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB")
-    ?? Environment.GetEnvironmentVariable("CONNECTION_STRING_MONGODB")
-    ?? "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0";
+    // Add services to the container.
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
 
-var app = builder.Build();
+    // Swagger Configuration with JWT Support
+    builder.Services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v1", new OpenApiInfo { Title = "DBH.Auth.Service", Version = "v1" });
+        c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Description = "Bearer token",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT"
+        });
+        c.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+    });
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
 
-// Health check endpoint (required for Docker health checks)
-app.MapGet("/health", () => Results.Ok(new { 
-    status = "healthy", 
-    service = "DBH.Auth.Service",
-    timestamp = DateTime.UtcNow 
-}))
-.WithName("HealthCheck")
-.WithTags("Health");
+    // Database Configuration
+    var pgConnectionString = builder.Configuration.GetConnectionString("PostgreSQL");
+    builder.Services.AddDbContext<AuthDbContext>(options =>
+        options.UseNpgsql(pgConnectionString));
 
-// Database configuration endpoint (for demo/debugging)
-app.MapGet("/config/databases", () => Results.Ok(new {
-    postgresql = new {
-        connectionConfigured = !string.IsNullOrEmpty(pgConnectionString),
-        host = "pg_primary (via Docker network)"
-    },
-    mongodb = new {
-        connectionConfigured = !string.IsNullOrEmpty(mongoConnectionString),
-        replicaSet = "rs0 (mongo1, mongo2)"
+    // Repositories
+    builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+    builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+    // Auth Services
+    builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddScoped<IAuthService, AuthService>();
+
+    // JWT Authentication Configuration
+    var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+    var secretKey = jwtSettings["Key"];
+
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidAudience = jwtSettings["Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
+        };
+    });
+
+    var app = builder.Build();
+
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
     }
-}))
-.WithName("GetDatabaseConfig")
-.WithTags("Configuration");
 
-// Original weather forecast endpoint (keeping for backward compatibility)
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    app.UseHttpsRedirection();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithTags("Sample")
-.WithOpenApi();
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-app.Run();
+    app.MapControllers();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+    app.MapGet("/health", () => Results.Ok("Auth Service is healthy"));
+
+    app.Run();
 
