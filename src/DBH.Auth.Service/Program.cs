@@ -1,95 +1,76 @@
-using System.Text.Json.Serialization;
-using DBH.Auth.Service.Data;
-using Microsoft.EntityFrameworkCore;
-
 var builder = WebApplication.CreateBuilder(args);
 
-// ============================================================================
-// Service Configuration
-// ============================================================================
-
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-    });
-
+// Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new() 
-    { 
-        Title = "DBH Auth Service API", 
-        Version = "v1",
-        Description = "Authentication & Authorization Service cho hệ thống DBH-EHR"
-    });
-});
+builder.Services.AddSwaggerGen();
 
-// ============================================================================
-// Database Configuration (Auth Service own database)
-// ============================================================================
+// Read database connection strings from environment variables (Docker-friendly)
+var pgConnectionString = builder.Configuration.GetConnectionString("PostgreSQL") 
+    ?? Environment.GetEnvironmentVariable("CONNECTION_STRING_POSTGRESQL")
+    ?? "Host=pg_primary;Port=5432;Database=dbh_ehr;Username=dbh_admin;Password=dbh_secret_2024";
 
-var connectionString = builder.Configuration.GetConnectionString("AuthDb")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
-
-builder.Services.AddDbContext<AuthDbContext>(options =>
-{
-    options.UseNpgsql(connectionString, npgsqlOptions =>
-    {
-        npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorCodesToAdd: null);
-        npgsqlOptions.CommandTimeout(60);
-    });
-});
+var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB")
+    ?? Environment.GetEnvironmentVariable("CONNECTION_STRING_MONGODB")
+    ?? "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0";
 
 var app = builder.Build();
 
-// ============================================================================
-// Database Initialization
-// ============================================================================
-
-using (var scope = app.Services.CreateScope())
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
 {
-    var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    
-    try
-    {
-        logger.LogInformation("Applying PostgreSQL migrations to Auth database...");
-        await authDb.Database.MigrateAsync();
-        logger.LogInformation("Auth database migrations completed successfully");
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Migration failed. Ensuring tables exist...");
-        await authDb.Database.EnsureCreatedAsync();
-    }
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
-// ============================================================================
-// HTTP Pipeline
-// ============================================================================
-
-app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "DBH Auth Service API v1");
-    c.RoutePrefix = "swagger";
-});
-
-app.MapControllers();
-
-// Health check endpoint
+// Health check endpoint (required for Docker health checks)
 app.MapGet("/health", () => Results.Ok(new { 
-    Status = "healthy", 
-    Service = "DBH.Auth.Service",
-    Timestamp = DateTime.UtcNow 
+    status = "healthy", 
+    service = "DBH.Auth.Service",
+    timestamp = DateTime.UtcNow 
 }))
 .WithName("HealthCheck")
 .WithTags("Health");
 
-await app.RunAsync();
+// Database configuration endpoint (for demo/debugging)
+app.MapGet("/config/databases", () => Results.Ok(new {
+    postgresql = new {
+        connectionConfigured = !string.IsNullOrEmpty(pgConnectionString),
+        host = "pg_primary (via Docker network)"
+    },
+    mongodb = new {
+        connectionConfigured = !string.IsNullOrEmpty(mongoConnectionString),
+        replicaSet = "rs0 (mongo1, mongo2)"
+    }
+}))
+.WithName("GetDatabaseConfig")
+.WithTags("Configuration");
+
+// Original weather forecast endpoint (keeping for backward compatibility)
+var summaries = new[]
+{
+    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+};
+
+app.MapGet("/weatherforecast", () =>
+{
+    var forecast = Enumerable.Range(1, 5).Select(index =>
+        new WeatherForecast
+        (
+            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+            Random.Shared.Next(-20, 55),
+            summaries[Random.Shared.Next(summaries.Length)]
+        ))
+        .ToArray();
+    return forecast;
+})
+.WithName("GetWeatherForecast")
+.WithTags("Sample")
+.WithOpenApi();
+
+app.Run();
+
+record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+{
+    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+}
 
