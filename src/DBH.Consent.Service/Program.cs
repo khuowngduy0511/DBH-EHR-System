@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using DBH.Consent.Service.Data;
+using DBH.Consent.Service.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +45,12 @@ builder.Services.AddDbContext<ConsentDbContext>(options =>
         npgsqlOptions.CommandTimeout(60);
     });
 });
+
+// ============================================================================
+// Application Services
+// ============================================================================
+
+builder.Services.AddScoped<IConsentService, ConsentService>();
 
 var app = builder.Build();
 
