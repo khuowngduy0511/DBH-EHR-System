@@ -173,7 +173,7 @@ public class AuthService : IAuthService
         {
             existingCredential.CredentialValue = refreshToken;
             existingCredential.CreatedAt = DateTime.UtcNow;
-            await _credential   Repository.UpdateAsync(existingCredential);
+            await _credentialRepository.UpdateAsync(existingCredential);
         }
         else
         {

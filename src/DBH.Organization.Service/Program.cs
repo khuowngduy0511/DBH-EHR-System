@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using DBH.Organization.Service.Data;
+using DBH.Organization.Service.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +45,12 @@ builder.Services.AddDbContext<OrganizationDbContext>(options =>
         npgsqlOptions.CommandTimeout(60);
     });
 });
+
+// ============================================================================
+// Application Services
+// ============================================================================
+
+builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 
 var app = builder.Build();
 
