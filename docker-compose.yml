@@ -1,10 +1,13 @@
 # =============================================================================
-# DBH-EHR System - Distributed Database Infrastructure
+# DBH-EHR System - Complete Infrastructure
 # =============================================================================
-# Docker-only demo for distributed/replicated databases:
+# Docker infrastructure with:
 # - PostgreSQL: Primary + Replica (streaming replication) using Bitnami image
 # - MongoDB: Replica Set (mongo1 primary, mongo2 secondary, arbiter)
-# - Auth Service: ASP.NET Core 8 API (optional)
+# - Redis: Distributed caching
+# - RabbitMQ: Message queue
+# - MinIO: S3-compatible object storage
+# - Hyperledger Fabric: Blockchain network (separate compose file)
 # =============================================================================
 # 
 # USAGE:
@@ -247,6 +250,89 @@ services:
       '
     restart: "no"
 
+  # ===========================================================================
+  # Redis - Distributed Cache
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: dbh_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # RabbitMQ - Message Queue
+  # ===========================================================================
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: dbh_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-dbh_123}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-dbh}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ===========================================================================
+  # MinIO - S3-Compatible Object Storage (Development)
+  # ===========================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: dbh_minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # MinIO bucket initialization
+  minio_init:
+    image: minio/mc:latest
+    container_name: dbh_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin123};
+        mc mb myminio/dbh-ehr-files --ignore-existing;
+        mc anonymous set none myminio/dbh-ehr-files;
+        echo 'Bucket dbh-ehr-files created successfully';
+      "
+    restart: "no"
+
 # =============================================================================
 # Networks
 # =============================================================================
@@ -267,5 +353,11 @@ volumes:
     name: dbh_mongo1_data
   mongo2_data:
     name: dbh_mongo2_data
+  redis_data:
+    name: dbh_redis_data
+  rabbitmq_data:
+    name: dbh_rabbitmq_data
+  minio_data:
+    name: dbh_minio_data
   mongo_arb_data:
     name: dbh_mongo_arb_data
