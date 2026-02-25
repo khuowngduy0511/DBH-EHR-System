@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Notification.Service.Data;
+using DBH.Notification.Service.Services;
+using DBH.Notification.Service.Models.Config;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +27,16 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Notification Service cho hệ thống DBH-EHR"
     });
 });
+
+// ============================================================================
+// Service Registration
+// ============================================================================
+
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
+
+// Firebase configuration
+builder.Services.Configure<FirebaseConfig>(builder.Configuration.GetSection("Firebase"));
 
 // ============================================================================
 // Database Configuration (Notification Service own database)
