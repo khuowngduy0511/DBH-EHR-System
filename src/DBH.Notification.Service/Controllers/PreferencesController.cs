@@ -1,27 +1,29 @@
+using System.Security.Claims;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
 [Route("api/notification-preferences")]
+[Authorize]
 public class PreferencesController : ControllerBase
 {
-    private readonly INotificationService _notificationService;
+    private readonly IPreferencesService _preferencesService;
 
-    public PreferencesController(INotificationService notificationService)
+    public PreferencesController(IPreferencesService preferencesService)
     {
-        _notificationService = notificationService;
+        _preferencesService = preferencesService;
     }
 
     // GET /api/notification-preferences/me - Get preferences
     [HttpGet("me")]
     public async Task<ActionResult<PreferencesResponse>> GetMyPreferences()
     {
-        // TODO: Get userDid from token
-        string userDid = "test-user-did";
-        var result = await _notificationService.GetPreferencesAsync(userDid);
+        var userId = GetCurrentUserId();
+        var result = await _preferencesService.GetPreferencesAsync(userId);
         return Ok(result);
     }
 
@@ -29,9 +31,14 @@ public class PreferencesController : ControllerBase
     [HttpPut("me")]
     public async Task<ActionResult<ApiResponse<PreferencesResponse>>> UpdateMyPreferences([FromBody] UpdatePreferencesRequest request)
     {
-        // TODO: Get userDid from token
-        string userDid = "test-user-did";
-        var result = await _notificationService.UpdatePreferencesAsync(userDid, request);
+        var userId = GetCurrentUserId();
+        var result = await _preferencesService.UpdatePreferencesAsync(userId, request);
         return Ok(result);
+    }
+
+    private string GetCurrentUserId()
+    {
+        return User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new UnauthorizedAccessException("User ID not found in token");
     }
 }

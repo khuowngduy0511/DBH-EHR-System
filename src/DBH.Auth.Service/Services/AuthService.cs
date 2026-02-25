@@ -163,7 +163,7 @@ public class AuthService : IAuthService
     private async Task<AuthResponse> GenerateAuthResponseAsync(User user)
     {
         var roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()).ToList();
-        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, roles);
+        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, user.FullName, roles);
         var refreshToken = _tokenService.GenerateRefreshToken();
 
         var existingCredential = await _credentialRepository.FindAsync(c => c.UserId == user.UserId && c.Provider == Models.Enums.ProviderType.RefreshToken);
