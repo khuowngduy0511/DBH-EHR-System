@@ -511,3 +511,9 @@ $RECYCLE.BIN/
 # Blockchain CA
 ordererOrganizations/
 peerOrganizations/
+
+# Ignore all contents of the fabric-ca directory
+src/DBH.Blockchain.Service/organizations/fabric-ca/**/*
+
+# Do NOT ignore the specific shell script
+!src/DBH.Blockchain.Service/organizations/fabric-ca/registerEnroll.sh

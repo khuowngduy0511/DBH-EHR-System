@@ -73,7 +73,7 @@ function checkPrereqs() {
   done
 }
 
-# Create Organization crypto material using cryptogen
+# Create Organization crypto material using cryptogen or Fabric CA
 function createOrgs() {
   if [ -d "organizations/peerOrganizations" ]; then
     rm -Rf organizations/peerOrganizations && rm -Rf organizations/ordererOrganizations
@@ -121,6 +121,40 @@ function createOrgs() {
     if [ $res -ne 0 ]; then
       fatalln "Failed to generate certificates..."
     fi
+
+  elif [ "$CRYPTO" == "CA" ]; then
+    infoln "Generating certificates using Fabric Certificate Authorities"
+    ${CONTAINER_CLI_COMPOSE} -f compose/$COMPOSE_FILE_CA up -d 2>&1
+
+    . organizations/fabric-ca/registerEnroll.sh
+
+    # Wait for CA servers to start
+    infoln "Waiting for Fabric CA servers to start..."
+    sleep 5
+
+    while :
+    do
+      if [ ! -f "organizations/fabric-ca/hospital1/tls-cert.pem" ]; then
+        sleep 1
+      else
+        break
+      fi
+    done
+
+    infoln "Creating Hospital1 Identities"
+    createHospital1
+
+    infoln "Creating Hospital2 Identities"
+    createHospital2
+
+    infoln "Creating Clinic Identities"
+    createClinic
+
+    infoln "Creating Orderer Org Identities"
+    createOrderer
+
+  else
+    fatalln "Unknown crypto mode: $CRYPTO. Use 'cryptogen' or 'CA'"
   fi
 
   infoln "Generating CCP files for Hospital1, Hospital2, and Clinic"
@@ -135,8 +169,9 @@ function networkUp() {
   if [ ! -d "organizations/peerOrganizations" ]; then
     createOrgs
   fi
+  infoln "Finish Generating CCP files"
 
-  COMPOSE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
+  COMPOSE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE} "
 
   if [ "${DATABASE}" == "couchdb" ]; then
     COMPOSE_FILES="${COMPOSE_FILES} -f compose/${COMPOSE_FILE_COUCH}"
@@ -232,7 +267,8 @@ function queryChaincode() {
 function networkDown() {
   COMPOSE_BASE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
   COMPOSE_COUCH_FILES="-f compose/${COMPOSE_FILE_COUCH}"
-  COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES}"
+  COMPOSE_CA_FILES="-f compose/${COMPOSE_FILE_CA}"
+  COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES} ${COMPOSE_CA_FILES}"
 
   if [ "${CONTAINER_CLI}" == "docker" ]; then
     DOCKER_SOCK=$DOCKER_SOCK ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} down --volumes --remove-orphans
@@ -254,6 +290,11 @@ function networkDown() {
     ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations'
     # remove channel and script artifacts
     ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf channel-artifacts log.txt *.tar.gz'
+    # remove Fabric CA artifacts
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/hospital1/msp organizations/fabric-ca/hospital1/tls-cert.pem organizations/fabric-ca/hospital1/ca-cert.pem organizations/fabric-ca/hospital1/IssuerPublicKey organizations/fabric-ca/hospital1/IssuerRevocationPublicKey organizations/fabric-ca/hospital1/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/hospital2/msp organizations/fabric-ca/hospital2/tls-cert.pem organizations/fabric-ca/hospital2/ca-cert.pem organizations/fabric-ca/hospital2/IssuerPublicKey organizations/fabric-ca/hospital2/IssuerRevocationPublicKey organizations/fabric-ca/hospital2/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/clinic/msp organizations/fabric-ca/clinic/tls-cert.pem organizations/fabric-ca/clinic/ca-cert.pem organizations/fabric-ca/clinic/IssuerPublicKey organizations/fabric-ca/clinic/IssuerRevocationPublicKey organizations/fabric-ca/clinic/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/ordererOrg/msp organizations/fabric-ca/ordererOrg/tls-cert.pem organizations/fabric-ca/ordererOrg/ca-cert.pem organizations/fabric-ca/ordererOrg/IssuerPublicKey organizations/fabric-ca/ordererOrg/IssuerRevocationPublicKey organizations/fabric-ca/ordererOrg/fabric-ca-server.db'
   fi
 }
 
@@ -275,6 +316,7 @@ function printHelp() {
   println "      -d <delay> - CLI delays for a specified number of seconds (defaults to 3)"
   println "      -s <dbtype> - Peer state database to deploy: goleveldb (default) or couchdb"
   println "      -verbose - Verbose mode"
+  println "      -crypto <mode> - Crypto material generation: cryptogen (default) or 'Certificate Authorities'"
   println "      -ccn <name> - Chaincode name."
   println "      -ccv <version> - Chaincode version."
   println "      -ccs <sequence> - Chaincode definition sequence."
@@ -286,6 +328,7 @@ function printHelp() {
   println
   println "  Examples:"
   println "    network.sh up -s couchdb"
+  println "    network.sh up -s couchdb -crypto 'Certificate Authorities'"
   println "    network.sh createChannel -c ehr-channel"
   println "    network.sh deployCC -ccn ehrcc -ccp ./chaincode-javascript -ccl javascript"
 }
@@ -296,6 +339,8 @@ function printHelp() {
 COMPOSE_FILE_BASE=compose-ehr-net.yaml
 # docker-compose.yaml file if you are using couchdb
 COMPOSE_FILE_COUCH=compose-couch.yaml
+# docker-compose.yaml file for certificate authorities
+COMPOSE_FILE_CA=compose-ca.yaml
 
 # Get docker sock path from environment variable
 SOCK="${DOCKER_HOST:-/var/run/docker.sock}"
@@ -391,6 +436,10 @@ while [[ $# -ge 1 ]] ; do
     ;;
   -verbose )
     VERBOSE=true
+    ;;
+  -crypto )
+    CRYPTO="$2"
+    shift
     ;;
   -org )
     ORG="$2"

@@ -23,12 +23,19 @@ An Electronic Health Record (EHR) management system built on Hyperledger Fabric 
 
 ## Quick Start
 
+Running on linux
+
 ### 1. Bring Up the Network
 
 ```bash
-cd ehr
+cd DBH.Blockchain.Service
 ./network.sh up -s couchdb
 ```
+
+- If there is error, try
+
+chmod +x organizations/ccp-generate.sh
+chmod +x scripts/\*.sh
 
 ### 2. Create the Channel
 

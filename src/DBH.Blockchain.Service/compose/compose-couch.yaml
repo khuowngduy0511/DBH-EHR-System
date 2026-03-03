@@ -6,6 +6,7 @@
 networks:
   ehr:
     name: fabric_ehr
+    external: true
 
 services:
   couchdbHospital1:
