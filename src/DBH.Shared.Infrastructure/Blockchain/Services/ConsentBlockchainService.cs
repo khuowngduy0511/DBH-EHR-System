@@ -29,7 +29,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
         var recordJson = JsonConvert.SerializeObject(record);
 
         var result = await _gateway.SubmitTransactionAsync(
-            FabricChannels.EhrChannel,
+            FabricChannels.ConsentChannel,
             FabricChaincodes.ConsentChaincode,
             ChaincodeFunctions.GrantConsent,
             record.ConsentId,
@@ -54,7 +54,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
             "Revoking consent on blockchain: ConsentId={ConsentId}", consentId);
 
         var result = await _gateway.SubmitTransactionAsync(
-            FabricChannels.EhrChannel,
+            FabricChannels.ConsentChannel,
             FabricChaincodes.ConsentChaincode,
             ChaincodeFunctions.RevokeConsent,
             consentId,
@@ -76,7 +76,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.ConsentChannel,
                 FabricChaincodes.ConsentChaincode,
                 ChaincodeFunctions.GetConsent,
                 consentId);
@@ -98,7 +98,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.ConsentChannel,
                 FabricChaincodes.ConsentChaincode,
                 ChaincodeFunctions.VerifyConsent,
                 consentId,
@@ -124,7 +124,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.ConsentChannel,
                 FabricChaincodes.ConsentChaincode,
                 ChaincodeFunctions.GetPatientConsents,
                 patientDid);
@@ -147,7 +147,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.ConsentChannel,
                 FabricChaincodes.ConsentChaincode,
                 ChaincodeFunctions.GetConsentHistory,
                 consentId);

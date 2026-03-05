@@ -29,7 +29,7 @@ public class EhrBlockchainService : IEhrBlockchainService
         var recordJson = JsonConvert.SerializeObject(record);
 
         var result = await _gateway.SubmitTransactionAsync(
-            FabricChannels.EhrChannel,
+            FabricChannels.EhrHashChannel,
             FabricChaincodes.EhrChaincode,
             ChaincodeFunctions.CreateEhrHash,
             record.EhrId,
@@ -51,7 +51,7 @@ public class EhrBlockchainService : IEhrBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.EhrHashChannel,
                 FabricChaincodes.EhrChaincode,
                 ChaincodeFunctions.GetEhrHash,
                 ehrId,
@@ -75,7 +75,7 @@ public class EhrBlockchainService : IEhrBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.EhrHashChannel,
                 FabricChaincodes.EhrChaincode,
                 ChaincodeFunctions.GetEhrHistory,
                 ehrId);

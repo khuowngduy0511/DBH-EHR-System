@@ -16,7 +16,11 @@ set -euo pipefail
 # ============================================================
 # Configuration
 # ============================================================
-CHANNEL_NAME="ehr-channel"
+# 3 channels theo thiết kế: consent-channel, audit-channel, ehr-hash-channel
+CHANNEL_EHR="ehr-hash-channel"
+CHANNEL_CONSENT="consent-channel"
+CHANNEL_AUDIT="audit-channel"
+CHANNELS=("${CHANNEL_EHR}" "${CHANNEL_CONSENT}" "${CHANNEL_AUDIT}")
 COMPOSE_FILE="../docker-compose.fabric.yml"
 CRYPTO_CONFIG_DIR="./organizations"
 CHANNEL_ARTIFACTS="./channel-artifacts"
@@ -121,18 +125,21 @@ generate_channel_artifacts() {
     mkdir -p "${CHANNEL_ARTIFACTS}"
 
     # Generate genesis block for orderer (Fabric 2.5 uses osnadmin, but we still need channel config)
-    log_info "Generating channel creation transaction..."
-    docker run --rm \
-        -v "$(pwd):/work" \
-        -w /work \
-        -e FABRIC_CFG_PATH=/work \
-        hyperledger/fabric-tools:2.5 \
-        configtxgen \
-            -profile DBHOrdererGenesis \
-            -channelID "${CHANNEL_NAME}" \
-            -outputBlock "${CHANNEL_ARTIFACTS}/${CHANNEL_NAME}.block"
+    # Generate genesis block for each channel
+    for ch in "${CHANNELS[@]}"; do
+        log_info "Generating genesis block for channel '${ch}'..."
+        docker run --rm \
+            -v "$(pwd):/work" \
+            -w /work \
+            -e FABRIC_CFG_PATH=/work \
+            hyperledger/fabric-tools:2.5 \
+            configtxgen \
+                -profile DBHOrdererGenesis \
+                -channelID "${ch}" \
+                -outputBlock "${CHANNEL_ARTIFACTS}/${ch}.block"
+    done
 
-    log_ok "Channel artifacts generated at ${CHANNEL_ARTIFACTS}/"
+    log_ok "Channel artifacts generated for ${#CHANNELS[@]} channels at ${CHANNEL_ARTIFACTS}/"
 }
 
 # ============================================================
@@ -178,87 +185,90 @@ start_containers() {
 # ============================================================
 create_channel() {
     log_info "=========================================="
-    log_info "Step 4: Creating channel '${CHANNEL_NAME}' & joining peers..."
+    log_info "Step 4: Creating 3 channels & joining peers..."
     log_info "=========================================="
 
     # Copy crypto and channel artifacts into CLI container
     docker cp "${CRYPTO_CONFIG_DIR}" "${CLI_CONTAINER}:/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations"
     docker cp "${CHANNEL_ARTIFACTS}" "${CLI_CONTAINER}:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts"
 
-    # Use osnadmin to join orderer to channel (Fabric 2.5+)
-    log_info "Joining orderer to channel via osnadmin..."
-    docker exec "${CLI_CONTAINER}" osnadmin channel join \
-        --channelID "${CHANNEL_NAME}" \
-        --config-block "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.block" \
-        -o "${ORDERER_ADMIN_ADDRESS}" \
-        --ca-file "${ORDERER_CA}" \
-        --client-cert "/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/tls/server.crt" \
-        --client-key "/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/tls/server.key"
+    for ch in "${CHANNELS[@]}"; do
+        log_info "--- Creating channel '${ch}' ---"
 
-    sleep 3
+        # Use osnadmin to join orderer to channel (Fabric 2.5+)
+        log_info "  Joining orderer to '${ch}' via osnadmin..."
+        docker exec "${CLI_CONTAINER}" osnadmin channel join \
+            --channelID "${ch}" \
+            --config-block "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${ch}.block" \
+            -o "${ORDERER_ADMIN_ADDRESS}" \
+            --ca-file "${ORDERER_CA}" \
+            --client-cert "/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/tls/server.crt" \
+            --client-key "/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/tls/server.key"
 
-    # Peer0 Org1 join channel
-    log_info "Joining peer0.org1 to channel..."
-    docker exec \
-        -e CORE_PEER_ADDRESS=peer0_org1:7051 \
-        -e CORE_PEER_LOCALMSPID=Org1MSP \
-        -e CORE_PEER_TLS_ENABLED=true \
-        -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
-        -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
-        "${CLI_CONTAINER}" peer channel join \
-            -b "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.block"
+        sleep 2
 
-    log_ok "peer0.org1 joined channel"
+        # Peer0 Org1 join channel
+        log_info "  Joining peer0.org1 to '${ch}'..."
+        docker exec \
+            -e CORE_PEER_ADDRESS=peer0_org1:7051 \
+            -e CORE_PEER_LOCALMSPID=Org1MSP \
+            -e CORE_PEER_TLS_ENABLED=true \
+            -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
+            -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
+            "${CLI_CONTAINER}" peer channel join \
+                -b "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${ch}.block"
 
-    # Peer0 Org2 join channel
-    log_info "Joining peer0.org2 to channel..."
-    docker exec \
-        -e CORE_PEER_ADDRESS=peer0_org2:9051 \
-        -e CORE_PEER_LOCALMSPID=Org2MSP \
-        -e CORE_PEER_TLS_ENABLED=true \
-        -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/peers/peer0.org2.dbh.com/tls/ca.crt \
-        -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/users/Admin@org2.dbh.com/msp \
-        "${CLI_CONTAINER}" peer channel join \
-            -b "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${CHANNEL_NAME}.block"
+        # Peer0 Org2 join channel
+        log_info "  Joining peer0.org2 to '${ch}'..."
+        docker exec \
+            -e CORE_PEER_ADDRESS=peer0_org2:9051 \
+            -e CORE_PEER_LOCALMSPID=Org2MSP \
+            -e CORE_PEER_TLS_ENABLED=true \
+            -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/peers/peer0.org2.dbh.com/tls/ca.crt \
+            -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/users/Admin@org2.dbh.com/msp \
+            "${CLI_CONTAINER}" peer channel join \
+                -b "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/${ch}.block"
 
-    log_ok "peer0.org2 joined channel"
+        log_ok "  Channel '${ch}' created and peers joined"
+    done
 
-    # Set anchor peers
-    set_anchor_peers
-
-    log_ok "Channel '${CHANNEL_NAME}' created and all peers joined"
+    log_ok "All 3 channels created: ${CHANNELS[*]}"
 }
 
 set_anchor_peers() {
-    log_info "Setting anchor peers..."
+    log_info "Setting anchor peers for all channels..."
 
-    # Org1 anchor peer
-    docker exec \
-        -e CORE_PEER_ADDRESS=peer0_org1:7051 \
-        -e CORE_PEER_LOCALMSPID=Org1MSP \
-        -e CORE_PEER_TLS_ENABLED=true \
-        -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
-        -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
-        "${CLI_CONTAINER}" peer channel update \
-            -o "${ORDERER_ADDRESS}" \
-            -c "${CHANNEL_NAME}" \
-            -f "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Org1MSPanchors.tx" \
-            --tls --cafile "${ORDERER_CA}" 2>/dev/null || log_warn "Anchor peer update for Org1 skipped (channel-less approach)"
+    for ch in "${CHANNELS[@]}"; do
+        log_info "  Setting anchor peers on channel '${ch}'..."
 
-    # Org2 anchor peer
-    docker exec \
-        -e CORE_PEER_ADDRESS=peer0_org2:9051 \
-        -e CORE_PEER_LOCALMSPID=Org2MSP \
-        -e CORE_PEER_TLS_ENABLED=true \
-        -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/peers/peer0.org2.dbh.com/tls/ca.crt \
-        -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/users/Admin@org2.dbh.com/msp \
-        "${CLI_CONTAINER}" peer channel update \
-            -o "${ORDERER_ADDRESS}" \
-            -c "${CHANNEL_NAME}" \
-            -f "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Org2MSPanchors.tx" \
-            --tls --cafile "${ORDERER_CA}" 2>/dev/null || log_warn "Anchor peer update for Org2 skipped (channel-less approach)"
+        # Org1 anchor peer
+        docker exec \
+            -e CORE_PEER_ADDRESS=peer0_org1:7051 \
+            -e CORE_PEER_LOCALMSPID=Org1MSP \
+            -e CORE_PEER_TLS_ENABLED=true \
+            -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
+            -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
+            "${CLI_CONTAINER}" peer channel update \
+                -o "${ORDERER_ADDRESS}" \
+                -c "${ch}" \
+                -f "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Org1MSPanchors.tx" \
+                --tls --cafile "${ORDERER_CA}" 2>/dev/null || log_warn "Anchor peer update for Org1 on ${ch} skipped"
 
-    log_ok "Anchor peers configured"
+        # Org2 anchor peer
+        docker exec \
+            -e CORE_PEER_ADDRESS=peer0_org2:9051 \
+            -e CORE_PEER_LOCALMSPID=Org2MSP \
+            -e CORE_PEER_TLS_ENABLED=true \
+            -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/peers/peer0.org2.dbh.com/tls/ca.crt \
+            -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org2.dbh.com/users/Admin@org2.dbh.com/msp \
+            "${CLI_CONTAINER}" peer channel update \
+                -o "${ORDERER_ADDRESS}" \
+                -c "${ch}" \
+                -f "/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts/Org2MSPanchors.tx" \
+                --tls --cafile "${ORDERER_CA}" 2>/dev/null || log_warn "Anchor peer update for Org2 on ${ch} skipped"
+    done
+
+    log_ok "Anchor peers configured for all channels"
 }
 
 # ============================================================
@@ -269,9 +279,10 @@ deploy_chaincodes() {
     log_info "Step 5: Deploying chaincodes..."
     log_info "=========================================="
 
-    deploy_single_chaincode "${CC_EHR_NAME}" "${CC_EHR_VERSION}" "ehr"
-    deploy_single_chaincode "${CC_CONSENT_NAME}" "${CC_CONSENT_VERSION}" "consent"
-    deploy_single_chaincode "${CC_AUDIT_NAME}" "${CC_AUDIT_VERSION}" "audit"
+    # Each chaincode deployed to its dedicated channel
+    deploy_single_chaincode "${CC_EHR_NAME}" "${CC_EHR_VERSION}" "ehr" "${CHANNEL_EHR}"
+    deploy_single_chaincode "${CC_CONSENT_NAME}" "${CC_CONSENT_VERSION}" "consent" "${CHANNEL_CONSENT}"
+    deploy_single_chaincode "${CC_AUDIT_NAME}" "${CC_AUDIT_VERSION}" "audit" "${CHANNEL_AUDIT}"
 
     log_ok "All chaincodes deployed successfully!"
 }
@@ -280,8 +291,9 @@ deploy_single_chaincode() {
     local CC_NAME=$1
     local CC_VERSION=$2
     local CC_DIR=$3
+    local CHANNEL_NAME=$4
 
-    log_info "--- Deploying chaincode: ${CC_NAME} v${CC_VERSION} ---"
+    log_info "--- Deploying ${CC_NAME} v${CC_VERSION} to channel '${CHANNEL_NAME}' ---"
 
     # Package chaincode
     log_info "  Packaging ${CC_NAME}..."
@@ -433,7 +445,7 @@ network_up() {
     log_ok "============================================"
     echo ""
     log_info "Network configuration:"
-    log_info "  Channel:    ${CHANNEL_NAME}"
+    log_info "  Channels:   ${CHANNELS[*]}"
     log_info "  Orderer:    localhost:7050"
     log_info "  Peer Org1:  localhost:7051  (Org1MSP - Hospital A)"
     log_info "  Peer Org2:  localhost:9051  (Org2MSP - Hospital B)"
@@ -508,7 +520,13 @@ network_status() {
 
     echo ""
     echo "--- Committed Chaincodes ---"
+    local -A CC_CHANNEL_MAP=(
+        ["${CC_EHR_NAME}"]="${CHANNEL_EHR}"
+        ["${CC_CONSENT_NAME}"]="${CHANNEL_CONSENT}"
+        ["${CC_AUDIT_NAME}"]="${CHANNEL_AUDIT}"
+    )
     for cc in "${CC_EHR_NAME}" "${CC_CONSENT_NAME}" "${CC_AUDIT_NAME}"; do
+        local ch="${CC_CHANNEL_MAP[${cc}]}"
         docker exec \
             -e CORE_PEER_ADDRESS=peer0_org1:7051 \
             -e CORE_PEER_LOCALMSPID=Org1MSP \
@@ -516,8 +534,8 @@ network_status() {
             -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
             -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
             "${CLI_CONTAINER}" peer lifecycle chaincode querycommitted \
-                --channelID "${CHANNEL_NAME}" \
-                --name "${cc}" 2>/dev/null || echo "${cc}: not committed"
+                --channelID "${ch}" \
+                --name "${cc}" 2>/dev/null || echo "${cc}: not committed on ${ch}"
     done
 }
 

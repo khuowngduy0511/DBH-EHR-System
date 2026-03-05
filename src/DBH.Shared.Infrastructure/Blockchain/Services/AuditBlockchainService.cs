@@ -29,7 +29,7 @@ public class AuditBlockchainService : IAuditBlockchainService
         var entryJson = JsonConvert.SerializeObject(entry);
 
         var result = await _gateway.SubmitTransactionAsync(
-            FabricChannels.EhrChannel,
+            FabricChannels.AuditChannel,
             FabricChaincodes.AuditChaincode,
             ChaincodeFunctions.CreateAuditEntry,
             entry.AuditId,
@@ -53,7 +53,7 @@ public class AuditBlockchainService : IAuditBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.AuditChannel,
                 FabricChaincodes.AuditChaincode,
                 ChaincodeFunctions.GetAuditEntry,
                 auditId);
@@ -75,7 +75,7 @@ public class AuditBlockchainService : IAuditBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.AuditChannel,
                 FabricChaincodes.AuditChaincode,
                 ChaincodeFunctions.GetAuditsByPatient,
                 patientDid);
@@ -98,7 +98,7 @@ public class AuditBlockchainService : IAuditBlockchainService
         try
         {
             var resultJson = await _gateway.EvaluateTransactionAsync(
-                FabricChannels.EhrChannel,
+                FabricChannels.AuditChannel,
                 FabricChaincodes.AuditChaincode,
                 ChaincodeFunctions.GetAuditsByActor,
                 actorDid);

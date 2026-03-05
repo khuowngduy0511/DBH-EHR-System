@@ -54,7 +54,20 @@ public static class ChaincodeFunctions
 
 public static class FabricChannels
 {
-    public const string EhrChannel = "ehr-channel";
+    /// <summary>
+    /// Channel lưu hash hồ sơ y tế — đảm bảo tính toàn vẹn dữ liệu
+    /// </summary>
+    public const string EhrHashChannel = "ehr-hash-channel";
+
+    /// <summary>
+    /// Channel quản lý quyền truy cập dữ liệu — patient kiểm soát consent
+    /// </summary>
+    public const string ConsentChannel = "consent-channel";
+
+    /// <summary>
+    /// Channel lưu audit log — truy vết minh bạch, không thể sửa/xóa
+    /// </summary>
+    public const string AuditChannel = "audit-channel";
 }
 
 public static class FabricChaincodes

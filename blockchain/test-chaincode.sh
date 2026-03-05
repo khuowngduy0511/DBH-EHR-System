@@ -8,7 +8,9 @@
 
 set -euo pipefail
 
-CHANNEL_NAME="ehr-channel"
+CHANNEL_EHR="ehr-hash-channel"
+CHANNEL_CONSENT="consent-channel"
+CHANNEL_AUDIT="audit-channel"
 CLI_CONTAINER="dbh_fabric_cli"
 ORDERER_ADDRESS="orderer.dbh.com:7050"
 ORDERER_CA="/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/msp/tlscacerts/tlsca.dbh.com-cert.pem"
@@ -23,9 +25,10 @@ log_fail()  { echo -e "${RED}[FAIL]${NC} $1"; }
 
 # Helper to run peer chaincode invoke
 invoke_cc() {
-    local CC_NAME=$1
-    local FUNC=$2
-    shift 2
+    local CH_NAME=$1
+    local CC_NAME=$2
+    local FUNC=$3
+    shift 3
     local ARGS_JSON="$*"
 
     docker exec \
@@ -36,7 +39,7 @@ invoke_cc() {
         -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
         "${CLI_CONTAINER}" peer chaincode invoke \
             -o "${ORDERER_ADDRESS}" \
-            -C "${CHANNEL_NAME}" \
+            -C "${CH_NAME}" \
             -n "${CC_NAME}" \
             -c "{\"function\":\"${FUNC}\",\"Args\":[${ARGS_JSON}]}" \
             --tls --cafile "${ORDERER_CA}" \
@@ -49,9 +52,10 @@ invoke_cc() {
 
 # Helper to run peer chaincode query
 query_cc() {
-    local CC_NAME=$1
-    local FUNC=$2
-    shift 2
+    local CH_NAME=$1
+    local CC_NAME=$2
+    local FUNC=$3
+    shift 3
     local ARGS_JSON="$*"
 
     docker exec \
@@ -61,7 +65,7 @@ query_cc() {
         -e CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/peers/peer0.org1.dbh.com/tls/ca.crt \
         -e CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/organizations/peerOrganizations/org1.dbh.com/users/Admin@org1.dbh.com/msp \
         "${CLI_CONTAINER}" peer chaincode query \
-            -C "${CHANNEL_NAME}" \
+            -C "${CH_NAME}" \
             -n "${CC_NAME}" \
             -c "{\"function\":\"${FUNC}\",\"Args\":[${ARGS_JSON}]}"
 }
@@ -81,17 +85,17 @@ EHR_ID="ehr-test-001"
 RECORD_JSON='{"ehrId":"ehr-test-001","patientDid":"did:dbh:patient:123","createdByDid":"did:dbh:doctor:456","organizationId":"org1","version":1,"contentHash":"sha256:abc123def456","fileHash":"sha256:file789","timestamp":"2026-03-05T10:00:00Z"}'
 
 log_info "Creating EHR hash..."
-invoke_cc "ehr-chaincode" "CreateEhrHash" "\"${EHR_ID}\"" "\"1\"" "\"${RECORD_JSON}\"" \
+invoke_cc "${CHANNEL_EHR}" "ehr-chaincode" "CreateEhrHash" "\"${EHR_ID}\"" "\"1\"" "\"${RECORD_JSON}\"" \
     && log_ok "CreateEhrHash" || log_fail "CreateEhrHash"
 
 sleep 2
 
 log_info "Querying EHR hash..."
-query_cc "ehr-chaincode" "GetEhrHash" "\"${EHR_ID}\"" "\"1\"" \
+query_cc "${CHANNEL_EHR}" "ehr-chaincode" "GetEhrHash" "\"${EHR_ID}\"" "\"1\"" \
     && log_ok "GetEhrHash" || log_fail "GetEhrHash"
 
 log_info "Verifying EHR integrity..."
-query_cc "ehr-chaincode" "VerifyEhrIntegrity" "\"${EHR_ID}\"" "\"1\"" "\"sha256:abc123def456\"" \
+query_cc "${CHANNEL_EHR}" "ehr-chaincode" "VerifyEhrIntegrity" "\"${EHR_ID}\"" "\"1\"" "\"sha256:abc123def456\"" \
     && log_ok "VerifyEhrIntegrity" || log_fail "VerifyEhrIntegrity"
 
 # ---------------------------------------------------
@@ -104,17 +108,17 @@ CONSENT_ID="consent-test-001"
 CONSENT_JSON='{"consentId":"consent-test-001","patientDid":"did:dbh:patient:123","granteeDid":"did:dbh:doctor:456","granteeType":"DOCTOR","permission":"READ","purpose":"TREATMENT","grantedAt":"2026-03-05T10:00:00Z","expiresAt":"2027-03-05T10:00:00Z","status":"ACTIVE"}'
 
 log_info "Granting consent..."
-invoke_cc "consent-chaincode" "GrantConsent" "\"${CONSENT_ID}\"" "\"did:dbh:patient:123\"" "\"did:dbh:doctor:456\"" "\"${CONSENT_JSON}\"" \
+invoke_cc "${CHANNEL_CONSENT}" "consent-chaincode" "GrantConsent" "\"${CONSENT_ID}\"" "\"did:dbh:patient:123\"" "\"did:dbh:doctor:456\"" "\"${CONSENT_JSON}\"" \
     && log_ok "GrantConsent" || log_fail "GrantConsent"
 
 sleep 2
 
 log_info "Querying consent..."
-query_cc "consent-chaincode" "GetConsent" "\"${CONSENT_ID}\"" \
+query_cc "${CHANNEL_CONSENT}" "consent-chaincode" "GetConsent" "\"${CONSENT_ID}\"" \
     && log_ok "GetConsent" || log_fail "GetConsent"
 
 log_info "Verifying consent..."
-query_cc "consent-chaincode" "VerifyConsent" "\"${CONSENT_ID}\"" "\"did:dbh:doctor:456\"" \
+query_cc "${CHANNEL_CONSENT}" "consent-chaincode" "VerifyConsent" "\"${CONSENT_ID}\"" "\"did:dbh:doctor:456\"" \
     && log_ok "VerifyConsent" || log_fail "VerifyConsent"
 
 # ---------------------------------------------------
@@ -127,17 +131,17 @@ AUDIT_ID="audit-test-001"
 AUDIT_JSON='{"auditId":"audit-test-001","actorDid":"did:dbh:doctor:456","actorType":"DOCTOR","action":"VIEW","targetType":"EHR","targetId":"ehr-test-001","patientDid":"did:dbh:patient:123","result":"SUCCESS","timestamp":"2026-03-05T10:01:00Z"}'
 
 log_info "Creating audit entry..."
-invoke_cc "audit-chaincode" "CreateAuditEntry" "\"${AUDIT_ID}\"" "\"${AUDIT_JSON}\"" \
+invoke_cc "${CHANNEL_AUDIT}" "audit-chaincode" "CreateAuditEntry" "\"${AUDIT_ID}\"" "\"${AUDIT_JSON}\"" \
     && log_ok "CreateAuditEntry" || log_fail "CreateAuditEntry"
 
 sleep 2
 
 log_info "Querying audit entry..."
-query_cc "audit-chaincode" "GetAuditEntry" "\"${AUDIT_ID}\"" \
+query_cc "${CHANNEL_AUDIT}" "audit-chaincode" "GetAuditEntry" "\"${AUDIT_ID}\"" \
     && log_ok "GetAuditEntry" || log_fail "GetAuditEntry"
 
 log_info "Querying audits by patient..."
-query_cc "audit-chaincode" "GetAuditsByPatient" "\"did:dbh:patient:123\"" \
+query_cc "${CHANNEL_AUDIT}" "audit-chaincode" "GetAuditsByPatient" "\"did:dbh:patient:123\"" \
     && log_ok "GetAuditsByPatient" || log_fail "GetAuditsByPatient"
 
 echo ""
