@@ -1,32 +1,42 @@
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using DBH.EHR.Service.Models.Documents;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Models.Entities;
 using DBH.EHR.Service.Models.Enums;
 using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
+using DBH.Shared.Contracts.Blockchain;
 using MongoDB.Bson;
 
 namespace DBH.EHR.Service.Services;
 
 /// <summary>
 ///  Ghi Primary + Mongo Primary, đọc từ Replica
+///  Tích hợp: Blockchain hash commit + Consent verification
 /// </summary>
 public class EhrService : IEhrService
 {
     private readonly IEhrRecordRepository _ehrRecordRepo;
     private readonly IEhrDocumentRepository _ehrDocumentRepo;
     private readonly ILogger<EhrService> _logger;
+    private readonly IEhrBlockchainService? _blockchainService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public EhrService(
         IEhrRecordRepository ehrRecordRepo,
         IEhrDocumentRepository ehrDocumentRepo,
-        ILogger<EhrService> logger)
+        ILogger<EhrService> logger,
+        IHttpClientFactory httpClientFactory,
+        IEhrBlockchainService? blockchainService = null)
     {
         _ehrRecordRepo = ehrRecordRepo;
         _ehrDocumentRepo = ehrDocumentRepo;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
+        _blockchainService = blockchainService;
     }
 
     // EHR Records 
@@ -115,6 +125,41 @@ public class EhrService : IEhrService
         
         // Cập nhật file_url 
         savedFile.FileUrl = $"mongodb://ehr_documents/{savedDocument.Id}";
+
+        // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
+        if (_blockchainService != null)
+        {
+            try
+            {
+                var ehrHashRecord = new EhrHashRecord
+                {
+                    EhrId = savedRecord.EhrId.ToString(),
+                    PatientDid = $"did:fabric:patient:{request.PatientId}",
+                    CreatedByDid = $"did:fabric:doctor:{request.CreatedByDoctorId}",
+                    OrganizationId = request.HospitalId.ToString(),
+                    Version = 1,
+                    ContentHash = $"sha256:{dataHash}",
+                    FileHash = $"sha256:{dataHash}",
+                    Timestamp = DateTime.UtcNow.ToString("o")
+                };
+
+                var txResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
+                if (txResult.Success)
+                {
+                    savedVersion.TxStatus = TxStatus.COMMITTED;
+                    savedVersion.BlockchainTxHash = txResult.TxHash;
+                    _logger.LogInformation("EHR hash committed to blockchain: {TxHash}", txResult.TxHash);
+                }
+                else
+                {
+                    _logger.LogWarning("Blockchain hash commit failed: {Error}", txResult.ErrorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId}", savedRecord.EhrId);
+            }
+        }
         
         _logger.LogInformation(
             "Tạo EHR {EhrId} version {VersionId} file {FileId} với MongoDB doc {DocId}",
@@ -138,6 +183,34 @@ public class EhrService : IEhrService
         if (record == null) return null;
         
         return MapToEhrRecordResponse(record, useReplica);
+    }
+
+    /// <inheritdoc />
+    public async Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> GetEhrRecordWithConsentCheckAsync(
+        Guid ehrId, Guid requesterId, bool useReplica = false)
+    {
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
+        if (record == null)
+            return (null, false, null);
+
+        // Bypass consent check nếu requester là chính bệnh nhân hoặc bác sĩ tạo
+        if (requesterId == record.PatientId || requesterId == record.CreatedByDoctorId)
+        {
+            _logger.LogInformation("Consent bypass: requester {RequesterId} is owner/creator of EHR {EhrId}", requesterId, ehrId);
+            return (MapToEhrRecordResponse(record, useReplica), false, null);
+        }
+
+        // Gọi Consent Service để kiểm tra quyền truy cập
+        var hasConsent = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
+        if (!hasConsent)
+        {
+            _logger.LogWarning("Consent denied: requester {RequesterId} has no consent for EHR {EhrId} of patient {PatientId}",
+                requesterId, ehrId, record.PatientId);
+            return (null, true, $"Requester {requesterId} không có consent để truy cập EHR {ehrId} của bệnh nhân {record.PatientId}");
+        }
+
+        _logger.LogInformation("Consent verified: requester {RequesterId} granted access to EHR {EhrId}", requesterId, ehrId);
+        return (MapToEhrRecordResponse(record, useReplica), false, null);
     }
 
     public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false)
@@ -187,6 +260,58 @@ public class EhrService : IEhrService
 
     // Private Helpers
 
+    /// <summary>
+    /// Gọi Consent Service API để kiểm tra requester có consent truy cập EHR không
+    /// </summary>
+    private async Task<bool> VerifyConsentAsync(Guid patientId, Guid requesterId, Guid ehrId)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("ConsentService");
+            
+            // POST /api/consents/verify với body VerifyConsentRequest
+            var verifyRequest = new
+            {
+                PatientId = patientId,
+                GranteeId = requesterId,
+                EhrId = ehrId
+            };
+            
+            var content = new StringContent(
+                JsonSerializer.Serialize(verifyRequest),
+                Encoding.UTF8,
+                "application/json");
+            
+            var response = await client.PostAsync("api/consents/verify", content);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Consent Service returned {StatusCode} for verify request", response.StatusCode);
+                // Fail-closed: nếu Consent Service không available, từ chối truy cập
+                return false;
+            }
+            
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<ConsentVerifyResponse>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            
+            return result?.HasAccess ?? false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Cannot reach Consent Service for EHR {EhrId} consent verification", ehrId);
+            // Fail-closed: không kết nối được thì từ chối
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error verifying consent for EHR {EhrId}", ehrId);
+            return false;
+        }
+    }
+
     private static string ComputeHash(string content)
     {
         using var sha256 = SHA256.Create();
@@ -232,4 +357,15 @@ public class EhrService : IEhrService
             CreatedAt = record.CreatedAt
         };
     }
+}
+
+/// <summary>
+/// Response DTO từ Consent Service verify endpoint
+/// </summary>
+internal class ConsentVerifyResponse
+{
+    public bool HasAccess { get; set; }
+    public string? ConsentId { get; set; }
+    public string? Scope { get; set; }
+    public DateTime? ExpiresAt { get; set; }
 }

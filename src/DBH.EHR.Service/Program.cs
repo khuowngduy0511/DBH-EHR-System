@@ -3,6 +3,7 @@ using DBH.EHR.Service.Data;
 using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;
+using DBH.Shared.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +76,20 @@ builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
 // ============================================================================
 
 builder.Services.AddScoped<IEhrService, EhrService>();
+
+// ============================================================================
+// Blockchain Services (Hyperledger Fabric)
+// ============================================================================
+builder.Services.AddHyperledgerFabric(builder.Configuration);
+
+// ============================================================================
+// HTTP Client for inter-service calls (Consent verification)
+// ============================================================================
+builder.Services.AddHttpClient("ConsentService", client =>
+{
+    var consentUrl = builder.Configuration["ServiceUrls:ConsentService"] ?? "http://localhost:5003";
+    client.BaseAddress = new Uri(consentUrl);
+});
 
 var app = builder.Build();
 
