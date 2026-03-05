@@ -100,6 +100,11 @@ public class UpdatePreferencesRequest
     public bool? QuietHoursEnabled { get; set; }
     public int? QuietHoursStart { get; set; }
     public int? QuietHoursEnd { get; set; }
+    
+    /// <summary>Alias for QuietHoursStart as "HH:mm" string (compat with PreferencesService)</summary>
+    public string? QuietTimeStart { get; set; }
+    /// <summary>Alias for QuietHoursEnd as "HH:mm" string (compat with PreferencesService)</summary>
+    public string? QuietTimeEnd { get; set; }
 }
 
 public class PreferencesResponse
@@ -117,6 +122,11 @@ public class PreferencesResponse
     public bool QuietHoursEnabled { get; set; }
     public int QuietHoursStart { get; set; }
     public int QuietHoursEnd { get; set; }
+    
+    /// <summary>Alias for QuietHoursStart as "HH:mm" string (compat with PreferencesService)</summary>
+    public string QuietTimeStart { get; set; } = string.Empty;
+    /// <summary>Alias for QuietHoursEnd as "HH:mm" string (compat with PreferencesService)</summary>
+    public string QuietTimeEnd { get; set; } = string.Empty;
 }
 
 // ============================================================================

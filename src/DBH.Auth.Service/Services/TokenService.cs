@@ -15,7 +15,7 @@ public class TokenService : ITokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(Guid userId, string email, IEnumerable<string> roles)
+    public string GenerateToken(Guid userId, string email, string fullName, IEnumerable<string> roles)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
         var secretKey = jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key is missing in configuration.");
@@ -28,8 +28,10 @@ public class TokenService : ITokenService
 
         var claims = new List<Claim>
         {
+            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new(JwtRegisteredClaimNames.Email, email),
+            new(ClaimTypes.Name, fullName),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -42,7 +44,6 @@ public class TokenService : ITokenService
             expires: DateTime.UtcNow.AddMinutes(expiryMinutes),
             signingCredentials: creds
         );
-
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }

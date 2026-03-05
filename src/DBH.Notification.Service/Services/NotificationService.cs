@@ -25,7 +25,7 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var notification = new Models.Entities.Notification
+            var notification = new Models.Entities.NotificationEntity
             {
                 Id = Guid.NewGuid(),
                 RecipientDid = request.RecipientDid,
@@ -73,7 +73,7 @@ public class NotificationService : INotificationService
         var count = 0;
         foreach (var did in request.RecipientDids)
         {
-            var notification = new Models.Entities.Notification
+            var notification = new Models.Entities.NotificationEntity
             {
                 RecipientDid = did,
                 Title = request.Title,
@@ -316,7 +316,7 @@ public class NotificationService : INotificationService
     // Mapping
     // ========================================================================
 
-    private static NotificationResponse MapToResponse(Models.Entities.Notification n) => new()
+    private static NotificationResponse MapToResponse(Models.Entities.NotificationEntity n) => new()
     {
         Id = n.Id,
         RecipientDid = n.RecipientDid,

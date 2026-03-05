@@ -8,7 +8,7 @@ namespace DBH.Notification.Service.Models.Entities;
 /// Entity thông báo - lưu trữ tất cả thông báo gửi cho users
 /// </summary>
 [Table("notifications", Schema = "notification")]
-public class Notification
+public class NotificationEntity
 {
     [Key]
     [Column("id")]
