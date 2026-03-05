@@ -1,0 +1,49 @@
+{
+    "name": "dbh-ehr-network-org2",
+    "version": "1.0.0",
+    "client": {
+        "organization": "Org2MSP",
+        "connection": {
+            "timeout": {
+                "peer": {
+                    "endorser": "300"
+                }
+            }
+        }
+    },
+    "organizations": {
+        "Org2MSP": {
+            "mspid": "Org2MSP",
+            "peers": [
+                "peer0.org2.dbh.com"
+            ],
+            "certificateAuthorities": [
+                "ca.org2.dbh.com"
+            ]
+        }
+    },
+    "peers": {
+        "peer0.org2.dbh.com": {
+            "url": "grpcs://localhost:9051",
+            "tlsCACerts": {
+                "path": "organizations/peerOrganizations/org2.dbh.com/tlsca/tlsca.org2.dbh.com-cert.pem"
+            },
+            "grpcOptions": {
+                "ssl-target-name-override": "peer0.org2.dbh.com",
+                "hostnameOverride": "peer0.org2.dbh.com"
+            }
+        }
+    },
+    "certificateAuthorities": {
+        "ca.org2.dbh.com": {
+            "url": "https://localhost:8054",
+            "caName": "ca-org2",
+            "tlsCACerts": {
+                "path": "organizations/peerOrganizations/org2.dbh.com/ca/ca.org2.dbh.com-cert.pem"
+            },
+            "httpOptions": {
+                "verify": false
+            }
+        }
+    }
+}
