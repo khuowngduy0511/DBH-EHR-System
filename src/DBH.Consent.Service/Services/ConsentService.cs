@@ -1,6 +1,7 @@
 using DBH.Consent.Service.Data;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
+using DBH.Shared.Contracts.Blockchain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -10,11 +11,16 @@ public class ConsentService : IConsentService
 {
     private readonly ConsentDbContext _context;
     private readonly ILogger<ConsentService> _logger;
+    private readonly IConsentBlockchainService? _blockchainService;
 
-    public ConsentService(ConsentDbContext context, ILogger<ConsentService> logger)
+    public ConsentService(
+        ConsentDbContext context,
+        ILogger<ConsentService> logger,
+        IConsentBlockchainService? blockchainService = null)
     {
         _context = context;
         _logger = logger;
+        _blockchainService = blockchainService;
     }
 
     // =========================================================================
@@ -39,9 +45,47 @@ public class ConsentService : IConsentService
             };
         }
 
-        // TODO: Call blockchain service to create consent on Hyperledger Fabric
-        var blockchainConsentId = $"consent:{Guid.NewGuid():N}"; // Placeholder
-        var txHash = $"0x{Guid.NewGuid():N}"; // Placeholder
+        // === Blockchain: Ghi consent lên Hyperledger Fabric ===
+        string blockchainConsentId;
+        string txHash;
+
+        if (_blockchainService != null)
+        {
+            var consentRecord = new ConsentRecord
+            {
+                ConsentId = Guid.NewGuid().ToString(),
+                PatientDid = request.PatientDid,
+                GranteeDid = request.GranteeDid,
+                GranteeType = request.GranteeType.ToString(),
+                Permission = request.Permission.ToString(),
+                Purpose = request.Purpose.ToString(),
+                EhrId = request.EhrId?.ToString(),
+                GrantedAt = DateTime.UtcNow.ToString("o"),
+                ExpiresAt = request.DurationDays.HasValue
+                    ? DateTime.UtcNow.AddDays(request.DurationDays.Value).ToString("o")
+                    : null,
+                Status = "ACTIVE"
+            };
+
+            var txResult = await _blockchainService.GrantConsentAsync(consentRecord);
+            if (!txResult.Success)
+            {
+                _logger.LogWarning("Blockchain consent failed: {Error}", txResult.ErrorMessage);
+                // Continue with local-only mode
+                blockchainConsentId = $"consent:{Guid.NewGuid():N}";
+                txHash = string.Empty;
+            }
+            else
+            {
+                blockchainConsentId = consentRecord.ConsentId;
+                txHash = txResult.TxHash;
+            }
+        }
+        else
+        {
+            blockchainConsentId = $"consent:{Guid.NewGuid():N}";
+            txHash = string.Empty;
+        }
 
         var consent = new Models.Entities.Consent
         {
@@ -149,8 +193,30 @@ public class ConsentService : IConsentService
             };
         }
 
-        // TODO: Call blockchain service to revoke consent on Hyperledger Fabric
-        var txHash = $"0x{Guid.NewGuid():N}"; // Placeholder
+        // === Blockchain: Revoke consent on Hyperledger Fabric ===
+        string txHash;
+
+        if (_blockchainService != null)
+        {
+            var txResult = await _blockchainService.RevokeConsentAsync(
+                consent.BlockchainConsentId,
+                DateTime.UtcNow.ToString("o"),
+                request.RevokeReason);
+
+            if (!txResult.Success)
+            {
+                _logger.LogWarning("Blockchain revoke failed: {Error}", txResult.ErrorMessage);
+                txHash = string.Empty;
+            }
+            else
+            {
+                txHash = txResult.TxHash;
+            }
+        }
+        else
+        {
+            txHash = string.Empty;
+        }
 
         consent.Status = ConsentStatus.REVOKED;
         consent.RevokedAt = DateTime.UtcNow;
@@ -222,12 +288,28 @@ public class ConsentService : IConsentService
 
     public async Task<ApiResponse<ConsentResponse>> SyncFromBlockchainAsync(string blockchainConsentId)
     {
-        // TODO: Implement blockchain sync
-        // 1. Query Hyperledger Fabric for consent data
-        // 2. Update local cache
-
         var consent = await _context.Consents
             .FirstOrDefaultAsync(c => c.BlockchainConsentId == blockchainConsentId);
+
+        if (_blockchainService != null)
+        {
+            var bcConsent = await _blockchainService.GetConsentAsync(blockchainConsentId);
+            if (bcConsent != null && consent != null)
+            {
+                // Update local cache from blockchain data
+                consent.Status = Enum.TryParse<ConsentStatus>(bcConsent.Status, true, out var status) 
+                    ? status : consent.Status;
+                consent.LastSyncedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return new ApiResponse<ConsentResponse>
+                {
+                    Success = true,
+                    Message = "Consent synced from blockchain",
+                    Data = MapToResponse(consent)
+                };
+            }
+        }
 
         if (consent == null)
         {
@@ -238,7 +320,6 @@ public class ConsentService : IConsentService
             };
         }
 
-        // Placeholder: In real implementation, update from blockchain data
         consent.LastSyncedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 

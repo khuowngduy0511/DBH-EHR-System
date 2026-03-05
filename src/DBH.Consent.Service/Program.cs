@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Consent.Service.Data;
 using DBH.Consent.Service.Services;
+using DBH.Shared.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,11 @@ builder.Services.AddDbContext<ConsentDbContext>(options =>
 // ============================================================================
 
 builder.Services.AddScoped<IConsentService, ConsentService>();
+
+// ============================================================================
+// Blockchain Services (Hyperledger Fabric)
+// ============================================================================
+builder.Services.AddHyperledgerFabric(builder.Configuration);
 
 var app = builder.Build();
 
