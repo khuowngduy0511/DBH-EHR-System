@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using DBH.Notification.Service.Data;
+using DBH.Notification.Service.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +45,11 @@ builder.Services.AddDbContext<NotificationDbContext>(options =>
         npgsqlOptions.CommandTimeout(60);
     });
 });
+
+// ============================================================================
+// Service Registration
+// ============================================================================
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // TODO: Add Firebase Admin SDK initialization
 // TODO: Add RabbitMQ/Azure Service Bus consumer
