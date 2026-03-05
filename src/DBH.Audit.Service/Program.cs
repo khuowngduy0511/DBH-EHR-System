@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Audit.Service.Data;
+using DBH.Audit.Service.Services;
+using DBH.Shared.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +46,16 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
         npgsqlOptions.CommandTimeout(60);
     });
 });
+
+// ============================================================================
+// Service Registration
+// ============================================================================
+builder.Services.AddScoped<IAuditService, AuditService>();
+
+// ============================================================================
+// Hyperledger Fabric Blockchain Integration
+// ============================================================================
+builder.Services.AddHyperledgerFabric(builder.Configuration);
 
 var app = builder.Build();
 
