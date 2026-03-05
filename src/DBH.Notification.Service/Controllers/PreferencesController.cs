@@ -1,44 +1,37 @@
-using System.Security.Claims;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
 [Route("api/notification-preferences")]
-[Authorize]
 public class PreferencesController : ControllerBase
 {
-    private readonly IPreferencesService _preferencesService;
+    private readonly INotificationService _notificationService;
 
-    public PreferencesController(IPreferencesService preferencesService)
+    public PreferencesController(INotificationService notificationService)
     {
-        _preferencesService = preferencesService;
+        _notificationService = notificationService;
     }
 
-    // GET /api/notification-preferences/me - Get preferences
-    [HttpGet("me")]
-    public async Task<ActionResult<PreferencesResponse>> GetMyPreferences()
+    /// <summary>
+    /// GET /api/notification-preferences/by-user/{userDid} - Get preferences
+    /// </summary>
+    [HttpGet("by-user/{userDid}")]
+    public async Task<IActionResult> GetPreferences(string userDid)
     {
-        var userId = GetCurrentUserId();
-        var result = await _preferencesService.GetPreferencesAsync(userId);
+        var result = await _notificationService.GetPreferencesAsync(userDid);
         return Ok(result);
     }
 
-    // PUT /api/notification-preferences/me - Update preferences
-    [HttpPut("me")]
-    public async Task<ActionResult<ApiResponse<PreferencesResponse>>> UpdateMyPreferences([FromBody] UpdatePreferencesRequest request)
+    /// <summary>
+    /// PUT /api/notification-preferences/by-user/{userDid} - Update preferences
+    /// </summary>
+    [HttpPut("by-user/{userDid}")]
+    public async Task<IActionResult> UpdatePreferences(string userDid, [FromBody] UpdatePreferencesRequest request)
     {
-        var userId = GetCurrentUserId();
-        var result = await _preferencesService.UpdatePreferencesAsync(userId, request);
-        return Ok(result);
-    }
-
-    private string GetCurrentUserId()
-    {
-        return User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        var result = await _notificationService.UpdatePreferencesAsync(userDid, request);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 }

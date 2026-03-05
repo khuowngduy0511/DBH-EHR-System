@@ -1,0 +1,30 @@
+# ============================================================================
+# DBH-EHR System - Cryptographic Material Configuration
+# ============================================================================
+# Used by: cryptogen tool to generate MSP & TLS certificates
+# ============================================================================
+
+PeerOrgs:
+  - Name: Org1
+    Domain: org1.dbh.com
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+        - peer0_org1
+        - peer0.org1.dbh.com
+    Users:
+      Count: 1
+
+  - Name: Org2
+    Domain: org2.dbh.com
+    EnableNodeOUs: true
+    Template:
+      Count: 1
+      SANS:
+        - localhost
+        - peer0_org2
+        - peer0.org2.dbh.com
+    Users:
+      Count: 1

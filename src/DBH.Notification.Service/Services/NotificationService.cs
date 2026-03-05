@@ -3,114 +3,105 @@ using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
 using DBH.Notification.Service.Models.Enums;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace DBH.Notification.Service.Services;
 
 public class NotificationService : INotificationService
 {
-    private readonly NotificationDbContext _context;
-    private readonly IPushNotificationService _pushService;
+    private readonly NotificationDbContext _db;
     private readonly ILogger<NotificationService> _logger;
 
-    public NotificationService(
-        NotificationDbContext context,
-        IPushNotificationService pushService,
-        ILogger<NotificationService> logger)
+    public NotificationService(NotificationDbContext db, ILogger<NotificationService> logger)
     {
-        _context = context;
-        _pushService = pushService;
+        _db = db;
         _logger = logger;
     }
 
+    // ========================================================================
+    // Notifications
+    // ========================================================================
+
     public async Task<ApiResponse<NotificationResponse>> SendNotificationAsync(SendNotificationRequest request)
     {
-        var notification = new NotificationEntity
+        try
         {
-            RecipientDid = request.RecipientDid,
-            RecipientUserId = request.RecipientUserId,
-            Title = request.Title,
-            Body = request.Body,
-            Type = request.Type,
-            Priority = request.Priority,
-            Channel = request.Channel,
-            ReferenceId = request.ReferenceId,
-            ReferenceType = request.ReferenceType,
-            ActionUrl = request.ActionUrl,
-            Data = request.Data,
-            ExpiresAt = request.ExpiresAt,
-            Status = NotificationStatus.Pending
-        };
+            var notification = new Models.Entities.NotificationEntity
+            {
+                Id = Guid.NewGuid(),
+                RecipientDid = request.RecipientDid,
+                RecipientUserId = request.RecipientUserId,
+                Title = request.Title,
+                Body = request.Body,
+                Type = request.Type,
+                Priority = request.Priority,
+                Channel = request.Channel,
+                Status = NotificationStatus.Pending,
+                ReferenceId = request.ReferenceId,
+                ReferenceType = request.ReferenceType,
+                ActionUrl = request.ActionUrl,
+                Data = request.Data,
+                ExpiresAt = request.ExpiresAt,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        _context.Notifications.Add(notification);
-        await _context.SaveChangesAsync();
+            _db.Notifications.Add(notification);
+            await _db.SaveChangesAsync();
 
-        // Try to send push notification if channel is Push
-        if (request.Channel == NotificationChannel.Push)
-        {
-            await TrySendPushAsync(notification);
+            // TODO: Push notification via Firebase FCM if channel is Push
+            // For now, mark as sent immediately for in-app
+            if (notification.Channel == NotificationChannel.InApp)
+            {
+                notification.Status = NotificationStatus.Sent;
+                notification.SentAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+
+            _logger.LogInformation("Notification sent: {Id} type={Type} to={RecipientDid}",
+                notification.Id, notification.Type, notification.RecipientDid);
+
+            return ApiResponse<NotificationResponse>.Ok(MapToResponse(notification));
         }
-        else
+        catch (Exception ex)
         {
-            notification.Status = NotificationStatus.Sent;
-            notification.SentAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            _logger.LogError(ex, "Failed to send notification to {RecipientDid}", request.RecipientDid);
+            return ApiResponse<NotificationResponse>.Fail($"Failed to send notification: {ex.Message}");
         }
-
-        _logger.LogInformation("Sent notification {NotificationId} to {RecipientDid}", notification.Id, notification.RecipientDid);
-
-        return new ApiResponse<NotificationResponse>
-        {
-            Success = true,
-            Message = "Notification sent successfully",
-            Data = MapToResponse(notification)
-        };
     }
 
     public async Task<ApiResponse<int>> BroadcastNotificationAsync(BroadcastNotificationRequest request)
     {
-        var notifications = new List<NotificationEntity>();
-
-        foreach (var recipientDid in request.RecipientDids)
+        var count = 0;
+        foreach (var did in request.RecipientDids)
         {
-            var notification = new NotificationEntity
+            var notification = new Models.Entities.NotificationEntity
             {
-                RecipientDid = recipientDid,
+                RecipientDid = did,
                 Title = request.Title,
                 Body = request.Body,
                 Type = request.Type,
                 Priority = request.Priority,
                 Channel = NotificationChannel.InApp,
                 Status = NotificationStatus.Sent,
-                SentAt = DateTime.UtcNow
+                SentAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
             };
-            notifications.Add(notification);
+            _db.Notifications.Add(notification);
+            count++;
         }
 
-        _context.Notifications.AddRange(notifications);
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation("Broadcast {Count} notifications", notifications.Count);
-
-        return new ApiResponse<int>
-        {
-            Success = true,
-            Message = $"Broadcast sent to {notifications.Count} recipients",
-            Data = notifications.Count
-        };
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("Broadcast notification sent to {Count} recipients", count);
+        return ApiResponse<int>.Ok(count);
     }
 
     public async Task<PagedResponse<NotificationResponse>> GetNotificationsByUserAsync(string userDid, int page, int pageSize)
     {
-        var query = _context.Notifications
+        var query = _db.Notifications
             .Where(n => n.RecipientDid == userDid)
             .OrderByDescending(n => n.CreatedAt);
 
         var totalCount = await query.CountAsync();
-        var items = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
         return new PagedResponse<NotificationResponse>
         {
@@ -121,138 +112,211 @@ public class NotificationService : INotificationService
         };
     }
 
-    public async Task<PagedResponse<NotificationResponse>> GetUnreadNotificationsAsync(string userDid)
+    public async Task<PagedResponse<NotificationResponse>> GetUnreadNotificationsAsync(string userDid, int page, int pageSize)
     {
-        var items = await _context.Notifications
+        var query = _db.Notifications
             .Where(n => n.RecipientDid == userDid && n.Status != NotificationStatus.Read)
-            .OrderByDescending(n => n.CreatedAt)
-            .ToListAsync();
+            .OrderByDescending(n => n.CreatedAt);
+
+        var totalCount = await query.CountAsync();
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
         return new PagedResponse<NotificationResponse>
         {
             Data = items.Select(MapToResponse).ToList(),
-            Page = 1,
-            PageSize = items.Count,
-            TotalCount = items.Count
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
         };
     }
 
     public async Task<ApiResponse<int>> MarkAsReadAsync(string userDid, MarkReadRequest request)
     {
-        var notifications = await _context.Notifications
+        var notifications = await _db.Notifications
             .Where(n => n.RecipientDid == userDid && request.NotificationIds.Contains(n.Id))
             .ToListAsync();
 
-        foreach (var notification in notifications)
+        foreach (var n in notifications)
         {
-            notification.Status = NotificationStatus.Read;
-            notification.ReadAt = DateTime.UtcNow;
+            n.Status = NotificationStatus.Read;
+            n.ReadAt = DateTime.UtcNow;
         }
 
-        await _context.SaveChangesAsync();
-
-        return new ApiResponse<int>
-        {
-            Success = true,
-            Message = $"{notifications.Count} notifications marked as read",
-            Data = notifications.Count
-        };
+        await _db.SaveChangesAsync();
+        return ApiResponse<int>.Ok(notifications.Count);
     }
 
     public async Task<ApiResponse<int>> MarkAllAsReadAsync(string userDid)
     {
-        var notifications = await _context.Notifications
+        var unread = await _db.Notifications
             .Where(n => n.RecipientDid == userDid && n.Status != NotificationStatus.Read)
             .ToListAsync();
 
-        foreach (var notification in notifications)
+        foreach (var n in unread)
         {
-            notification.Status = NotificationStatus.Read;
-            notification.ReadAt = DateTime.UtcNow;
+            n.Status = NotificationStatus.Read;
+            n.ReadAt = DateTime.UtcNow;
         }
 
-        await _context.SaveChangesAsync();
-
-        return new ApiResponse<int>
-        {
-            Success = true,
-            Message = $"{notifications.Count} notifications marked as read",
-            Data = notifications.Count
-        };
+        await _db.SaveChangesAsync();
+        return ApiResponse<int>.Ok(unread.Count);
     }
 
     public async Task<ApiResponse<bool>> DeleteNotificationAsync(Guid notificationId)
     {
-        var notification = await _context.Notifications.FindAsync(notificationId);
+        var notification = await _db.Notifications.FindAsync(notificationId);
         if (notification == null)
-        {
-            return new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Notification not found",
-                Data = false
-            };
-        }
+            return ApiResponse<bool>.Fail("Notification not found");
 
-        _context.Notifications.Remove(notification);
-        await _context.SaveChangesAsync();
-
-        return new ApiResponse<bool>
-        {
-            Success = true,
-            Message = "Notification deleted",
-            Data = true
-        };
+        _db.Notifications.Remove(notification);
+        await _db.SaveChangesAsync();
+        return ApiResponse<bool>.Ok(true);
     }
 
     public async Task<int> GetUnreadCountAsync(string userDid)
     {
-        return await _context.Notifications
+        return await _db.Notifications
             .CountAsync(n => n.RecipientDid == userDid && n.Status != NotificationStatus.Read);
     }
 
-    // =========================================================================
-    // Private Helpers
-    // =========================================================================
+    // ========================================================================
+    // Device Tokens
+    // ========================================================================
 
-    private async Task TrySendPushAsync(NotificationEntity notification)
+    public async Task<ApiResponse<DeviceTokenResponse>> RegisterDeviceAsync(RegisterDeviceRequest request)
     {
-        try
-        {
-            var devices = await _context.DeviceTokens
-                .Where(d => d.UserDid == notification.RecipientDid && d.IsActive)
-                .ToListAsync();
+        // Check if token already exists
+        var existing = await _db.DeviceTokens
+            .FirstOrDefaultAsync(d => d.FcmToken == request.FcmToken);
 
-            if (devices.Any())
+        if (existing != null)
+        {
+            existing.UserDid = request.UserDid;
+            existing.UserId = request.UserId;
+            existing.DeviceName = request.DeviceName;
+            existing.OsVersion = request.OsVersion;
+            existing.AppVersion = request.AppVersion;
+            existing.IsActive = true;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            existing = new DeviceToken
             {
-                var dataDict = new Dictionary<string, string>
-                {
-                    ["notificationId"] = notification.Id.ToString(),
-                    ["type"] = notification.Type.ToString()
-                };
-
-                if (!string.IsNullOrEmpty(notification.ActionUrl))
-                    dataDict["actionUrl"] = notification.ActionUrl;
-
-                var tokens = devices.Select(d => d.FcmToken).ToList();
-                await _pushService.SendMulticastAsync(tokens, notification.Title, notification.Body ?? "", dataDict);
-            }
-
-            notification.Status = NotificationStatus.Sent;
-            notification.SentAt = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send push notification {NotificationId}", notification.Id);
-            notification.Status = NotificationStatus.Failed;
-            notification.ErrorMessage = ex.Message;
-            notification.RetryCount++;
+                UserDid = request.UserDid,
+                UserId = request.UserId,
+                FcmToken = request.FcmToken,
+                DeviceType = request.DeviceType,
+                DeviceName = request.DeviceName,
+                OsVersion = request.OsVersion,
+                AppVersion = request.AppVersion,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.DeviceTokens.Add(existing);
         }
 
-        await _context.SaveChangesAsync();
+        await _db.SaveChangesAsync();
+        return ApiResponse<DeviceTokenResponse>.Ok(MapDeviceToResponse(existing));
     }
 
-    private static NotificationResponse MapToResponse(NotificationEntity n) => new()
+    public async Task<List<DeviceTokenResponse>> GetUserDevicesAsync(string userDid)
+    {
+        var devices = await _db.DeviceTokens
+            .Where(d => d.UserDid == userDid && d.IsActive)
+            .OrderByDescending(d => d.UpdatedAt)
+            .ToListAsync();
+
+        return devices.Select(MapDeviceToResponse).ToList();
+    }
+
+    public async Task<ApiResponse<bool>> DeactivateDeviceAsync(Guid deviceTokenId)
+    {
+        var device = await _db.DeviceTokens.FindAsync(deviceTokenId);
+        if (device == null) return ApiResponse<bool>.Fail("Device not found");
+
+        device.IsActive = false;
+        device.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return ApiResponse<bool>.Ok(true);
+    }
+
+    public async Task<ApiResponse<bool>> DeactivateAllDevicesAsync(string userDid)
+    {
+        var devices = await _db.DeviceTokens
+            .Where(d => d.UserDid == userDid && d.IsActive)
+            .ToListAsync();
+
+        foreach (var d in devices)
+        {
+            d.IsActive = false;
+            d.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync();
+        return ApiResponse<bool>.Ok(true);
+    }
+
+    // ========================================================================
+    // Preferences
+    // ========================================================================
+
+    public async Task<PreferencesResponse> GetPreferencesAsync(string userDid)
+    {
+        var pref = await _db.NotificationPreferences
+            .FirstOrDefaultAsync(p => p.UserDid == userDid);
+
+        if (pref == null)
+        {
+            // Create default preferences
+            pref = new NotificationPreference
+            {
+                UserDid = userDid,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _db.NotificationPreferences.Add(pref);
+            await _db.SaveChangesAsync();
+        }
+
+        return MapPreferencesToResponse(pref);
+    }
+
+    public async Task<ApiResponse<PreferencesResponse>> UpdatePreferencesAsync(string userDid, UpdatePreferencesRequest request)
+    {
+        var pref = await _db.NotificationPreferences
+            .FirstOrDefaultAsync(p => p.UserDid == userDid);
+
+        if (pref == null)
+        {
+            pref = new NotificationPreference { UserDid = userDid };
+            _db.NotificationPreferences.Add(pref);
+        }
+
+        if (request.EhrAccessEnabled.HasValue) pref.EhrAccessEnabled = request.EhrAccessEnabled.Value;
+        if (request.ConsentRequestEnabled.HasValue) pref.ConsentRequestEnabled = request.ConsentRequestEnabled.Value;
+        if (request.EhrUpdateEnabled.HasValue) pref.EhrUpdateEnabled = request.EhrUpdateEnabled.Value;
+        if (request.AppointmentReminderEnabled.HasValue) pref.AppointmentReminderEnabled = request.AppointmentReminderEnabled.Value;
+        if (request.SecurityAlertEnabled.HasValue) pref.SecurityAlertEnabled = request.SecurityAlertEnabled.Value;
+        if (request.SystemNotificationEnabled.HasValue) pref.SystemNotificationEnabled = request.SystemNotificationEnabled.Value;
+        if (request.PushEnabled.HasValue) pref.PushEnabled = request.PushEnabled.Value;
+        if (request.EmailEnabled.HasValue) pref.EmailEnabled = request.EmailEnabled.Value;
+        if (request.SmsEnabled.HasValue) pref.SmsEnabled = request.SmsEnabled.Value;
+        if (request.QuietHoursEnabled.HasValue) pref.QuietHoursEnabled = request.QuietHoursEnabled.Value;
+        if (request.QuietHoursStart.HasValue) pref.QuietHoursStart = request.QuietHoursStart.Value;
+        if (request.QuietHoursEnd.HasValue) pref.QuietHoursEnd = request.QuietHoursEnd.Value;
+        pref.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+        return ApiResponse<PreferencesResponse>.Ok(MapPreferencesToResponse(pref));
+    }
+
+    // ========================================================================
+    // Mapping
+    // ========================================================================
+
+    private static NotificationResponse MapToResponse(Models.Entities.NotificationEntity n) => new()
     {
         Id = n.Id,
         RecipientDid = n.RecipientDid,
@@ -267,5 +331,32 @@ public class NotificationService : INotificationService
         ReadAt = n.ReadAt,
         ReferenceId = n.ReferenceId,
         ActionUrl = n.ActionUrl
+    };
+
+    private static DeviceTokenResponse MapDeviceToResponse(DeviceToken d) => new()
+    {
+        Id = d.Id,
+        FcmToken = d.FcmToken,
+        DeviceType = d.DeviceType,
+        DeviceName = d.DeviceName,
+        IsActive = d.IsActive,
+        CreatedAt = d.CreatedAt
+    };
+
+    private static PreferencesResponse MapPreferencesToResponse(NotificationPreference p) => new()
+    {
+        Id = p.Id,
+        UserDid = p.UserDid,
+        EhrAccessEnabled = p.EhrAccessEnabled,
+        ConsentRequestEnabled = p.ConsentRequestEnabled,
+        EhrUpdateEnabled = p.EhrUpdateEnabled,
+        AppointmentReminderEnabled = p.AppointmentReminderEnabled,
+        SecurityAlertEnabled = p.SecurityAlertEnabled,
+        PushEnabled = p.PushEnabled,
+        EmailEnabled = p.EmailEnabled,
+        SmsEnabled = p.SmsEnabled,
+        QuietHoursEnabled = p.QuietHoursEnabled,
+        QuietHoursStart = p.QuietHoursStart,
+        QuietHoursEnd = p.QuietHoursEnd
     };
 }

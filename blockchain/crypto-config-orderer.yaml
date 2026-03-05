@@ -1,0 +1,15 @@
+# ============================================================================
+# DBH-EHR System - Orderer Cryptographic Material Configuration
+# ============================================================================
+
+OrdererOrgs:
+  - Name: Orderer
+    Domain: dbh.com
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: orderer
+        SANS:
+          - localhost
+          - orderer
+          - orderer.dbh.com
+          - dbh_orderer

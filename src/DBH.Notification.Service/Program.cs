@@ -115,6 +115,10 @@ builder.Services.AddDbContext<NotificationDbContext>(options =>
     });
 });
 
+// ============================================================================
+// Additional Service Registration
+// ============================================================================
+
 // TODO: Add Firebase Admin SDK initialization
 // TODO: Add RabbitMQ/Azure Service Bus consumer
 

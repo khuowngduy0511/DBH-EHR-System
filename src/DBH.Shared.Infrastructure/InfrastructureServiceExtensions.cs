@@ -1,3 +1,7 @@
+using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.Blockchain;
+using DBH.Shared.Infrastructure.Blockchain.Services;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Messaging;
 using DBH.Shared.Infrastructure.Storage;
@@ -37,6 +41,11 @@ public static class InfrastructureServiceExtensions
         if (options.UseRabbitMQ)
         {
             services.AddRabbitMQ(configuration, options.ConfigureConsumers);
+        }
+
+        if (options.UseHyperledgerFabric)
+        {
+            services.AddHyperledgerFabric(configuration);
         }
 
         return services;
@@ -151,6 +160,44 @@ public static class InfrastructureServiceExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Đăng ký Hyperledger Fabric Blockchain Services
+    /// </summary>
+    public static IServiceCollection AddHyperledgerFabric(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var fabricSection = configuration.GetSection(FabricOptions.SectionName);
+        var fabricOptions = new FabricOptions();
+        fabricSection.Bind(fabricOptions);
+
+        services.Configure<FabricOptions>(options => fabricSection.Bind(options));
+
+        if (fabricOptions.Enabled)
+        {
+            // Fabric Gateway client (singleton - manages gRPC connection)
+            services.AddSingleton<IFabricGateway, FabricGatewayClient>();
+
+            // Blockchain service implementations
+            services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();
+            services.AddScoped<IConsentBlockchainService, ConsentBlockchainService>();
+            services.AddScoped<IAuditBlockchainService, AuditBlockchainService>();
+
+            // Background sync queue and service
+            services.AddSingleton<BlockchainSyncQueue>();
+            services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
+            services.AddHostedService<BlockchainSyncBackgroundService>();
+        }
+        else
+        {
+            // Register sync service even when disabled (it will skip silently)
+            services.AddSingleton<BlockchainSyncQueue>();
+            services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
+        }
+
+        return services;
+    }
 }
 
 /// <summary>
@@ -161,5 +208,6 @@ public class InfrastructureOptions
     public bool UseS3Storage { get; set; } = true;
     public bool UseRedisCache { get; set; } = true;
     public bool UseRabbitMQ { get; set; } = true;
+    public bool UseHyperledgerFabric { get; set; } = false;
     public Action<IBusRegistrationConfigurator>? ConfigureConsumers { get; set; }
 }

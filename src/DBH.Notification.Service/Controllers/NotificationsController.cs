@@ -1,14 +1,11 @@
-using System.Security.Claims;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
 [Route("api/notifications")]
-[Authorize]
 public class NotificationsController : ControllerBase
 {
     private readonly INotificationService _notificationService;
@@ -18,83 +15,83 @@ public class NotificationsController : ControllerBase
         _notificationService = notificationService;
     }
 
-    // POST /api/notifications - Gửi notification (internal/service)
+    /// <summary>
+    /// POST /api/notifications - Gửi notification (internal use)
+    /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<ApiResponse<NotificationResponse>>> SendNotification([FromBody] SendNotificationRequest request)
+    public async Task<IActionResult> SendNotification([FromBody] SendNotificationRequest request)
     {
         var result = await _notificationService.SendNotificationAsync(request);
-        return Ok(result);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
-    // POST /api/notifications/broadcast - Broadcast (admin)
+    /// <summary>
+    /// POST /api/notifications/broadcast - Broadcast (admin)
+    /// </summary>
     [HttpPost("broadcast")]
-    [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<ApiResponse<int>>> BroadcastNotification([FromBody] BroadcastNotificationRequest request)
+    public async Task<IActionResult> Broadcast([FromBody] BroadcastNotificationRequest request)
     {
         var result = await _notificationService.BroadcastNotificationAsync(request);
-        return Ok(result);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
-    // GET /api/notifications/me - List notifications của user hiện tại
-    [HttpGet("me")]
-    public async Task<ActionResult<PagedResponse<NotificationResponse>>> GetMyNotifications([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    /// <summary>
+    /// GET /api/notifications/by-user/{userDid} - List notifications của user
+    /// </summary>
+    [HttpGet("by-user/{userDid}")]
+    public async Task<IActionResult> GetByUser(string userDid, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var userId = GetCurrentUserId();
-        var result = await _notificationService.GetNotificationsByUserAsync(userId, page, pageSize);
-        return Ok(result);
-    }
-
-    // GET /api/notifications/me/unread - Unread notifications
-    [HttpGet("me/unread")]
-    public async Task<ActionResult<PagedResponse<NotificationResponse>>> GetMyUnreadNotifications()
-    {
-        var userId = GetCurrentUserId();
-        var result = await _notificationService.GetUnreadNotificationsAsync(userId);
-        return Ok(result);
-    }
-
-    // GET /api/notifications/me/unread-count - Đếm unread
-    [HttpGet("me/unread-count")]
-    public async Task<ActionResult<int>> GetMyUnreadCount()
-    {
-        var userId = GetCurrentUserId();
-        var count = await _notificationService.GetUnreadCountAsync(userId);
-        return Ok(count);
-    }
-
-    // POST /api/notifications/me/mark-read - Mark as read
-    [HttpPost("me/mark-read")]
-    public async Task<ActionResult<ApiResponse<int>>> MarkRead([FromBody] MarkReadRequest request)
-    {
-        var userId = GetCurrentUserId();
-        var result = await _notificationService.MarkAsReadAsync(userId, request);
-        return Ok(result);
-    }
-
-    // POST /api/notifications/me/mark-all-read - Mark all as read
-    [HttpPost("me/mark-all-read")]
-    public async Task<ActionResult<ApiResponse<int>>> MarkAllRead()
-    {
-        var userId = GetCurrentUserId();
-        var result = await _notificationService.MarkAllAsReadAsync(userId);
-        return Ok(result);
-    }
-
-    // DELETE /api/notifications/{id} - Xóa notification
-    [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteNotification(Guid id)
-    {
-        var result = await _notificationService.DeleteNotificationAsync(id);
+        var result = await _notificationService.GetNotificationsByUserAsync(userDid, page, pageSize);
         return Ok(result);
     }
 
     /// <summary>
-    /// Extract userId from JWT ClaimTypes.NameIdentifier
+    /// GET /api/notifications/by-user/{userDid}/unread - Unread notifications
     /// </summary>
-    private string GetCurrentUserId()
+    [HttpGet("by-user/{userDid}/unread")]
+    public async Task<IActionResult> GetUnread(string userDid, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        return User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        var result = await _notificationService.GetUnreadNotificationsAsync(userDid, page, pageSize);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// GET /api/notifications/by-user/{userDid}/unread-count - Đếm unread
+    /// </summary>
+    [HttpGet("by-user/{userDid}/unread-count")]
+    public async Task<IActionResult> GetUnreadCount(string userDid)
+    {
+        var count = await _notificationService.GetUnreadCountAsync(userDid);
+        return Ok(new { count });
+    }
+
+    /// <summary>
+    /// POST /api/notifications/by-user/{userDid}/mark-read - Mark as read
+    /// </summary>
+    [HttpPost("by-user/{userDid}/mark-read")]
+    public async Task<IActionResult> MarkAsRead(string userDid, [FromBody] MarkReadRequest request)
+    {
+        var result = await _notificationService.MarkAsReadAsync(userDid, request);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// POST /api/notifications/by-user/{userDid}/mark-all-read - Mark all as read
+    /// </summary>
+    [HttpPost("by-user/{userDid}/mark-all-read")]
+    public async Task<IActionResult> MarkAllAsRead(string userDid)
+    {
+        var result = await _notificationService.MarkAllAsReadAsync(userDid);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// DELETE /api/notifications/{id} - Xóa notification
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var result = await _notificationService.DeleteNotificationAsync(id);
+        return result.Success ? Ok(result) : NotFound(result);
     }
 }

@@ -42,19 +42,39 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy EHR theo ID
+    /// Lấy EHR theo ID - Nếu có X-Requester-Id header sẽ kiểm tra consent
     /// </summary>
     [HttpGet("records/{ehrId:guid}")]
     [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(Guid ehrId, [FromQuery] bool useReplica = false)
+    public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(
+        Guid ehrId, 
+        [FromQuery] bool useReplica = false,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
-        var record = await _ehrService.GetEhrRecordAsync(ehrId, useReplica);
+        // Nếu có requester ID → kiểm tra consent trước khi trả data
+        if (requesterId.HasValue)
+        {
+            var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(
+                ehrId, requesterId.Value, useReplica);
+            
+            if (consentDenied)
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+            
+            if (record == null)
+                return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+            
+            return Ok(record);
+        }
+
+        // Không có requester ID → trả trực tiếp (internal service call)
+        var result = await _ehrService.GetEhrRecordAsync(ehrId, useReplica);
         
-        if (record == null)
+        if (result == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 
-        return Ok(record);
+        return Ok(result);
     }
 
     /// <summary>

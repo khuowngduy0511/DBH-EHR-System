@@ -10,6 +10,12 @@ public interface IEhrService
 
     Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId, bool useReplica = false);
     
+    /// <summary>
+    /// Lấy EHR với kiểm tra consent - trả null nếu không có quyền
+    /// </summary>
+    Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> GetEhrRecordWithConsentCheckAsync(
+        Guid ehrId, Guid requesterId, bool useReplica = false);
+    
     Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false);
 
     Task<IEnumerable<EhrRecordResponseDto>> GetHospitalEhrRecordsAsync(Guid hospitalId, bool useReplica = false);

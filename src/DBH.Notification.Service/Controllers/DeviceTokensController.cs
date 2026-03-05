@@ -1,73 +1,57 @@
-using System.Security.Claims;
 using DBH.Notification.Service.DTOs;
-using DBH.Notification.Service.Helpers;
 using DBH.Notification.Service.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
 [Route("api/device-tokens")]
-[Authorize]
 public class DeviceTokensController : ControllerBase
 {
-    private readonly IDeviceTokenService _deviceTokenService;
+    private readonly INotificationService _notificationService;
 
-    public DeviceTokensController(IDeviceTokenService deviceTokenService)
+    public DeviceTokensController(INotificationService notificationService)
     {
-        _deviceTokenService = deviceTokenService;
+        _notificationService = notificationService;
     }
 
-    // POST /api/device-tokens - Đăng ký device
+    /// <summary>
+    /// POST /api/device-tokens - Đăng ký device token
+    /// </summary>
     [HttpPost]
-    public async Task<ActionResult<ApiResponse<DeviceTokenResponse>>> RegisterDevice([FromBody] RegisterDeviceRequest request)
+    public async Task<IActionResult> RegisterDevice([FromBody] RegisterDeviceRequest request)
     {
-        // Set UserDid from JWT token
-        request.UserDid ??= GetCurrentUserId();
-
-        // Auto-extract device info from User-Agent if not provided by client
-        var userAgent = Request.Headers.UserAgent.ToString();
-        var deviceInfo = UserAgentParser.Parse(userAgent);
-
-        request.DeviceType ??= deviceInfo.DeviceType;
-        request.DeviceName ??= deviceInfo.DeviceName;
-        request.OsVersion ??= deviceInfo.OsVersion;
-        request.AppVersion ??= deviceInfo.AppVersion;
-
-        var result = await _deviceTokenService.RegisterDeviceAsync(request);
-        return Ok(result);
+        var result = await _notificationService.RegisterDeviceAsync(request);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
-    // GET /api/device-tokens/me - List devices của user
-    [HttpGet("me")]
-    public async Task<ActionResult<List<DeviceTokenResponse>>> GetMyDevices()
+    /// <summary>
+    /// GET /api/device-tokens/by-user/{userDid} - List devices của user
+    /// </summary>
+    [HttpGet("by-user/{userDid}")]
+    public async Task<IActionResult> GetUserDevices(string userDid)
     {
-        var userId = GetCurrentUserId();
-        var result = await _deviceTokenService.GetUserDevicesAsync(userId);
-        return Ok(result);
+        var devices = await _notificationService.GetUserDevicesAsync(userDid);
+        return Ok(devices);
     }
 
-    // DELETE /api/device-tokens/{id} - Xóa device token
-    [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeactivateDevice(Guid id)
+    /// <summary>
+    /// DELETE /api/device-tokens/{id} - Xóa device token
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeactivateDevice(Guid id)
     {
-        var result = await _deviceTokenService.DeactivateDeviceAsync(id);
-        return Ok(result);
+        var result = await _notificationService.DeactivateDeviceAsync(id);
+        return result.Success ? Ok(result) : NotFound(result);
     }
 
-    // DELETE /api/device-tokens/me/all - Xóa tất cả devices
-    [HttpDelete("me/all")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeactivateAllDevices()
+    /// <summary>
+    /// DELETE /api/device-tokens/by-user/{userDid}/all - Xóa tất cả devices
+    /// </summary>
+    [HttpDelete("by-user/{userDid}/all")]
+    public async Task<IActionResult> DeactivateAll(string userDid)
     {
-        var userId = GetCurrentUserId();
-        var result = await _deviceTokenService.DeactivateAllDevicesAsync(userId);
-        return Ok(result);
-    }
-
-    private string GetCurrentUserId()
-    {
-        return User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? throw new UnauthorizedAccessException("User ID not found in token");
+        var result = await _notificationService.DeactivateAllDevicesAsync(userDid);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 }
