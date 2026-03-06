@@ -448,7 +448,7 @@ public class FabricGatewayClient : IFabricGateway
         {
             ChaincodeSpec = new
             {
-                Type = "GOLANG",
+                Type = "NODE",
                 ChaincodeId = new { Name = chaincodeName },
                 Input = new
                 {
