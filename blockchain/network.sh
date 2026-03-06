@@ -38,6 +38,7 @@ CC_EHR_VERSION="1.0"
 CC_CONSENT_VERSION="1.0"
 CC_AUDIT_VERSION="1.0"
 CC_SEQUENCE=1
+CC_LANG="node"
 
 # Container names (matching docker-compose.fabric.yml)
 ORDERER_CONTAINER="dbh_orderer"
@@ -275,29 +276,29 @@ set_anchor_peers() {
 }
 
 # ============================================================
-# Step 5a: Generate Go vendor dependencies (if missing)
+# Step 5a: Install npm dependencies for JS chaincodes
 # ============================================================
-generate_vendor() {
+install_npm_deps() {
     log_info "=========================================="
-    log_info "Step 5a: Generating Go vendor dependencies..."
+    log_info "Step 5a: Installing npm dependencies for JS chaincodes..."
     log_info "=========================================="
 
-    for cc_dir in ehr consent audit; do
-        local vendor_path="${CHAINCODE_DIR}/${cc_dir}/vendor"
-        if [ -d "${vendor_path}" ] && [ "$(ls -A ${vendor_path} 2>/dev/null)" ]; then
-            log_ok "  ${cc_dir}/vendor already exists, skipping"
+    for cc_dir in ehr-js consent-js audit-js; do
+        local nm_path="${CHAINCODE_DIR}/${cc_dir}/node_modules"
+        if [ -d "${nm_path}" ] && [ "$(ls -A ${nm_path} 2>/dev/null)" ]; then
+            log_ok "  ${cc_dir}/node_modules already exists, skipping"
         else
-            log_info "  Generating vendor for ${cc_dir}..."
+            log_info "  Installing npm deps for ${cc_dir}..."
             docker run --rm \
                 -v "$(pwd)/${CHAINCODE_DIR}/${cc_dir}:/chaincode" \
                 -w /chaincode \
-                golang:1.21 \
-                sh -c "go mod tidy && go mod vendor"
-            log_ok "  ${cc_dir}/vendor generated"
+                node:18-alpine \
+                sh -c "npm install --production"
+            log_ok "  ${cc_dir}/node_modules installed"
         fi
     done
 
-    log_ok "All chaincode vendor dependencies ready"
+    log_ok "All chaincode npm dependencies ready"
 }
 
 # ============================================================
@@ -309,9 +310,9 @@ deploy_chaincodes() {
     log_info "=========================================="
 
     # Each chaincode deployed to its dedicated channel
-    deploy_single_chaincode "${CC_EHR_NAME}" "${CC_EHR_VERSION}" "ehr" "${CHANNEL_EHR}"
-    deploy_single_chaincode "${CC_CONSENT_NAME}" "${CC_CONSENT_VERSION}" "consent" "${CHANNEL_CONSENT}"
-    deploy_single_chaincode "${CC_AUDIT_NAME}" "${CC_AUDIT_VERSION}" "audit" "${CHANNEL_AUDIT}"
+    deploy_single_chaincode "${CC_EHR_NAME}" "${CC_EHR_VERSION}" "ehr-js" "${CHANNEL_EHR}"
+    deploy_single_chaincode "${CC_CONSENT_NAME}" "${CC_CONSENT_VERSION}" "consent-js" "${CHANNEL_CONSENT}"
+    deploy_single_chaincode "${CC_AUDIT_NAME}" "${CC_AUDIT_VERSION}" "audit-js" "${CHANNEL_AUDIT}"
 
     log_ok "All chaincodes deployed successfully!"
 }
@@ -335,7 +336,7 @@ deploy_single_chaincode() {
         "${CLI_CONTAINER}" peer lifecycle chaincode package \
             "/opt/gopath/src/github.com/chaincode/${CC_NAME}.tar.gz" \
             --path "/opt/gopath/src/github.com/chaincode/${CC_DIR}" \
-            --lang golang \
+            --lang "${CC_LANG}" \
             --label "${CC_NAME}_${CC_VERSION}"
 
     # Install on Org1
@@ -466,7 +467,7 @@ network_up() {
     generate_channel_artifacts
     start_containers
     create_channel
-    generate_vendor
+    install_npm_deps
     deploy_chaincodes
 
     echo ""
@@ -515,7 +516,7 @@ network_down() {
     rm -rf "${CRYPTO_CONFIG_DIR}"
     rm -rf "${CHANNEL_ARTIFACTS}"
     rm -f "${CHAINCODE_DIR}"/*.tar.gz
-    rm -rf "${CHAINCODE_DIR}"/*/vendor
+    rm -rf "${CHAINCODE_DIR}"/*/node_modules
 
     log_ok "Network stopped and cleaned up"
 }
@@ -589,7 +590,7 @@ case "${1:-help}" in
         create_channel
         ;;
     deploy)
-        generate_vendor
+        install_npm_deps
         deploy_chaincodes
         ;;
     status)

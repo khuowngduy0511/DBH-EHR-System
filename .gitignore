@@ -29,9 +29,9 @@ secrets.json
 **/data/
 
 # =============================================================================
-# BLOCKCHAIN - Go vendor dependencies (downloaded at build time)
+# BLOCKCHAIN - JS chaincode dependencies (installed at build time)
 # =============================================================================
-blockchain/chaincode/**/vendor/
+blockchain/chaincode/**/node_modules/
 
 # =============================================================================
 # USER-SPECIFIC FILES
