@@ -272,11 +272,37 @@ set_anchor_peers() {
 }
 
 # ============================================================
-# Step 5: Deploy Chaincodes
+# Step 5a: Generate Go vendor dependencies (if missing)
+# ============================================================
+generate_vendor() {
+    log_info "=========================================="
+    log_info "Step 5a: Generating Go vendor dependencies..."
+    log_info "=========================================="
+
+    for cc_dir in ehr consent audit; do
+        local vendor_path="${CHAINCODE_DIR}/${cc_dir}/vendor"
+        if [ -d "${vendor_path}" ] && [ "$(ls -A ${vendor_path} 2>/dev/null)" ]; then
+            log_ok "  ${cc_dir}/vendor already exists, skipping"
+        else
+            log_info "  Generating vendor for ${cc_dir}..."
+            docker run --rm \
+                -v "$(pwd)/${CHAINCODE_DIR}/${cc_dir}:/chaincode" \
+                -w /chaincode \
+                golang:1.21 \
+                sh -c "go mod tidy && go mod vendor"
+            log_ok "  ${cc_dir}/vendor generated"
+        fi
+    done
+
+    log_ok "All chaincode vendor dependencies ready"
+}
+
+# ============================================================
+# Step 5b: Deploy Chaincodes
 # ============================================================
 deploy_chaincodes() {
     log_info "=========================================="
-    log_info "Step 5: Deploying chaincodes..."
+    log_info "Step 5b: Deploying chaincodes..."
     log_info "=========================================="
 
     # Each chaincode deployed to its dedicated channel
@@ -437,6 +463,7 @@ network_up() {
     generate_channel_artifacts
     start_containers
     create_channel
+    generate_vendor
     deploy_chaincodes
 
     echo ""
@@ -485,6 +512,7 @@ network_down() {
     rm -rf "${CRYPTO_CONFIG_DIR}"
     rm -rf "${CHANNEL_ARTIFACTS}"
     rm -f "${CHAINCODE_DIR}"/*.tar.gz
+    rm -rf "${CHAINCODE_DIR}"/*/vendor
 
     log_ok "Network stopped and cleaned up"
 }
@@ -558,6 +586,7 @@ case "${1:-help}" in
         create_channel
         ;;
     deploy)
+        generate_vendor
         deploy_chaincodes
         ;;
     status)
