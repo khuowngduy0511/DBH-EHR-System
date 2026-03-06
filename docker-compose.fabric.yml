@@ -104,7 +104,9 @@ services:
       - ./blockchain/organizations/ordererOrganizations/dbh.com/orderers/orderer.dbh.com/tls:/var/hyperledger/orderer/tls
       - orderer_data:/var/hyperledger/production/orderer
     networks:
-      - dbh_fabric_network
+      dbh_fabric_network:
+        aliases:
+          - orderer.dbh.com
 
   # ===========================================================================
   # Peer - Org1 (Hospital A)
@@ -147,7 +149,9 @@ services:
     depends_on:
       - couchdb_org1
     networks:
-      - dbh_fabric_network
+      dbh_fabric_network:
+        aliases:
+          - peer0.org1.dbh.com
 
   # ===========================================================================
   # Peer - Org2 (Hospital B)
@@ -190,7 +194,9 @@ services:
     depends_on:
       - couchdb_org2
     networks:
-      - dbh_fabric_network
+      dbh_fabric_network:
+        aliases:
+          - peer0.org2.dbh.com
 
   # ===========================================================================
   # CouchDB - Org1 (Rich queries for state database)
