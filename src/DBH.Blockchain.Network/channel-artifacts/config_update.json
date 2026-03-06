@@ -1,5 +1,5 @@
 {
-	"channel_id": "ehr-channel",
+	"channel_id": "ehr-hash-channel",
 	"isolated_data": {},
 	"read_set": {
 		"groups": {

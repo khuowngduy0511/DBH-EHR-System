@@ -209,16 +209,36 @@ function createChannel() {
     networkUp
   fi
 
-  scripts/createChannel.sh $CHANNEL_NAME $CLI_DELAY $MAX_RETRY $VERBOSE
+  if [ "$CHANNEL_MODE" == "multi" ]; then
+    infoln "Multi-channel mode: creating 3 channels"
+    for ch in "$CHANNEL_CONSENT" "$CHANNEL_AUDIT" "$CHANNEL_EHR_HASH"; do
+      infoln "Creating channel '${ch}'..."
+      scripts/createChannel.sh $ch $CLI_DELAY $MAX_RETRY $VERBOSE
+    done
+    successln "All 3 channels created: $CHANNEL_CONSENT, $CHANNEL_AUDIT, $CHANNEL_EHR_HASH"
+  else
+    scripts/createChannel.sh $CHANNEL_NAME $CLI_DELAY $MAX_RETRY $VERBOSE
+  fi
 }
 
 
 ## Call the script to deploy a chaincode to the channel
 function deployCC() {
-  scripts/deployCC.sh $CHANNEL_NAME $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
-
-  if [ $? -ne 0 ]; then
-    fatalln "Deploying chaincode failed"
+  if [ "$CHANNEL_MODE" == "multi" ]; then
+    infoln "Multi-channel mode: deploying chaincode to 3 channels"
+    for ch in "$CHANNEL_CONSENT" "$CHANNEL_AUDIT" "$CHANNEL_EHR_HASH"; do
+      infoln "Deploying chaincode '${CC_NAME}' to channel '${ch}'..."
+      scripts/deployCC.sh $ch $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
+      if [ $? -ne 0 ]; then
+        fatalln "Deploying chaincode to channel '${ch}' failed"
+      fi
+    done
+    successln "Chaincode deployed to all 3 channels"
+  else
+    scripts/deployCC.sh $CHANNEL_NAME $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
+    if [ $? -ne 0 ]; then
+      fatalln "Deploying chaincode failed"
+    fi
   fi
 }
 
@@ -312,6 +332,7 @@ function printHelp() {
   println
   println "    Flags:"
   println "      -c <channel name> - Name of channel to create (defaults to \"ehr-channel\")"
+  println "      -channels <mode> - Channel mode: 'single' (default, 1 channel) or 'multi' (3 channels: consent, audit, ehr-hash)"
   println "      -r <max retry> - CLI times out after specified number of attempts (defaults to 5)"
   println "      -d <delay> - CLI delays for a specified number of seconds (defaults to 3)"
   println "      -s <dbtype> - Peer state database to deploy: goleveldb (default) or couchdb"
@@ -330,7 +351,9 @@ function printHelp() {
   println "    network.sh up -s couchdb"
   println "    network.sh up -s couchdb -crypto 'Certificate Authorities'"
   println "    network.sh createChannel -c ehr-channel"
+  println "    network.sh createChannel -channels multi              # creates 3 channels"
   println "    network.sh deployCC -ccn ehrcc -ccp ./chaincode-javascript -ccl javascript"
+  println "    network.sh deployCC -channels multi -ccn ehrcc -ccp ./chaincode-javascript -ccl javascript  # deploy to 3 channels"
 }
 
 . ./network.config
@@ -441,6 +464,14 @@ while [[ $# -ge 1 ]] ; do
     CRYPTO="$2"
     shift
     ;;
+  -channels )
+    CHANNEL_MODE="$2"
+    if [ "$CHANNEL_MODE" != "single" ] && [ "$CHANNEL_MODE" != "multi" ]; then
+      errorln "Invalid channel mode: $CHANNEL_MODE. Use 'single' or 'multi'."
+      exit 1
+    fi
+    shift
+    ;;
   -org )
     ORG="$2"
     shift
@@ -476,9 +507,14 @@ fi
 # Determine mode of operation and printing out what we asked for
 if [ "$MODE" == "up" ]; then
   infoln "Starting nodes with CLI timeout of '${MAX_RETRY}' tries and CLI delay of '${CLI_DELAY}' seconds and using database '${DATABASE}' ${CRYPTO_MODE}"
+  infoln "Channel mode: ${CHANNEL_MODE}"
   networkUp
 elif [ "$MODE" == "createChannel" ]; then
-  infoln "Creating channel '${CHANNEL_NAME}'."
+  if [ "$CHANNEL_MODE" == "multi" ]; then
+    infoln "Creating 3 channels: '${CHANNEL_CONSENT}', '${CHANNEL_AUDIT}', '${CHANNEL_EHR_HASH}'."
+  else
+    infoln "Creating channel '${CHANNEL_NAME}'."
+  fi
   infoln "If network is not up, starting nodes with CLI timeout of '${MAX_RETRY}' tries and CLI delay of '${CLI_DELAY}' seconds and using database '${DATABASE} ${CRYPTO_MODE}"
   createChannel
 elif [ "$MODE" == "down" ]; then
@@ -489,7 +525,11 @@ elif [ "$MODE" == "restart" ]; then
   networkDown
   networkUp
 elif [ "$MODE" == "deployCC" ]; then
-  infoln "deploying chaincode on channel '${CHANNEL_NAME}'"
+  if [ "$CHANNEL_MODE" == "multi" ]; then
+    infoln "Deploying chaincode to 3 channels: '${CHANNEL_CONSENT}', '${CHANNEL_AUDIT}', '${CHANNEL_EHR_HASH}'"
+  else
+    infoln "deploying chaincode on channel '${CHANNEL_NAME}'"
+  fi
   deployCC
 elif [ "$MODE" == "cc" ] && [ "$SUBCOMMAND" == "package" ]; then
   packageChaincode
