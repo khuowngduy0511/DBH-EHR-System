@@ -33,9 +33,6 @@ public class AuditBlockchainService : IAuditBlockchainService
             FabricChaincodes.AuditChaincode,
             ChaincodeFunctions.CreateAuditEntry,
             entry.AuditId,
-            entry.ActorDid,
-            entry.TargetType,
-            entry.TargetId,
             entryJson);
 
         if (result.Success)
