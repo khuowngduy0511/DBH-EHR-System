@@ -2,6 +2,8 @@
 
 An Electronic Health Record (EHR) management system built on Hyperledger Fabric with three organizations: **Hospital1**, **Hospital2**, and **Clinic**. Medical records are stored in **IPFS**; the blockchain stores pointers (CIDs) and manages access control through consent-based permissions.
 
+Certificates are managed by **Fabric Certificate Authorities (CA)** — not `cryptogen` — enabling dynamic user registration and enrollment at runtime.
+
 ## Network Architecture
 
 | Component           | Container                 | Port  |
@@ -10,9 +12,13 @@ An Electronic Health Record (EHR) management system built on Hyperledger Fabric 
 | Hospital1 Peer      | `peer0.hospital1.ehr.com` | 7051  |
 | Hospital2 Peer      | `peer0.hospital2.ehr.com` | 9051  |
 | Clinic Peer         | `peer0.clinic.ehr.com`    | 11051 |
-| CouchDB (Hospital1) | `couchdb0`                | 5984  |
-| CouchDB (Hospital2) | `couchdb1`                | 7984  |
-| CouchDB (Clinic)    | `couchdb2`                | 9984  |
+| CouchDB (Hospital1) | `couchdbHospital1`        | 5984  |
+| CouchDB (Hospital2) | `couchdbHospital2`        | 7984  |
+| CouchDB (Clinic)    | `couchdbClinic`           | 9984  |
+| CA (Hospital1)      | `ca_hospital1`            | 7054  |
+| CA (Hospital2)      | `ca_hospital2`            | 8054  |
+| CA (Clinic)         | `ca_clinic`               | 10054 |
+| CA (Orderer)        | `ca_orderer`              | 9054  |
 
 ## Prerequisites
 
@@ -28,9 +34,11 @@ Running on linux
 ### 1. Bring Up the Network
 
 ```bash
-cd DBH.Blockchain.Service
+cd DBH.Blockchain.Network
 ./network.sh up -s couchdb
 ```
+
+This uses **Fabric CA** by default (`CRYPTO="CA"` in `network.config`). The CA containers start first, then identities for all orgs are registered and enrolled automatically via `organizations/fabric-ca/registerEnroll.sh`.
 
 - If there is error, try
 
@@ -85,7 +93,7 @@ peer chaincode invoke -o localhost:7050 \
   --peerAddresses localhost:7051 --tlsRootCertFiles $PEER0_H1_CA \
   --peerAddresses localhost:9051 --tlsRootCertFiles $PEER0_H2_CA \
   --peerAddresses localhost:11051 --tlsRootCertFiles $PEER0_CL_CA \
-  -c '{"function":"CreateEHR","Args":["EHR007","PAT006","QmNewIpfsCidAbcde12345","Prescription"]}'
+  -c '{"function":"CreateEHR","Args":["EHR007","PAT006","DOC005","QmNewIpfsCidAbcde12345","Prescription"]}'
 ```
 
 ### 7. Grant Consent (Allow Clinic to Read a Record)
@@ -226,16 +234,23 @@ ehr/
 ├── compose/                  # Docker Compose files
 │   ├── compose-ehr-net.yaml
 │   ├── compose-couch.yaml
+│   ├── compose-ca.yaml       # Fabric CA containers
 │   └── docker/
 ├── configtx/
 │   └── configtx.yaml
 ├── organizations/
-│   ├── cryptogen/
+│   ├── cryptogen/            # Cryptogen configs (fallback)
+│   ├── fabric-ca/            # Fabric CA configs & enrollment scripts
+│   │   ├── hospital1/
+│   │   ├── hospital2/
+│   │   ├── clinic/
+│   │   ├── ordererOrg/
+│   │   └── registerEnroll.sh # Identity registration & enrollment
 │   ├── ccp-generate.sh
 │   ├── ccp-template.json
 │   └── ccp-template.yaml
 ├── scripts/
 ├── network.sh
-├── network.config
+├── network.config            # Default: CRYPTO="CA"
 └── README.md
 ```

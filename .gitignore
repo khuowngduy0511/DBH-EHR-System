@@ -513,7 +513,7 @@ ordererOrganizations/
 peerOrganizations/
 
 # Ignore all contents of the fabric-ca directory
-src/DBH.Blockchain.Service/organizations/fabric-ca/**/*
+src/DBH.Blockchain.Network/organizations/fabric-ca/**/*
 
 # Do NOT ignore the specific shell script
-!src/DBH.Blockchain.Service/organizations/fabric-ca/registerEnroll.sh
+!src/DBH.Blockchain.Network/organizations/fabric-ca/registerEnroll.sh
