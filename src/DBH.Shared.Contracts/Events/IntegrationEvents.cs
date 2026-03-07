@@ -188,3 +188,32 @@ public class MembershipCreatedEvent : IntegrationEvent
     public Guid OrganizationId { get; init; }
     public string Role { get; init; } = string.Empty;
 }
+
+// ============================================================================
+// Appointment Events
+// ============================================================================
+
+public class AppointmentCreatedEvent : IntegrationEvent
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid DoctorId { get; init; }
+    public Guid OrganizationId { get; init; }
+    public DateTime ScheduledAt { get; init; }
+}
+
+public class AppointmentStatusChangedEvent : IntegrationEvent
+{
+    public Guid AppointmentId { get; init; }
+    public string OldStatus { get; init; } = string.Empty;
+    public string NewStatus { get; init; } = string.Empty;
+}
+
+public class EncounterCreatedEvent : IntegrationEvent
+{
+    public Guid EncounterId { get; init; }
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid DoctorId { get; init; }
+    public Guid OrganizationId { get; init; }
+}

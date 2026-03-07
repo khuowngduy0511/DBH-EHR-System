@@ -5,7 +5,7 @@ namespace DBH.Appointment.Service.Models.Entities;
 
 /// <summary>
 /// Encounter entity — represents a clinical encounter (visit) linked to an appointment
-/// Matches ERD: encounters(encounter_id, patient_id, doctor_id, appointment_id, org_id, notes, created_at)
+
 /// </summary>
 [Table("encounters")]
 public class Encounter

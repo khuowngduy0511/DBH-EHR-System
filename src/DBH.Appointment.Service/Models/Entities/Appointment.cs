@@ -6,7 +6,6 @@ namespace DBH.Appointment.Service.Models.Entities;
 
 /// <summary>
 /// Appointment entity — represents a scheduled appointment between a patient and a doctor
-/// Matches ERD: appointments(appointment_id, patient_id, doctor_id, org_id, scheduled_at, status, created_at)
 /// </summary>
 [Table("appointments")]
 public class Appointment
