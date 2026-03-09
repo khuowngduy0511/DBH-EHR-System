@@ -513,6 +513,7 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+<<<<<<< HEAD
 # 1. Ignore Generated Channel Artifacts
 # These are generated transactions and blocks specific to your environment
 /channel-artifacts/*.tx
@@ -528,10 +529,7 @@ organizations/ordererOrganizations/*
 organizations/peerOrganizations/*
 # 4. Ignore Fabric CA Server Databases and States
 # If using CAs, they generate local SQLite DBs and issuer keys
-organizations/fabric-ca/ordererOrg/*
-organizations/fabric-ca/hospital1/*
-organizations/fabric-ca/hospital2/*
-organizations/fabric-ca/clinic/*
+organizations/fabric-ca/*
 # 5. Ignore Ledger Data
 # If you run the network locally, it may create ledger backups
 /ledgers
@@ -541,3 +539,14 @@ organizations/fabric-ca/clinic/*
 *.tar.gz
 # 7. Ignore Logs
 log.txt
+=======
+# Blockchain CA
+ordererOrganizations/
+peerOrganizations/
+
+# Ignore all contents of the fabric-ca directory
+src/DBH.Blockchain.Network/organizations/fabric-ca/**/*
+
+# Do NOT ignore the specific shell script
+organizations/fabric-ca/registerEnroll.sh
+>>>>>>> khoi/feat/blockchain-service
