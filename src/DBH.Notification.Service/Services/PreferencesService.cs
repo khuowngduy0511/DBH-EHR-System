@@ -1,4 +1,4 @@
-using DBH.Notification.Service.Data;
+using DBH.Notification.Service.DbContext;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
 using Microsoft.EntityFrameworkCore;

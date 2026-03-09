@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using DBH.Consent.Service.Data;
+using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.Services;
 using DBH.Shared.Infrastructure;
 using Microsoft.EntityFrameworkCore;

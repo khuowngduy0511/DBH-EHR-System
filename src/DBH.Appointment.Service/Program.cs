@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using DBH.Appointment.Service.Data;
+using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;

@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using DBH.Audit.Service.Data;
+using DBH.Audit.Service.DbContext;
 using DBH.Audit.Service.Services;
 using DBH.Shared.Infrastructure;
 using Microsoft.EntityFrameworkCore;

@@ -1,4 +1,4 @@
-using DBH.Consent.Service.Data;
+using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts.Blockchain;

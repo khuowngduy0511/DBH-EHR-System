@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using DBH.Notification.Service.Data;
+using DBH.Notification.Service.DbContext;
 using DBH.Notification.Service.Services;
 using DBH.Notification.Service.Models.Config;
 using Microsoft.AspNetCore.Authentication.JwtBearer;

@@ -1,6 +1,6 @@
 
     using System.Text;
-    using DBH.Auth.Service.Data;
+    using DBH.Auth.Service.DbContext;
     using DBH.Auth.Service.Repositories;
     using DBH.Auth.Service.Services;
     using Microsoft.AspNetCore.Authentication.JwtBearer;

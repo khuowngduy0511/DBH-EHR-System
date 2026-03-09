@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using DBH.EHR.Service.Data;
+using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;

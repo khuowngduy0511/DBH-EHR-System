@@ -1,4 +1,4 @@
-using DBH.Audit.Service.Data;
+using DBH.Audit.Service.DbContext;
 using DBH.Audit.Service.DTOs;
 using DBH.Audit.Service.Models.Entities;
 using DBH.Audit.Service.Models.Enums;

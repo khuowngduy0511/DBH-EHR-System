@@ -2,7 +2,7 @@ using DBH.EHR.Service.Models.Documents;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 
-namespace DBH.EHR.Service.Data;
+namespace DBH.EHR.Service.DbContext;
 
 /// <summary>
 /// MongoDB configuration
