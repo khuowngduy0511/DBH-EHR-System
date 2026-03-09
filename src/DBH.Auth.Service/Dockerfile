@@ -15,11 +15,11 @@ COPY src/DBH.Shared.Domain/DBH.Shared.Domain.csproj ./src/DBH.Shared.Domain/
 COPY src/DBH.Shared.Contracts/DBH.Shared.Contracts.csproj ./src/DBH.Shared.Contracts/
 COPY src/DBH.Shared.Infrastructure/DBH.Shared.Infrastructure.csproj ./src/DBH.Shared.Infrastructure/
 
-# Restore dependencies
-RUN dotnet restore src/DBH.Auth.Service/DBH.Auth.Service.csproj
-
-# Copy all source code
+# Copy all source code first so NuGet restore can find all projects
 COPY src/ ./src/
+
+# Restore dependencies for the Auth Service
+RUN dotnet restore src/DBH.Auth.Service/DBH.Auth.Service.csproj
 
 # Build and publish
 RUN dotnet publish src/DBH.Auth.Service/DBH.Auth.Service.csproj \

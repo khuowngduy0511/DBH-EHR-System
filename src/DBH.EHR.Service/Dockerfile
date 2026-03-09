@@ -2,14 +2,24 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy csproj and restore
-COPY DBH.EHR.Service/DBH.EHR.Service.csproj ./DBH.EHR.Service/
-RUN dotnet restore DBH.EHR.Service/DBH.EHR.Service.csproj
+# Copy solution and project files
+COPY DBH.EHR.System.sln ./
+COPY src/DBH.EHR.Service/DBH.EHR.Service.csproj ./src/DBH.EHR.Service/
+COPY src/DBH.Shared.Domain/DBH.Shared.Domain.csproj ./src/DBH.Shared.Domain/
+COPY src/DBH.Shared.Contracts/DBH.Shared.Contracts.csproj ./src/DBH.Shared.Contracts/
+COPY src/DBH.Shared.Infrastructure/DBH.Shared.Infrastructure.csproj ./src/DBH.Shared.Infrastructure/
 
-# Copy source and build
-COPY DBH.EHR.Service/ ./DBH.EHR.Service/
-WORKDIR /src/DBH.EHR.Service
-RUN dotnet publish -c Release -o /app/publish --no-restore
+# Copy all source code first so NuGet restore can find all projects
+COPY src/ ./src/
+
+# Restore dependencies for the EHR Service
+RUN dotnet restore src/DBH.EHR.Service/DBH.EHR.Service.csproj
+
+# Build and publish
+RUN dotnet publish src/DBH.EHR.Service/DBH.EHR.Service.csproj \
+    -c Release \
+    -o /app/publish \
+    --no-restore
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
