@@ -31,6 +31,11 @@ Certificates are managed by **Fabric Certificate Authorities (CA)** — not `cry
 
 Running on linux
 
+chmod +x organizations/ccp-generate.sh
+chmod +x scripts/\*.sh
+chmod +x network.sh
+chmod +x explorer/setup.sh
+
 ### 1. Bring Up the Network
 
 ```bash
@@ -42,8 +47,7 @@ This uses **Fabric CA** by default (`CRYPTO="CA"` in `network.config`). The CA c
 
 - If there is error, try
 
-chmod +x organizations/ccp-generate.sh
-chmod +x scripts/\*.sh
+
 
 ### 2. Create the Channel
 
