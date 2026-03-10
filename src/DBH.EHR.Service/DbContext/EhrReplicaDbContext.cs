@@ -2,19 +2,19 @@ using DBH.EHR.Service.Models.Entities;
 using DBH.EHR.Service.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
-namespace DBH.EHR.Service.Data;
+namespace DBH.EHR.Service.DbContext;
 
 /// <summary>
-/// PostgreSQL Primary - Đọc/Ghi
+/// PostgreSQL Replica - Chỉ đọc 
 /// </summary>
-public class EhrPrimaryDbContext : DbContext
+public class EhrReplicaDbContext : Microsoft.EntityFrameworkCore.DbContext
 {
-    public EhrPrimaryDbContext(DbContextOptions<EhrPrimaryDbContext> options) 
+    public EhrReplicaDbContext(DbContextOptions<EhrReplicaDbContext> options) 
         : base(options)
     {
     }
 
-    // Bảng EHR
+    // Bảng EHR 
     public DbSet<EhrRecord> EhrRecords => Set<EhrRecord>();
     public DbSet<EhrVersion> EhrVersions => Set<EhrVersion>();
     public DbSet<EhrFile> EhrFiles => Set<EhrFile>();
@@ -40,16 +40,6 @@ public class EhrPrimaryDbContext : DbContext
             entity.Property(e => e.TxStatus)
                 .HasConversion<string>()
                 .HasMaxLength(20);
-
-            entity.HasOne(e => e.EhrRecord)
-                .WithMany(r => r.Versions)
-                .HasForeignKey(e => e.EhrId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.PreviousVersion)
-                .WithMany()
-                .HasForeignKey(e => e.PreviousVersionId)
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<EhrFile>(entity =>
@@ -60,11 +50,6 @@ public class EhrPrimaryDbContext : DbContext
             entity.Property(e => e.ReportType)
                 .HasConversion<string>()
                 .HasMaxLength(30);
-
-            entity.HasOne(e => e.EhrRecord)
-                .WithMany(r => r.Files)
-                .HasForeignKey(e => e.EhrId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<EhrSubscription>(entity =>
@@ -75,11 +60,6 @@ public class EhrPrimaryDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
-
-            entity.HasOne(e => e.EhrRecord)
-                .WithMany()
-                .HasForeignKey(e => e.EhrId)
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<EhrAccessLog>(entity =>
@@ -94,11 +74,6 @@ public class EhrPrimaryDbContext : DbContext
             entity.Property(e => e.VerifyStatus)
                 .HasConversion<string>()
                 .HasMaxLength(10);
-
-            entity.HasOne(e => e.EhrRecord)
-                .WithMany()
-                .HasForeignKey(e => e.EhrId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

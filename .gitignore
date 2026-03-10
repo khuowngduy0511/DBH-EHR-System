@@ -512,3 +512,46 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# 1. Ignore Generated Channel Artifacts
+# These are generated transactions and blocks specific to your environment
+/channel-artifacts/*.tx
+/channel-artifacts/*.block
+/channel-artifacts/*.json
+/channel-artifacts/*.pb
+
+# 2. Ignore the System Genesis Block
+# This is uniquely generated when you start the network
+system-genesis-block/*
+
+# 3. Ignore ALL Generated Crypto Material (CRITICAL!)
+# This prevents your private keys and certificates from being published
+organizations/ordererOrganizations/*
+organizations/peerOrganizations/*
+
+# 4. Ignore Fabric CA Server Databases and States
+# If using CAs, they generate local SQLite DBs and issuer keys
+organizations/fabric-ca/*
+!organizations/fabric-ca/registerEnroll.sh
+
+# 5. Ignore Ledger Data
+# If you run the network locally, it may create ledger backups
+/ledgers
+/ledgers-backup
+
+# 6. Ignore Chaincode Packages
+# Compressed chaincode packages shouldn't be tracked
+*.tar.gz
+
+# 7. Ignore Logs
+log.txt
+
+# Blockchain CA
+ordererOrganizations/
+peerOrganizations/
+
+# Ignore all contents of the fabric-ca directory
+src/DBH.Blockchain.Network/organizations/fabric-ca/**/*
+
+# Do NOT ignore the specific shell script
+!src/DBH.Blockchain.Network/organizations/fabric-ca/registerEnroll.sh

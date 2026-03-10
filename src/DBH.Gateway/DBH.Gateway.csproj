@@ -14,4 +14,8 @@
     <PackageReference Include="AspNetCoreRateLimit" Version="5.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\DBH.Shared.Infrastructure\DBH.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

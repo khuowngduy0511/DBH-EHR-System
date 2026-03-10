@@ -1,4 +1,4 @@
-using DBH.Organization.Service.Data;
+using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;

@@ -11,6 +11,7 @@
     <!-- AWS S3 & KMS for encrypted file storage -->
     <PackageReference Include="AWSSDK.S3" Version="3.7.405.10" />
     <PackageReference Include="AWSSDK.KeyManagementService" Version="3.7.402" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
     
     <!-- Redis Cache -->
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />

@@ -19,9 +19,10 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
   </ItemGroup>
 
-  <!-- Chỉ reference Shared.Contracts cho Integration Events -->
+  <!-- Reference Shared for Integration Events and Infrastructure -->
   <ItemGroup>
     <ProjectReference Include="..\DBH.Shared.Contracts\DBH.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\DBH.Shared.Infrastructure\DBH.Shared.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

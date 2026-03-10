@@ -1,4 +1,4 @@
-using DBH.EHR.Service.Data;
+using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 

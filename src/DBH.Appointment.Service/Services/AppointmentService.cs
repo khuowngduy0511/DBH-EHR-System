@@ -1,4 +1,4 @@
-using DBH.Appointment.Service.Data;
+using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.DTOs;
 using DBH.Appointment.Service.Models.Entities;
 using DBH.Appointment.Service.Models.Enums;

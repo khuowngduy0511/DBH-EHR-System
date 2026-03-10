@@ -1,0 +1,184 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+---
+################################################################################
+#   Section: Organizations
+################################################################################
+Organizations:
+  - &OrdererOrg
+    Name: OrdererOrg
+    ID: OrdererMSP
+    MSPDir: ../organizations/ordererOrganizations/ehr.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+    OrdererEndpoints:
+      - orderer.ehr.com:7050
+
+  - &Hospital1Org
+    Name: Hospital1MSP
+    ID: Hospital1MSP
+    MSPDir: ../organizations/peerOrganizations/hospital1.ehr.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('Hospital1MSP.admin', 'Hospital1MSP.peer', 'Hospital1MSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('Hospital1MSP.admin', 'Hospital1MSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('Hospital1MSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('Hospital1MSP.peer')"
+
+  - &Hospital2Org
+    Name: Hospital2MSP
+    ID: Hospital2MSP
+    MSPDir: ../organizations/peerOrganizations/hospital2.ehr.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('Hospital2MSP.admin', 'Hospital2MSP.peer', 'Hospital2MSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('Hospital2MSP.admin', 'Hospital2MSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('Hospital2MSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('Hospital2MSP.peer')"
+
+  - &ClinicOrg
+    Name: ClinicMSP
+    ID: ClinicMSP
+    MSPDir: ../organizations/peerOrganizations/clinic.ehr.com/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('ClinicMSP.admin', 'ClinicMSP.peer', 'ClinicMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('ClinicMSP.admin', 'ClinicMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('ClinicMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('ClinicMSP.peer')"
+
+################################################################################
+#   SECTION: Capabilities
+################################################################################
+Capabilities:
+  Channel: &ChannelCapabilities
+    V2_0: true
+  Orderer: &OrdererCapabilities
+    V2_0: true
+  Application: &ApplicationCapabilities
+    V2_5: true
+
+################################################################################
+#   SECTION: Application
+################################################################################
+Application: &ApplicationDefaults
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+    LifecycleEndorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+    Endorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+  Capabilities:
+    <<: *ApplicationCapabilities
+
+################################################################################
+#   SECTION: Orderer
+################################################################################
+Orderer: &OrdererDefaults
+  Addresses:
+    - orderer.ehr.com:7050
+  BatchTimeout: 2s
+  BatchSize:
+    MaxMessageCount: 10
+    AbsoluteMaxBytes: 99 MB
+    PreferredMaxBytes: 512 KB
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+    BlockValidation:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+
+################################################################################
+#   CHANNEL
+################################################################################
+Channel: &ChannelDefaults
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Admins"
+  Capabilities:
+    <<: *ChannelCapabilities
+
+################################################################################
+#   Profile
+################################################################################
+Profiles:
+  ChannelUsingRaft:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      OrdererType: etcdraft
+      EtcdRaft:
+        Consenters:
+          - Host: orderer.ehr.com
+            Port: 7050
+            ClientTLSCert: ../organizations/ordererOrganizations/ehr.com/orderers/orderer.ehr.com/tls/server.crt
+            ServerTLSCert: ../organizations/ordererOrganizations/ehr.com/orderers/orderer.ehr.com/tls/server.crt
+      Organizations:
+        - *OrdererOrg
+      Capabilities: *OrdererCapabilities
+    Application:
+      <<: *ApplicationDefaults
+      Organizations:
+        - *Hospital1Org
+        - *Hospital2Org
+        - *ClinicOrg
+      Capabilities: *ApplicationCapabilities

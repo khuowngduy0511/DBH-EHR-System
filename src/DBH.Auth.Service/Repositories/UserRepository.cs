@@ -1,7 +1,7 @@
 
 using DBH.Auth.Service.Models.Entities;
 using Microsoft.EntityFrameworkCore;
-using DBH.Auth.Service.Data;
+using DBH.Auth.Service.DbContext;
 
 namespace DBH.Auth.Service.Repositories;
 

@@ -1,4 +1,4 @@
-using DBH.EHR.Service.Data;
+using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Models.Documents;
 using DBH.EHR.Service.Models.Enums;
 using MongoDB.Bson;

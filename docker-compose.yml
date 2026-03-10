@@ -29,7 +29,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
       ehr_service:
         condition: service_healthy
@@ -45,46 +45,46 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  # ASP.NET Core Auth Service (TODO: implement later)
+  # ASP.NET Core Auth Service
   # ===========================================================================
-  # auth_service:
-  #   build:
-  #     context: ./src
-  #     dockerfile: DBH.Auth.Service/Dockerfile
-  #   container_name: dbh_auth_service
-  #   environment:
-  #     ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-  #     CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
-  #     CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
-  #   expose:
-  #     - "8080"
-  #   depends_on:
-  #     pg_primary:
-  #       condition: service_healthy
-  #     mongo1:
-  #       condition: service_healthy
-  #   networks:
-  #     - dbh_network
-  #   profiles:
-  #     - api
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-  #     interval: 30s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
+  auth_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Auth.Service/Dockerfile
+    container_name: dbh_auth_service
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      CONNECTION_STRING_POSTGRESQL: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      CONNECTION_STRING_MONGODB: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
+    expose:
+      - "8080"
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      mongo1:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    profiles:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ===========================================================================
   # ASP.NET Core EHR Service
   # ===========================================================================
   ehr_service:
     build:
-      context: ./src
-      dockerfile: DBH.EHR.Service/Dockerfile
+      context: .
+      dockerfile: src/DBH.EHR.Service/Dockerfile
     container_name: dbh_ehr_service
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ConnectionStrings__PostgresPrimary: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      ConnectionStrings__EhrDb: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       ConnectionStrings__PostgresReplica: "Host=pg_replica;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       MongoDB__ConnectionString: "mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0"
       MongoDB__DatabaseName: ${MONGO_INITDB_DATABASE:-dbh_ehr}

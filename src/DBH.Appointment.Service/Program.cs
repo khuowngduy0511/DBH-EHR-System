@@ -1,8 +1,9 @@
 using System.Text.Json.Serialization;
-using DBH.Appointment.Service.Data;
+using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using DBH.Shared.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,15 +30,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Configure standard JWT Auth from DBH.Shared.Infrastructure if present
-// Assuming there is an extension like builder.Services.AddJwtAuthentication(builder.Configuration)
-// We will simply add standard auth:
-builder.Services.AddAuthentication("Bearer")
-    .AddJwtBearer("Bearer", options =>
-    {
-        options.Authority = builder.Configuration["Jwt:Issuer"];
-        options.Audience = builder.Configuration["Jwt:Audience"];
-        options.RequireHttpsMetadata = false; // Set to true in prod
-    });
+builder.Services.AddDbhAuthentication(builder.Configuration);
 
 // ============================================================================
 // Database Configuration
