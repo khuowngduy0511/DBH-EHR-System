@@ -28,6 +28,23 @@ secrets.json
 **/data/
 
 # =============================================================================
+# IPFS LOCAL NODE DATA (large/generated; safe to recreate)
+# =============================================================================
+/ipfs_data/
+**/ipfs_data/**/autoconf/
+**/ipfs_data/**/blocks/
+**/ipfs_data/**/datastore/
+**/ipfs_data/**/keystore/
+**/download_files*/
+**/download*/
+
+# =============================================================================
+# CRYPTOGRAPHY OUTPUTS (generated artifacts)
+# =============================================================================
+**/*.aes
+**/*.decrypted
+
+# =============================================================================
 # BLOCKCHAIN - JS chaincode dependencies (installed at build time)
 # =============================================================================
 blockchain/chaincode/**/node_modules/
@@ -554,3 +571,4 @@ src/DBH.Blockchain.Network/organizations/fabric-ca/**/*
 
 # Do NOT ignore the specific shell script
 !src/DBH.Blockchain.Network/organizations/fabric-ca/registerEnroll.sh
+download_files/

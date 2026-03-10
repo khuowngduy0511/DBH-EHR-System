@@ -1,0 +1,16 @@
+services:
+  ipfs:
+    image: ipfs/kubo:release
+    container_name: ipfs-node
+    restart: unless-stopped
+    ports:
+      - "4001:4001" # Swarm
+      - "4001:4001/udp" # Swarm QUIC
+      - "5001:5001" # API + Web UI
+      - "8080:8080" # Public Gateway
+    volumes:
+      - ./ipfs_staging:/export
+      - ./ipfs_data:/data/ipfs
+    environment:
+      - IPFS_PROFILE=server
+      - IPFS_PATH=/data/ipfs
