@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -175,4 +175,3 @@ public static class IpfsClientService
         return Path.Combine(Directory.GetCurrentDirectory(), fileName);
     }
 }
-

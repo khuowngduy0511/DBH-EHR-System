@@ -34,7 +34,8 @@ public class EhrBlockchainService : IEhrBlockchainService
             ChaincodeFunctions.CreateEhrHash,
             record.EhrId,
             record.Version.ToString(),
-            recordJson);
+            recordJson,
+            record.EncryptedAesKey);
 
         if (result.Success)
         {

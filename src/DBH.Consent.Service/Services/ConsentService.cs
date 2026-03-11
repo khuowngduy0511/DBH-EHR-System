@@ -2,8 +2,10 @@ using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace DBH.Consent.Service.Services;
 
@@ -12,15 +14,21 @@ public class ConsentService : IConsentService
     private readonly ConsentDbContext _context;
     private readonly ILogger<ConsentService> _logger;
     private readonly IConsentBlockchainService? _blockchainService;
+    private readonly IEhrBlockchainService? _ehrBlockchainService;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public ConsentService(
         ConsentDbContext context,
         ILogger<ConsentService> logger,
-        IConsentBlockchainService? blockchainService = null)
+        IHttpClientFactory httpClientFactory,
+        IConsentBlockchainService? blockchainService = null,
+        IEhrBlockchainService? ehrBlockchainService = null)
     {
         _context = context;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
         _blockchainService = blockchainService;
+        _ehrBlockchainService = ehrBlockchainService;
     }
 
     // =========================================================================
@@ -45,6 +53,55 @@ public class ConsentService : IConsentService
             };
         }
 
+        // === Encryption: Lấy AES key của EHR và wrap lại cho Grantee ===
+        string wrappedKeyForGrantee = string.Empty;
+        if (request.EhrId.HasValue)
+        {
+            try
+            {
+                var authClient = _httpClientFactory.CreateClient("AuthService");
+                var ehrClient = _httpClientFactory.CreateClient("EhrService"); // Cần lấy record để lấy EncryptedAesKey của patient
+
+                // 1. Lấy patient private key (cần unwrap bằng MasterKey - rủi ro thiết kế nếu flow bắt patient gửi private key raw lên đây, hoặc AuthService có endpoint giải mã)
+                // Theo kiến trúc: Auth Service cung cấp EncryptedPrivateKey -> ConsentService có cấu hình MasterKey để decrypt
+                var patientKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
+                var granteeKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.GranteeId}/keys");
+
+                if (patientKeyRes.IsSuccessStatusCode && granteeKeyRes.IsSuccessStatusCode)
+                {
+                    var pKeyJson = await patientKeyRes.Content.ReadAsStringAsync();
+                    var gKeyJson = await granteeKeyRes.Content.ReadAsStringAsync();
+                    var patientKeys = JsonSerializer.Deserialize<AuthUserKeysDto>(pKeyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    var granteeKeys = JsonSerializer.Deserialize<AuthUserKeysDto>(gKeyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                    if (patientKeys != null && granteeKeys != null)
+                    {
+                        var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
+
+                        // 2. Fetch EHR Blockchain record to get Patient's EncryptedAesKey
+                        if (_ehrBlockchainService != null && request.EhrId.HasValue)
+                        {
+                            var ehrHashRecordList = await _ehrBlockchainService.GetEhrHistoryAsync(request.EhrId.Value.ToString());
+                            var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
+                            
+                            if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))
+                            {
+                                // Unwrap with Patient's Private Key
+                                var blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrHash.EncryptedAesKey, patientPrivateKey);
+                                
+                                // Wrap with Grantee's Public Key
+                                wrappedKeyForGrantee = AsymmetricEncryptionService.WrapKey(blueKeyBytes, granteeKeys.PublicKey);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error wrapping key for grantee");
+            }
+        }
+
         // === Blockchain: Ghi consent lên Hyperledger Fabric ===
         string blockchainConsentId;
         string txHash;
@@ -64,7 +121,8 @@ public class ConsentService : IConsentService
                 ExpiresAt = request.DurationDays.HasValue
                     ? DateTime.UtcNow.AddDays(request.DurationDays.Value).ToString("o")
                     : null,
-                Status = "ACTIVE"
+                Status = "ACTIVE",
+                EncryptedAesKey = wrappedKeyForGrantee
             };
 
             var txResult = await _blockchainService.GrantConsentAsync(consentRecord);
@@ -612,4 +670,14 @@ public class ConsentService : IConsentService
             ExpiresAt = request.ExpiresAt
         };
     }
+}
+
+/// <summary>
+/// Response DTO từ Auth Service keys endpoint
+/// </summary>
+internal class AuthUserKeysDto
+{
+    public Guid UserId { get; set; }
+    public string PublicKey { get; set; } = string.Empty;
+    public string EncryptedPrivateKey { get; set; } = string.Empty;
 }

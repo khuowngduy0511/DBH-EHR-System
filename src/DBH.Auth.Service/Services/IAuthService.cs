@@ -6,8 +6,11 @@ namespace DBH.Auth.Service.Services;
 public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
+    Task<AuthResponse> RegisterAdminAsync(RegisterAdminRequest request);
+    Task<AuthResponse> UpdateRoleAsync(UpdateRoleRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress);
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task<bool> RevokeTokenAsync(Guid userId);
     Task<object?> GetMyProfileAsync(Guid userId);
+    Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
 }

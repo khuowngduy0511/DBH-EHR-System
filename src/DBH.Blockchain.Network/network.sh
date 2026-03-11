@@ -308,15 +308,25 @@ function createChannel() {
 ## Call the script to deploy a chaincode to the channel
 function deployCC() {
   if [ "$CHANNEL_MODE" == "multi" ]; then
-    infoln "Multi-channel mode: deploying chaincode to 3 channels"
-    for ch in "$CHANNEL_CONSENT" "$CHANNEL_AUDIT" "$CHANNEL_EHR_HASH"; do
-      infoln "Deploying chaincode '${CC_NAME}' to channel '${ch}'..."
-      scripts/deployCC.sh $ch $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
+    infoln "Multi-channel mode: deploying channel-specific chaincodes"
+
+    # channel -> (cc_name, cc_path)
+    CHANNELS=($CHANNEL_CONSENT $CHANNEL_AUDIT $CHANNEL_EHR_HASH)
+    CC_NAMES=("consentcc" "auditcc" "ehrcc")
+    CC_PATHS=("./chaincode/consent-js" "./chaincode/audit-js" "./chaincode/ehr-js")
+
+    for idx in ${!CHANNELS[@]}; do
+      ch=${CHANNELS[$idx]}
+      cc_name=${CC_NAMES[$idx]}
+      cc_path=${CC_PATHS[$idx]}
+
+      infoln "Deploying chaincode '${cc_name}' from '${cc_path}' to channel '${ch}'..."
+      scripts/deployCC.sh $ch $cc_name $cc_path $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
       if [ $? -ne 0 ]; then
-        fatalln "Deploying chaincode to channel '${ch}' failed"
+        fatalln "Deploying chaincode '${cc_name}' to channel '${ch}' failed"
       fi
     done
-    successln "Chaincode deployed to all 3 channels"
+    successln "Chaincodes deployed: consent-js -> ${CHANNEL_CONSENT}, audit-js -> ${CHANNEL_AUDIT}, ehr-js -> ${CHANNEL_EHR_HASH}"
   else
     scripts/deployCC.sh $CHANNEL_NAME $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
     if [ $? -ne 0 ]; then

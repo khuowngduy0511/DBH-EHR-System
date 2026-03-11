@@ -78,6 +78,34 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy EHR Payload (Document) theo ID - Bắt buộc có X-Requester-Id
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/document")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetEhrDocument(
+        Guid ehrId,
+        [FromQuery] bool useReplica = false,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
+    {
+        if (!requesterId.HasValue)
+            return BadRequest(new { Message = "X-Requester-Id header is required to download EHR document" });
+
+        var (decryptedData, consentDenied, denyMessage) = await _ehrService.GetEhrDocumentAsync(
+            ehrId, requesterId.Value, useReplica);
+        
+        if (consentDenied)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+        
+        if (string.IsNullOrEmpty(decryptedData))
+            return NotFound(new { Message = $"EHR Document {ehrId} not found or extraction failed" });
+        
+        return Content(decryptedData, "application/json");
+    }
+
+    /// <summary>
     /// Lấy EHR của bệnh nhân
     /// </summary>
     [HttpGet("records/patient/{patientId:guid}")]

@@ -91,6 +91,12 @@ builder.Services.AddHttpClient("ConsentService", client =>
     client.BaseAddress = new Uri(consentUrl);
 });
 
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["ServiceUrls:AuthService"] ?? "http://localhost:5001";
+    client.BaseAddress = new Uri(authUrl);
+});
+
 var app = builder.Build();
 
 // ============================================================================
