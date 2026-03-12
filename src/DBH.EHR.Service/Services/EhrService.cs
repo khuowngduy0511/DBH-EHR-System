@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DBH.EHR.Service.Models.Documents;
-using DBH.EHR.Service.Models.Documents;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Models.Entities;
 using DBH.EHR.Service.Models.Enums;
@@ -11,6 +10,7 @@ using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Infrastructure.Ipfs;
 using MongoDB.Bson;
 
 namespace DBH.EHR.Service.Services;
@@ -119,7 +119,27 @@ public class EhrService : IEhrService
         var blueKeyBytes = aes.Key;
 
         var encryptedDataStr = SymmetricEncryptionService.EncryptString(documentJson, blueKeyBytes);
-        var encryptedDataBson = new BsonDocument("encryptedText", encryptedDataStr);
+        
+        // Upload to IPFS
+        string ipfsCid = string.Empty;
+        try 
+        {
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, encryptedDataStr);
+            var uploadRes = await IpfsClientService.UploadAsync(tempFile);
+            if (uploadRes != null)
+            {
+                ipfsCid = uploadRes.Hash;
+            }
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS");
+            ipfsCid = "IPFS_UPLOAD_FAILED";
+        }
+
+        var encryptedDataBson = new BsonDocument("ipfsCid", ipfsCid);
         
         // Wrap AES blue key with Patient's Public Key
         string encryptedAesKey = string.Empty;
@@ -263,10 +283,29 @@ public class EhrService : IEhrService
         if (ehrDoc == null)
              return (null, false, "MongoDB Document not found");
 
-        if (!ehrDoc.Data.Contains("encryptedText"))
+        if (!ehrDoc.Data.Contains("encryptedText") && !ehrDoc.Data.Contains("ipfsCid"))
              return (ehrDoc.Data.ToJson(), false, null); // Legacy plain-text support
 
-        string encryptedText = ehrDoc.Data["encryptedText"].AsString;
+        string encryptedText = string.Empty;
+        if (ehrDoc.Data.Contains("ipfsCid"))
+        {
+            var cid = ehrDoc.Data["ipfsCid"].AsString;
+            try
+            {
+                var downloadedPath = await IpfsClientService.RetrieveAsync(cid);
+                encryptedText = await File.ReadAllTextAsync(downloadedPath);
+                if (File.Exists(downloadedPath)) File.Delete(downloadedPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", cid);
+                return (null, false, "Failed to retrieve document from IPFS");
+            }
+        }
+        else
+        {
+            encryptedText = ehrDoc.Data["encryptedText"].AsString;
+        }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{requesterId}/keys");

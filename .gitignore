@@ -48,7 +48,7 @@ secrets.json
 # BLOCKCHAIN - JS chaincode dependencies (installed at build time)
 # =============================================================================
 blockchain/chaincode/**/node_modules/
-
+node_modules/
 # =============================================================================
 # USER-SPECIFIC FILES
 # =============================================================================

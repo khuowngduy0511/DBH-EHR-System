@@ -3,7 +3,7 @@
 
 channel_name=$1
 
-export PATH=${ROOTDIR}/../bin:${PWD}/../bin:$PATH
+export PATH=${ROOTDIR}/bin:${PWD}/bin:$PATH
 export ORDERER_ADMIN_TLS_SIGN_CERT=${PWD}/organizations/ordererOrganizations/ehr.com/orderers/orderer.ehr.com/tls/server.crt /dev/null 2>&1
 export ORDERER_ADMIN_TLS_PRIVATE_KEY=${PWD}/organizations/ordererOrganizations/ehr.com/orderers/orderer.ehr.com/tls/server.key /dev/null 2>&1
 

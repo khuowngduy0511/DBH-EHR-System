@@ -18,6 +18,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<Role> _roleRepository;
     private readonly IGenericRepository<UserRole> _userRoleRepository;
     private readonly ITokenService _tokenService;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -25,6 +26,7 @@ public class AuthService : IAuthService
         IGenericRepository<UserSecurity> securityRepository,
         IGenericRepository<Role> roleRepository,
         IGenericRepository<UserRole> userRoleRepository,
+        ILogger<AuthService> logger,
         ITokenService tokenService)
     {
         _userRepository = userRepository;
@@ -33,25 +35,30 @@ public class AuthService : IAuthService
         _roleRepository = roleRepository;
         _userRoleRepository = userRoleRepository;
         _tokenService = tokenService;
+        _logger = logger;
     }
 
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress)
     {
+        _logger.LogInformation("Login attempt for user: {Email}", request.Email);
         var user = await _userRepository.GetByEmailWithRolesAsync(request.Email);
 
         if (user == null)
         {
+            _logger.LogWarning("User not found: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "Invalid email or password." };
         }
 
         if (string.IsNullOrEmpty(user.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
+            _logger.LogWarning("Invalid password for user: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "Invalid email or password." };
         }
 
         if (user.Status != Models.Enums.UserStatus.Active)
         {
+            _logger.LogWarning("User account is not active: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "User account delete" };
         }
         
@@ -62,12 +69,13 @@ public class AuthService : IAuthService
     {
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
+            _logger.LogWarning("User with this email already exists: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "User with this email already exists." };
         }
 
         // Generate RSA/ECC Key Pair
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
-
+        _logger.LogInformation("Generated key pair for user: {PublicKey}", keyPair.PublicKey);
         // Create User
         var user = new User
         {

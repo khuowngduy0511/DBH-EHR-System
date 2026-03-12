@@ -6,7 +6,7 @@
 # with three organizations: Hospital1, Hospital2, and Clinic
 
 ROOTDIR=$(cd "$(dirname "$0")" && pwd)
-export PATH=${ROOTDIR}/../bin:${PWD}/../bin:$PATH
+export PATH=${ROOTDIR}/bin:${PWD}/bin:$PATH
 export FABRIC_CFG_PATH=${PWD}/configtx
 export VERBOSE=false
 
@@ -42,7 +42,7 @@ NONWORKING_VERSIONS="^1\.0\. ^1\.1\. ^1\.2\. ^1\.3\. ^1\.4\."
 function checkPrereqs() {
   peer version > /dev/null 2>&1
 
-  if [[ $? -ne 0 || ! -d "../config" ]]; then
+  if [[ $? -ne 0 || ! -d "config" ]]; then
     errorln "Peer binary and configuration files not found.."
     errorln
     errorln "Follow the instructions in the Fabric docs to install the Fabric Binaries:"
@@ -347,7 +347,7 @@ function packageChaincode() {
 
 ## Call the script to list installed and committed chaincode on a peer
 function listChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -359,7 +359,7 @@ function listChaincode() {
 
 ## Call the script to invoke
 function invokeChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -368,7 +368,7 @@ function invokeChaincode() {
 
 ## Call the script to query chaincode
 function queryChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG

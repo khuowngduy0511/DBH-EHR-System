@@ -1,0 +1,30 @@
+$kind: http-request
+url: "{{consent_url}}/api/access-requests"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "patientId": "{{patient_id}}",
+      "patientDid": "did:fabric:patient:{{patient_id}}",
+      "requesterId": "{{doctor_id}}",
+      "requesterDid": "did:fabric:doctor:{{doctor_id}}",
+      "requesterType": "DOCTOR",
+      "ehrId": "{{ehr_id}}",
+      "permission": "READ",
+      "purpose": "TREATMENT",
+      "reason": "Need to access the EHR for follow-up treatment."
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctor_token}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      var jsonData = pm.response.json();
+      pm.environment.set("request_id", jsonData.data.requestId);
+    language: text/javascript
+order: 5000

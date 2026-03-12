@@ -1,0 +1,312 @@
+{
+	"info": {
+		"_postman_id": "4b684bc9-9524-4fbb-8e81-cdca713d9d3f",
+		"name": "DBH EHR End-to-End Encryption Flow",
+		"description": "E2E from registering users, creating AES + IPFS EHR, to requesting and approving consent, and finally downloading and decrypting it.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Admin Registers a Doctor",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"doctor_token\", jsonData.token);",
+							"pm.environment.set(\"doctor_id\", jsonData.userId);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"fullName\": \"Dr. Strange\",\n  \"email\": \"doctor@test.com\",\n  \"password\": \"Password123!\",\n  \"phone\": \"1234567890\",\n  \"role\": \"Doctor\"\n}"
+				},
+				"url": {
+					"raw": "{{auth_url}}/api/v1/auth/admin/register",
+					"host": [
+						"{{auth_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"admin",
+						"register"
+					]
+				}
+			}
+		},
+		{
+			"name": "2. Register a Patient",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"patient_token\", jsonData.token);",
+							"pm.environment.set(\"patient_id\", jsonData.userId);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"fullName\": \"John Doe Patient\",\n  \"email\": \"patient@test.com\",\n  \"password\": \"Password123!\",\n  \"phone\": \"0987654321\"\n}"
+				},
+				"url": {
+					"raw": "{{auth_url}}/api/v1/auth/register",
+					"host": [
+						"{{auth_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"auth",
+						"register"
+					]
+				}
+			}
+		},
+		{
+			"name": "3. Doctor Creates EHR (Upload to IPFS + Wrapped Key)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"ehr_id\", jsonData.ehrId);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"patientId\": \"{{patient_id}}\",\n  \"createdByDoctorId\": \"{{doctor_id}}\",\n  \"encounterId\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"hospitalId\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"reportType\": \"DIAGNOSIS\",\n  \"data\": {\n    \"diagnosis\": \"Hypertension\",\n    \"notes\": \"Patient needs to take medication. This file will be encrypted and saved to IPFS.\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{ehr_url}}/Ehr/records",
+					"host": [
+						"{{ehr_url}}"
+					],
+					"path": [
+						"Ehr",
+						"records"
+					]
+				}
+			}
+		},
+		{
+			"name": "4. Doctor Views EHR Document (Fails - No Consent)",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Requester-Id",
+						"value": "{{doctor_id}}"
+					}
+				],
+				"url": {
+					"raw": "{{ehr_url}}/Ehr/records/{{ehr_id}}/document",
+					"host": [
+						"{{ehr_url}}"
+					],
+					"path": [
+						"Ehr",
+						"records",
+						"{{ehr_id}}",
+						"document"
+					]
+				}
+			}
+		},
+		{
+			"name": "5. Doctor Requests Consent",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"request_id\", jsonData.data.requestId);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"patientId\": \"{{patient_id}}\",\n  \"patientDid\": \"did:fabric:patient:{{patient_id}}\",\n  \"requesterId\": \"{{doctor_id}}\",\n  \"requesterDid\": \"did:fabric:doctor:{{doctor_id}}\",\n  \"requesterType\": \"DOCTOR\",\n  \"ehrId\": \"{{ehr_id}}\",\n  \"permission\": \"READ\",\n  \"purpose\": \"TREATMENT\",\n  \"reason\": \"Need to access the EHR for follow-up treatment.\"\n}"
+				},
+				"url": {
+					"raw": "{{consent_url}}/api/access-requests",
+					"host": [
+						"{{consent_url}}"
+					],
+					"path": [
+						"api",
+						"access-requests"
+					]
+				}
+			}
+		},
+		{
+			"name": "6. Patient Approves Consent",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{patient_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"approve\": true,\n  \"responseReason\": \"Approved for treatment.\"\n}"
+				},
+				"url": {
+					"raw": "{{consent_url}}/api/access-requests/{{request_id}}/respond",
+					"host": [
+						"{{consent_url}}"
+					],
+					"path": [
+						"api",
+						"access-requests",
+						"{{request_id}}",
+						"respond"
+					]
+				}
+			}
+		},
+		{
+			"name": "7. Doctor Downloads and Views EHR Document (Success)",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Requester-Id",
+						"value": "{{doctor_id}}"
+					}
+				],
+				"url": {
+					"raw": "{{ehr_url}}/Ehr/records/{{ehr_id}}/document",
+					"host": [
+						"{{ehr_url}}"
+					],
+					"path": [
+						"Ehr",
+						"records",
+						"{{ehr_id}}",
+						"document"
+					]
+				}
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "auth_url",
+			"value": "http://localhost:5101",
+			"type": "string"
+		},
+		{
+			"key": "ehr_url",
+			"value": "http://localhost:5003",
+			"type": "string"
+		},
+		{
+			"key": "consent_url",
+			"value": "http://localhost:5004",
+			"type": "string"
+		}
+	]
+}

@@ -97,5 +97,22 @@
 
     app.MapGet("/health", () => Results.Ok("Auth Service is healthy"));
 
+    using (var scope = app.Services.CreateScope())
+    {
+        var authDb = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        try
+        {
+            logger.LogInformation("Applying PostgreSQL migrations to Auth database...");
+            await authDb.Database.MigrateAsync();
+            logger.LogInformation("Auth database migrations completed successfully");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Migration failed. Ensuring tables exist...");
+            await authDb.Database.EnsureCreatedAsync();
+        }
+    }
     app.Run();
 

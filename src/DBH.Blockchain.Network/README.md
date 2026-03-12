@@ -31,6 +31,12 @@ Certificates are managed by **Fabric Certificate Authorities (CA)** — not `cry
 
 Running on linux
 
+### Change from crlf to lf
+
+sed -i 's/\r$//' network.sh scripts/\*.sh
+
+### Change permission
+
 chmod +x organizations/ccp-generate.sh
 chmod +x scripts/\*.sh
 chmod +x network.sh
@@ -46,8 +52,6 @@ cd DBH.Blockchain.Network
 This uses **Fabric CA** by default (`CRYPTO="CA"` in `network.config`). The CA containers start first, then identities for all orgs are registered and enrolled automatically via `organizations/fabric-ca/registerEnroll.sh`.
 
 - If there is error, try
-
-
 
 ### 2. Create the Channel
 
