@@ -102,12 +102,12 @@ public class AuthController : ControllerBase
         return Ok(profile);
     }
 
-    [HttpGet("{userId}/keys")]
-    public async Task<IActionResult> GetUserKeys(Guid userId)
-    {
-        var keys = await _authService.GetUserKeysAsync(userId);
-        if (keys == null) return NotFound("User keys not found. User might not have been initialized properly.");
-        return Ok(keys);
-    }
+//     [HttpGet("{userId}/keys")]
+//     public async Task<IActionResult> GetUserKeys(Guid userId)
+//     {
+//         var keys = await _authService.GetUserKeysAsync(userId);
+//         if (keys == null) return NotFound("User keys not found. User might not have been initialized properly.");
+//         return Ok(keys);
+//     }
 }
 

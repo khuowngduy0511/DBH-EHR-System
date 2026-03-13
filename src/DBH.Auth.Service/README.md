@@ -27,8 +27,8 @@ This sets up both the **Database** and the **Auth Service** automatically.
     ```
 
 3.  **Access the application**:
-    *   **Swagger UI**: [http://localhost:5001/swagger](http://localhost:5001/swagger)
-    *   **Health Check**: [http://localhost:5001/health](http://localhost:5001/health)
+    *   **Swagger UI**: [http://localhost:5101/swagger](http://localhost:5001/swagger)
+    *   **Health Check**: [http://localhost:5101/health](http://localhost:5001/health)
 
 4.  **Database Connection (External)**:
     *   **Host**: `localhost`

@@ -28,6 +28,16 @@ services:
       - "5101:8080"
     depends_on:
       - auth-db
+    develop:
+      watch:
+        - action: sync
+          path: ../../src/DBH.Auth.Service
+          target: /src/src/DBH.Auth.Service
+          ignore:
+            - bin/
+            - obj/
+        - action: rebuild
+          path: ../../src/DBH.Auth.Service/DBH.Auth.Service.csproj
     restart: always
 
 volumes:

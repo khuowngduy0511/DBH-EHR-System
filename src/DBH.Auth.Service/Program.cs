@@ -47,7 +47,9 @@
     // Database Configuration
     var pgConnectionString = builder.Configuration.GetConnectionString("PostgreSQL");
     builder.Services.AddDbContext<AuthDbContext>(options =>
-        options.UseNpgsql(pgConnectionString));
+        options.UseNpgsql(pgConnectionString)
+        .EnableSensitiveDataLogging() // Shows the actual values being sent
+       .EnableDetailedErrors());      // Provides more stack trace detail
 
     // Repositories
     builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));

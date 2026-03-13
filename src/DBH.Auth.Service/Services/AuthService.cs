@@ -75,7 +75,8 @@ public class AuthService : IAuthService
 
         // Generate RSA/ECC Key Pair
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
-        _logger.LogInformation("Generated key pair for user: {PublicKey}", keyPair.PublicKey);
+        // _logger.LogInformation("Generated key pair for PublicKey: {PublicKey}", keyPair.PublicKey);
+        // _logger.LogInformation("Generated key pair for PrivateKey: {Privatekey}", keyPair.PrivateKey);
         // Create User
         var user = new User
         {
@@ -84,7 +85,7 @@ public class AuthService : IAuthService
             Phone = request.Phone,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
-            PublicKey = keyPair.PublicKey,
+            // PublicKey = keyPair.PublicKey,
             CreatedAt = DateTime.UtcNow
         };
         
@@ -111,16 +112,16 @@ public class AuthService : IAuthService
         await _securityRepository.AddAsync(security);
 
         // Save Private Key in User Credentials
-        var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-        await _credentialRepository.AddAsync(new UserCredential
-        {
-            UserId = user.UserId,
-            Provider = ProviderType.SystemKey,
-            PublicKey = keyPair.PublicKey,
-            EncryptedPrivateKey = encryptedPrivateKey,
-            CreatedAt = DateTime.UtcNow,
-            Verified = true 
-        });
+        // var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
+        // await _credentialRepository.AddAsync(new UserCredential
+        // {
+        //     UserId = user.UserId,
+        //     Provider = ProviderType.SystemKey,
+        //     PublicKey = keyPair.PublicKey,
+        //     EncryptedPrivateKey = encryptedPrivateKey,
+        //     CreatedAt = DateTime.UtcNow,
+        //     Verified = true 
+        // });
 
         return new AuthResponse
         {
@@ -142,7 +143,7 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Invalid role specified." };
         }
 
-        var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
+        // var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
 
         var user = new User
         {
@@ -151,7 +152,7 @@ public class AuthService : IAuthService
             Phone = request.Phone,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
-            PublicKey = keyPair.PublicKey,
+            // PublicKey = keyPair.PublicKey,
             CreatedAt = DateTime.UtcNow
         };
         
@@ -174,16 +175,16 @@ public class AuthService : IAuthService
         };
         await _securityRepository.AddAsync(security);
 
-        var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-        await _credentialRepository.AddAsync(new UserCredential
-        {
-            UserId = user.UserId,
-            Provider = ProviderType.SystemKey,
-            PublicKey = keyPair.PublicKey,
-            EncryptedPrivateKey = encryptedPrivateKey,
-            CreatedAt = DateTime.UtcNow,
-            Verified = true 
-        });
+        // var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
+        // await _credentialRepository.AddAsync(new UserCredential
+        // {
+        //     UserId = user.UserId,
+        //     Provider = ProviderType.SystemKey,
+        //     PublicKey = keyPair.PublicKey,
+        //     EncryptedPrivateKey = encryptedPrivateKey,
+        //     CreatedAt = DateTime.UtcNow,
+        //     Verified = true 
+        // });
 
         return new AuthResponse
         {
