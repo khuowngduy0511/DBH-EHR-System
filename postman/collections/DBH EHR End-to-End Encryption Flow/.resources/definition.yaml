@@ -1,0 +1,7 @@
+$kind: collection
+description: E2E from registering users, creating AES + IPFS EHR, to requesting
+  and approving consent, and finally downloading and decrypting it.
+variables:
+  auth_url: http://localhost:5101
+  ehr_url: http://localhost:5003
+  consent_url: http://localhost:5004

@@ -1,7 +1,7 @@
 # DBH-EHR System - Docker Compose for Development
 # Decentralized Blockchain Healthcare System for Secure EHR Management
 
-version: '3.8'
+version: "3.8"
 
 services:
   # ============================================================================
@@ -35,25 +35,25 @@ services:
   # ============================================================================
   # MICROSERVICES
   # ============================================================================
-  
+
   auth_service:
     build:
       context: .
       dockerfile: src/DBH.Auth.Service/Dockerfile
     container_name: dbh_auth_service
     ports:
-      - "5001:5001"
+      - "5101:5101"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:5001
-      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+      - ASPNETCORE_URLS=http://+:5101
+      - ConnectionStrings__PostgreSQL=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
     depends_on:
       pg_primary:
         condition: service_healthy
     networks:
       - dbh_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5101/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -68,7 +68,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
-      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+      - ConnectionStrings__OrganizationDb=Host=pg_primary;Port=5432;Database=dbh_organization;Username=admin;Password=dbh_123
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -116,7 +116,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5004
-      - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
+      - ConnectionStrings__ConsentDb=Host=pg_primary;Port=5432;Database=dbh_consent;Username=admin;Password=dbh_123
       - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
     depends_on:
       pg_primary:
@@ -139,7 +139,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5005
-      - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
+      - ConnectionStrings__AuditDb=Host=pg_primary;Port=5432;Database=dbh_audit;Username=admin;Password=dbh_123
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -161,7 +161,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5006
-      - ConnectionStrings__IdentityDb=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+      - ConnectionStrings__DefaultConnection=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -187,7 +187,7 @@ services:
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=dbh_123
-      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit
+      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit,dbh_organization,dbh_consent,dbh_notification
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
       - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh

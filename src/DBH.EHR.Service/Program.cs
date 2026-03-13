@@ -50,15 +50,23 @@ builder.Services.AddDbContext<EhrPrimaryDbContext>(options =>
     });
 });
 
-// PostgreSQL Replica (Read-Only) - Optional
+// PostgreSQL Replica (Read-Only) - Falls back to primary if not configured
 var replicaConnectionString = builder.Configuration.GetConnectionString("PostgresReplica");
-if (!string.IsNullOrEmpty(replicaConnectionString))
+var effectiveReplicaConnectionString = string.IsNullOrEmpty(replicaConnectionString)
+    ? primaryConnectionString
+    : replicaConnectionString;
+
+builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
 {
-    builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
+    options.UseNpgsql(effectiveReplicaConnectionString, npgsqlOptions =>
     {
-        options.UseNpgsql(replicaConnectionString);
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorCodesToAdd: null);
+        npgsqlOptions.CommandTimeout(60);
     });
-}
+});
 
 // MongoDB FHIR Context
 builder.Services.Configure<MongoDbConfiguration>(builder.Configuration.GetSection("MongoDB"));
@@ -89,6 +97,12 @@ builder.Services.AddHttpClient("ConsentService", client =>
 {
     var consentUrl = builder.Configuration["ServiceUrls:ConsentService"] ?? "http://localhost:5003";
     client.BaseAddress = new Uri(consentUrl);
+});
+
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["ServiceUrls:AuthService"] ?? "http://localhost:5001";
+    client.BaseAddress = new Uri(authUrl);
 });
 
 var app = builder.Build();

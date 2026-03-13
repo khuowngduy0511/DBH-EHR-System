@@ -28,3 +28,25 @@ public class RefreshTokenRequest
 {
     public string RefreshToken { get; set; } = string.Empty;
 }
+
+public class RegisterAdminRequest
+{
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+}
+
+public class UpdateRoleRequest
+{
+    public Guid UserId { get; set; }
+    public string NewRole { get; set; } = string.Empty;
+}
+
+public class UserKeysDto
+{
+    public Guid UserId { get; set; }
+    public string PublicKey { get; set; } = string.Empty;
+    public string EncryptedPrivateKey { get; set; } = string.Empty;
+}

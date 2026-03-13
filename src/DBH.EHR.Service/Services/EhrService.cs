@@ -9,6 +9,8 @@ using DBH.EHR.Service.Models.Enums;
 using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Infrastructure.Ipfs;
 using MongoDB.Bson;
 
 namespace DBH.EHR.Service.Services;
@@ -23,6 +25,7 @@ public class EhrService : IEhrService
     private readonly IEhrDocumentRepository _ehrDocumentRepo;
     private readonly ILogger<EhrService> _logger;
     private readonly IEhrBlockchainService? _blockchainService;
+    private readonly IConsentBlockchainService? _consentBlockchainService;
     private readonly IHttpClientFactory _httpClientFactory;
 
     public EhrService(
@@ -30,13 +33,15 @@ public class EhrService : IEhrService
         IEhrDocumentRepository ehrDocumentRepo,
         ILogger<EhrService> logger,
         IHttpClientFactory httpClientFactory,
-        IEhrBlockchainService? blockchainService = null)
+        IEhrBlockchainService? blockchainService = null,
+        IConsentBlockchainService? consentBlockchainService = null)
     {
         _ehrRecordRepo = ehrRecordRepo;
         _ehrDocumentRepo = ehrDocumentRepo;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _blockchainService = blockchainService;
+        _consentBlockchainService = consentBlockchainService;
     }
 
     // EHR Records 
@@ -107,6 +112,60 @@ public class EhrService : IEhrService
             }
         }
         
+        // Generate AES-256 Blue Key and encrypt data
+        using var aes = System.Security.Cryptography.Aes.Create();
+        aes.KeySize = 256;
+        aes.GenerateKey();
+        var blueKeyBytes = aes.Key;
+
+        var encryptedDataStr = SymmetricEncryptionService.EncryptString(documentJson, blueKeyBytes);
+        
+        // Upload to IPFS
+        string ipfsCid = string.Empty;
+        try 
+        {
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, encryptedDataStr);
+            var uploadRes = await IpfsClientService.UploadAsync(tempFile);
+            if (uploadRes != null)
+            {
+                ipfsCid = uploadRes.Hash;
+            }
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS");
+            ipfsCid = "IPFS_UPLOAD_FAILED";
+        }
+
+        var encryptedDataBson = new BsonDocument("ipfsCid", ipfsCid);
+        
+        // Wrap AES blue key with Patient's Public Key
+        string encryptedAesKey = string.Empty;
+        try 
+        {
+            var authClient = _httpClientFactory.CreateClient("AuthService");
+            var keyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
+            if (keyRes.IsSuccessStatusCode)
+            {
+                var keysJson = await keyRes.Content.ReadAsStringAsync();
+                var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                {
+                    encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                }
+            }
+            else 
+            {
+                _logger.LogWarning("Failed to retrieve Patient Keys from Auth Service for encryption.");
+            }
+        }
+        catch (Exception ex)
+        {
+             _logger.LogError(ex, "Error calling Auth Service for patient keys");
+        }
+
         var ehrDocument = new EhrDocument
         {
             EhrId = savedRecord.EhrId,
@@ -114,7 +173,7 @@ public class EhrService : IEhrService
             FileId = savedFile.FileId,
             PatientId = request.PatientId,
             ReportType = request.ReportType.ToString(),
-            Data = BsonDocument.Parse(documentJson),
+            Data = encryptedDataBson,
             DataHash = dataHash,
             Version = 1,
             CreatedBy = request.CreatedByDoctorId,
@@ -140,7 +199,8 @@ public class EhrService : IEhrService
                     Version = 1,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
-                    Timestamp = DateTime.UtcNow.ToString("o")
+                    Timestamp = DateTime.UtcNow.ToString("o"),
+                    EncryptedAesKey = encryptedAesKey
                 };
 
                 var txResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
@@ -201,8 +261,8 @@ public class EhrService : IEhrService
         }
 
         // Gọi Consent Service để kiểm tra quyền truy cập
-        var hasConsent = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
-        if (!hasConsent)
+        var consentResult = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
+        if (!consentResult.HasAccess)
         {
             _logger.LogWarning("Consent denied: requester {RequesterId} has no consent for EHR {EhrId} of patient {PatientId}",
                 requesterId, ehrId, record.PatientId);
@@ -211,6 +271,95 @@ public class EhrService : IEhrService
 
         _logger.LogInformation("Consent verified: requester {RequesterId} granted access to EHR {EhrId}", requesterId, ehrId);
         return (MapToEhrRecordResponse(record, useReplica), false, null);
+    }
+
+    public async Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(Guid ehrId, Guid requesterId, bool useReplica = false)
+    {
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
+        if (record == null)
+            return (null, false, "EHR Record not found");
+
+        var ehrDoc = await _ehrDocumentRepo.GetByEhrIdAsync(ehrId, useReplica);
+        if (ehrDoc == null)
+             return (null, false, "MongoDB Document not found");
+
+        if (!ehrDoc.Data.Contains("encryptedText") && !ehrDoc.Data.Contains("ipfsCid"))
+             return (ehrDoc.Data.ToJson(), false, null); // Legacy plain-text support
+
+        string encryptedText = string.Empty;
+        if (ehrDoc.Data.Contains("ipfsCid"))
+        {
+            var cid = ehrDoc.Data["ipfsCid"].AsString;
+            try
+            {
+                var downloadedPath = await IpfsClientService.RetrieveAsync(cid);
+                encryptedText = await File.ReadAllTextAsync(downloadedPath);
+                if (File.Exists(downloadedPath)) File.Delete(downloadedPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", cid);
+                return (null, false, "Failed to retrieve document from IPFS");
+            }
+        }
+        else
+        {
+            encryptedText = ehrDoc.Data["encryptedText"].AsString;
+        }
+
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{requesterId}/keys");
+        if (!requesterKeyRes.IsSuccessStatusCode)
+           return (null, false, "Cannot fetch requester keys from Auth Service");
+           
+        var keysJson = await requesterKeyRes.Content.ReadAsStringAsync();
+        var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (keys == null || string.IsNullOrEmpty(keys.EncryptedPrivateKey))
+             return (null, false, "Requester missing encrypted private key.");
+
+        var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
+
+        byte[]? blueKeyBytes = null;
+
+        if (requesterId == record.PatientId)
+        {
+             if (_blockchainService != null) {
+                  var ehrHashRecordList = await _blockchainService.GetEhrHistoryAsync(ehrId.ToString());
+                  var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
+                  if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))
+                  {
+                       blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrHash.EncryptedAesKey, privateKey);
+                  }
+             }
+        }
+        else 
+        {
+             var consentResult = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
+             if (!consentResult.HasAccess || string.IsNullOrEmpty(consentResult.ConsentId))
+             {
+                  return (null, true, "Requester does not have consent to read this EHR.");
+             }
+
+             if (_consentBlockchainService != null) {
+                  var consentRecord = await _consentBlockchainService.GetConsentAsync(consentResult.ConsentId);
+                  if (consentRecord != null && !string.IsNullOrEmpty(consentRecord.EncryptedAesKey))
+                  {
+                       blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(consentRecord.EncryptedAesKey, privateKey);
+                  }
+             }
+        }
+
+        if (blueKeyBytes == null)
+            return (null, false, "Unable to extract AES wrapper key from ledgers");
+
+        try {
+            var decryptedPayload = SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
+            return (decryptedPayload, false, null);
+        }
+        catch (Exception ex) {
+            _logger.LogError(ex, "Failed to decrypt document payload for EHR {EhrId}", ehrId);
+            return (null, false, "Decryption failed due to invalid key or corrupted payload.");
+        }
     }
 
     public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false)
@@ -263,7 +412,7 @@ public class EhrService : IEhrService
     /// <summary>
     /// Gọi Consent Service API để kiểm tra requester có consent truy cập EHR không
     /// </summary>
-    private async Task<bool> VerifyConsentAsync(Guid patientId, Guid requesterId, Guid ehrId)
+    private async Task<(bool HasAccess, string? ConsentId)> VerifyConsentAsync(Guid patientId, Guid requesterId, Guid ehrId)
     {
         try
         {
@@ -288,7 +437,7 @@ public class EhrService : IEhrService
             {
                 _logger.LogWarning("Consent Service returned {StatusCode} for verify request", response.StatusCode);
                 // Fail-closed: nếu Consent Service không available, từ chối truy cập
-                return false;
+                return (false, null);
             }
             
             var json = await response.Content.ReadAsStringAsync();
@@ -297,18 +446,18 @@ public class EhrService : IEhrService
                 PropertyNameCaseInsensitive = true
             });
             
-            return result?.HasAccess ?? false;
+            return (result?.HasAccess ?? false, result?.ConsentId);
         }
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Cannot reach Consent Service for EHR {EhrId} consent verification", ehrId);
             // Fail-closed: không kết nối được thì từ chối
-            return false;
+            return (false, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error verifying consent for EHR {EhrId}", ehrId);
-            return false;
+            return (false, null);
         }
     }
 
@@ -368,4 +517,14 @@ internal class ConsentVerifyResponse
     public string? ConsentId { get; set; }
     public string? Scope { get; set; }
     public DateTime? ExpiresAt { get; set; }
+}
+
+/// <summary>
+/// Response DTO từ Auth Service keys endpoint
+/// </summary>
+internal class AuthUserKeysDto
+{
+    public Guid UserId { get; set; }
+    public string PublicKey { get; set; } = string.Empty;
+    public string EncryptedPrivateKey { get; set; } = string.Empty;
 }

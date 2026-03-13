@@ -15,10 +15,16 @@ public class UserCredential
 
     [MaxLength(255)]
     public string? CredentialValue { get; set; }
-
+    
     public bool Verified { get; set; }
 
     public DateTime? VerifiedAt { get; set; }
+
+    [MaxLength(2048)]
+    public string? PublicKey { get; set; }
+
+    [MaxLength(2048)]
+    public string? EncryptedPrivateKey { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -27,7 +27,23 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPost("registerAdmin")]
+    public async Task<IActionResult> RegisterAdmin([FromBody] RegisterAdminRequest request)
+    {
+        var response = await _authService.RegisterAdminAsync(request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
 
+    [HttpPut("updateRole")]
+    public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest request)
+    {
+        var response = await _authService.UpdateRoleAsync(request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -85,5 +101,13 @@ public class AuthController : ControllerBase
         if (profile == null) return NotFound();
         return Ok(profile);
     }
+
+//     [HttpGet("{userId}/keys")]
+//     public async Task<IActionResult> GetUserKeys(Guid userId)
+//     {
+//         var keys = await _authService.GetUserKeysAsync(userId);
+//         if (keys == null) return NotFound("User keys not found. User might not have been initialized properly.");
+//         return Ok(keys);
+//     }
 }
 

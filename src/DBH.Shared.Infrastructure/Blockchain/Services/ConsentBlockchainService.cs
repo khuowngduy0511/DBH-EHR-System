@@ -35,7 +35,8 @@ public class ConsentBlockchainService : IConsentBlockchainService
             record.ConsentId,
             record.PatientDid,
             record.GranteeDid,
-            recordJson);
+            recordJson,
+            record.EncryptedAesKey ?? string.Empty);
 
         if (result.Success)
         {

@@ -94,6 +94,7 @@ public class EhrHashRecord
     public string ContentHash { get; set; } = string.Empty;  // SHA-256
     public string FileHash { get; set; } = string.Empty;     // SHA-256 of uploaded file
     public string Timestamp { get; set; } = string.Empty;    // ISO 8601
+    public string EncryptedAesKey { get; set; } = string.Empty; // Wrapped blue key
 }
 
 /// <summary>
@@ -113,6 +114,7 @@ public class ConsentRecord
     public string Status { get; set; } = string.Empty;            // ACTIVE, REVOKED, EXPIRED
     public string? RevokedAt { get; set; }
     public string? RevokeReason { get; set; }
+    public string? EncryptedAesKey { get; set; } // Wrapped blue key for doctor
 }
 
 /// <summary>

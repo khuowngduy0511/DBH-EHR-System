@@ -54,6 +54,21 @@ builder.Services.AddDbContext<ConsentDbContext>(options =>
 builder.Services.AddScoped<IConsentService, ConsentService>();
 
 // ============================================================================
+// HTTP Clients for inter-service calls
+// ============================================================================
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["ServiceUrls:AuthService"] ?? "http://localhost:5101";
+    client.BaseAddress = new Uri(authUrl);
+});
+
+builder.Services.AddHttpClient("EhrService", client =>
+{
+    var ehrUrl = builder.Configuration["ServiceUrls:EhrService"] ?? "http://localhost:5003";
+    client.BaseAddress = new Uri(ehrUrl);
+});
+
+// ============================================================================
 // Blockchain Services (Hyperledger Fabric)
 // ============================================================================
 builder.Services.AddHyperledgerFabric(builder.Configuration);

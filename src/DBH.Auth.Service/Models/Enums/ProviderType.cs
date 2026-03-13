@@ -5,5 +5,6 @@ public enum ProviderType
     Email,
     Google,
     Facebook,
-    RefreshToken
+    RefreshToken,
+    SystemKey
 }

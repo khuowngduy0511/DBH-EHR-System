@@ -1,0 +1,14 @@
+# Use this workspace to collaborate
+workspace:
+  id: 438300db-2833-4c8e-8b2a-e3962de0bca5
+
+# Each entry here maps a local resource to one or more corresponding objects in Postman Cloud
+cloudResources:
+  collections:
+    ..\postman\collections\DBH EHR End-to-End Encryption Flow: 216ac46d-2ce8-4719-8fdd-eb5c3ac3e7b4
+
+# All resources in the `postman/` folder are automatically registered in Local View.
+# Point to additional files outside the `postman/` folder to register them individually. Example:
+#localResources:
+#  collections:
+#    - ../tests/E2E Test Collection/

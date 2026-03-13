@@ -15,6 +15,12 @@ public interface IEhrService
     /// </summary>
     Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> GetEhrRecordWithConsentCheckAsync(
         Guid ehrId, Guid requesterId, bool useReplica = false);
+        
+    /// <summary>
+    /// Lấy EHR Document đã được giải mã - trả null nếu không có quyền
+    /// </summary>
+    Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(
+        Guid ehrId, Guid requesterId, bool useReplica = false);
     
     Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false);
 

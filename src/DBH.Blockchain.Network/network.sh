@@ -6,7 +6,7 @@
 # with three organizations: Hospital1, Hospital2, and Clinic
 
 ROOTDIR=$(cd "$(dirname "$0")" && pwd)
-export PATH=${ROOTDIR}/../bin:${PWD}/../bin:$PATH
+export PATH=${ROOTDIR}/bin:${PWD}/bin:$PATH
 export FABRIC_CFG_PATH=${PWD}/configtx
 export VERBOSE=false
 
@@ -42,7 +42,7 @@ NONWORKING_VERSIONS="^1\.0\. ^1\.1\. ^1\.2\. ^1\.3\. ^1\.4\."
 function checkPrereqs() {
   peer version > /dev/null 2>&1
 
-  if [[ $? -ne 0 || ! -d "../config" ]]; then
+  if [[ $? -ne 0 || ! -d "config" ]]; then
     errorln "Peer binary and configuration files not found.."
     errorln
     errorln "Follow the instructions in the Fabric docs to install the Fabric Binaries:"
@@ -308,15 +308,25 @@ function createChannel() {
 ## Call the script to deploy a chaincode to the channel
 function deployCC() {
   if [ "$CHANNEL_MODE" == "multi" ]; then
-    infoln "Multi-channel mode: deploying chaincode to 3 channels"
-    for ch in "$CHANNEL_CONSENT" "$CHANNEL_AUDIT" "$CHANNEL_EHR_HASH"; do
-      infoln "Deploying chaincode '${CC_NAME}' to channel '${ch}'..."
-      scripts/deployCC.sh $ch $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
+    infoln "Multi-channel mode: deploying channel-specific chaincodes"
+
+    # channel -> (cc_name, cc_path)
+    CHANNELS=($CHANNEL_CONSENT $CHANNEL_AUDIT $CHANNEL_EHR_HASH)
+    CC_NAMES=("consentcc" "auditcc" "ehrcc")
+    CC_PATHS=("./chaincode/consent-js" "./chaincode/audit-js" "./chaincode/ehr-js")
+
+    for idx in ${!CHANNELS[@]}; do
+      ch=${CHANNELS[$idx]}
+      cc_name=${CC_NAMES[$idx]}
+      cc_path=${CC_PATHS[$idx]}
+
+      infoln "Deploying chaincode '${cc_name}' from '${cc_path}' to channel '${ch}'..."
+      scripts/deployCC.sh $ch $cc_name $cc_path $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
       if [ $? -ne 0 ]; then
-        fatalln "Deploying chaincode to channel '${ch}' failed"
+        fatalln "Deploying chaincode '${cc_name}' to channel '${ch}' failed"
       fi
     done
-    successln "Chaincode deployed to all 3 channels"
+    successln "Chaincodes deployed: consent-js -> ${CHANNEL_CONSENT}, audit-js -> ${CHANNEL_AUDIT}, ehr-js -> ${CHANNEL_EHR_HASH}"
   else
     scripts/deployCC.sh $CHANNEL_NAME $CC_NAME $CC_SRC_PATH $CC_SRC_LANGUAGE $CC_VERSION $CC_SEQUENCE $CC_INIT_FCN $CC_END_POLICY $CC_COLL_CONFIG $CLI_DELAY $MAX_RETRY $VERBOSE
     if [ $? -ne 0 ]; then
@@ -337,7 +347,7 @@ function packageChaincode() {
 
 ## Call the script to list installed and committed chaincode on a peer
 function listChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -349,7 +359,7 @@ function listChaincode() {
 
 ## Call the script to invoke
 function invokeChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -358,7 +368,7 @@ function invokeChaincode() {
 
 ## Call the script to query chaincode
 function queryChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/../config
+  export FABRIC_CFG_PATH=${PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
