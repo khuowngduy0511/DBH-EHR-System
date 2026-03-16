@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using BCrypt.Net;
 using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Contracts.Blockchain;
 
 namespace DBH.Auth.Service.Services;
 
@@ -19,6 +20,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<UserRole> _userRoleRepository;
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthService> _logger;
+    private readonly IFabricCaService _fabricCa;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -27,7 +29,8 @@ public class AuthService : IAuthService
         IGenericRepository<Role> roleRepository,
         IGenericRepository<UserRole> userRoleRepository,
         ILogger<AuthService> logger,
-        ITokenService tokenService)
+        ITokenService tokenService,
+        IFabricCaService fabricCa)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -36,6 +39,7 @@ public class AuthService : IAuthService
         _userRoleRepository = userRoleRepository;
         _tokenService = tokenService;
         _logger = logger;
+        _fabricCa = fabricCa;
     }
 
 
@@ -122,6 +126,24 @@ public class AuthService : IAuthService
         //     CreatedAt = DateTime.UtcNow,
         //     Verified = true 
         // });
+
+        // Enroll a Fabric CA blockchain identity for this user.
+        // Non-blocking: a failure here does not fail registration.
+        _ = Task.Run(async () =>
+        {
+            var roleName = patientRole?.RoleName.ToString() ?? "Patient";
+            var enrollResult = await _fabricCa.EnrollUserAsync(
+                enrollmentId: user.UserId.ToString(),
+                username: user.FullName ?? user.Email ?? user.UserId.ToString(),
+                role: roleName);
+
+            if (!enrollResult.Success)
+            {
+                _logger.LogWarning(
+                    "Blockchain enrollment skipped for user {UserId}: {Error}",
+                    user.UserId, enrollResult.ErrorMessage);
+            }
+        });
 
         return new AuthResponse
         {

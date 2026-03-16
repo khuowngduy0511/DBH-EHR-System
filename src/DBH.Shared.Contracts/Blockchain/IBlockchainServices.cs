@@ -1,6 +1,37 @@
 namespace DBH.Shared.Contracts.Blockchain;
 
 // ============================================================================
+// Fabric CA Enrollment
+// ============================================================================
+
+/// <summary>
+/// Result of a Fabric CA register+enroll operation
+/// </summary>
+public class FabricEnrollResult
+{
+    public bool Success { get; init; }
+    /// <summary>PEM-encoded signed certificate returned by the CA</summary>
+    public string? Certificate { get; init; }
+    /// <summary>PEM-encoded private key generated locally before enrollment</summary>
+    public string? PrivateKeyPem { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+
+/// <summary>
+/// Service that registers and enrolls a user identity on the Fabric Certificate Authority.
+/// </summary>
+public interface IFabricCaService
+{
+    /// <summary>
+    /// Register the identity on the CA and enroll (obtain a signed certificate).
+    /// </summary>
+    /// <param name="enrollmentId">Unique ID for the identity — typically the user's UID.</param>
+    /// <param name="username">Human-readable name stored as a certificate attribute.</param>
+    /// <param name="role">Role name used as the OU (Organizational Unit) attribute in the certificate.</param>
+    Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role);
+}
+
+// ============================================================================
 // Blockchain Service Interfaces
 // Được implement trong DBH.Shared.Infrastructure
 // ============================================================================
