@@ -1,0 +1,16 @@
+{
+  "name": "dbh-chaincode-base",
+  "version": "1.0.0",
+  "description": "Unified chaincode for EHR hash, consent, audit, and emergency access on a single channel.",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "fabric-chaincode-node start"
+  },
+  "dependencies": {
+    "fabric-contract-api": "~2.5",
+    "fabric-shim": "~2.5"
+  }
+}

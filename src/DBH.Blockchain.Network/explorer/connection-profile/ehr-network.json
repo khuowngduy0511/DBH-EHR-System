@@ -39,7 +39,7 @@
 		"Hospital1MSP": {
 			"mspid": "Hospital1MSP",
 			"adminPrivateKey": {
-				"path": "/tmp/crypto/peerOrganizations/hospital1.ehr.com/users/User1@hospital1.ehr.com/msp/keystore/572c2a5daf4b36f8ac0beee705ada1cb40791c2063ea03e02e61484ccc93b22b_sk"
+				"path": "/tmp/crypto/peerOrganizations/hospital1.ehr.com/users/User1@hospital1.ehr.com/msp/keystore/458a19ac7f920bbbf33ac3831f3a3393f1a50c490aada0ec38ae841fd4912d1d_sk"
 			},
 			"peers": ["peer0.hospital1.ehr.com"],
 			"signedCert": {
