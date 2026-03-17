@@ -12,9 +12,6 @@ public class Patient
 
     public DateOnly? Dob { get; set; }
 
-    [MaxLength(20)]
-    public string? Gender { get; set; }
-
     [MaxLength(10)]
     public string? BloodType { get; set; }
 

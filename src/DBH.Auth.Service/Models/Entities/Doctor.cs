@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using DBH.Auth.Service.Models.Enums;
 
 namespace DBH.Auth.Service.Models.Entities;
 
@@ -10,7 +11,6 @@ public class Doctor
     public Guid UserId { get; set; }
     public User User { get; set; } = null!;
 
-    public Guid? HospitalId { get; set; }
 
     [MaxLength(255)]
     public string? Specialty { get; set; }
@@ -20,6 +20,10 @@ public class Doctor
 
     [MaxLength(255)]
     public string? LicenseImage { get; set; }
+    
+    /// <summary>
+    /// Trạng thái xác minh
+    /// </summary>
+    public VerificationStatus VerifiedStatus { get; set; } = VerificationStatus.Pending;
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

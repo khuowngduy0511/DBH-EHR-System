@@ -6,5 +6,5 @@ public enum ProviderType
     Google,
     Facebook,
     RefreshToken,
-    SystemKey
+    EncryptedPrivateKey
 }

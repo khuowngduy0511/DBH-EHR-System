@@ -33,7 +33,7 @@ Running on linux
 
 ### Change from crlf to lf
 
-sed -i 's/\r$//' network.sh scripts/\*.sh
+find . -type f -name "*.sh" -exec sed -i 's/\r$//' {} +
 
 ### Change permission
 

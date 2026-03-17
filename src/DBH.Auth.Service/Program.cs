@@ -7,6 +7,8 @@
     using Microsoft.EntityFrameworkCore;
     using Microsoft.IdentityModel.Tokens;
     using Microsoft.OpenApi.Models;
+    using DBH.Shared.Contracts.Blockchain;
+    using DBH.Shared.Infrastructure.Blockchain;
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -58,6 +60,10 @@
     // Auth Services
     builder.Services.AddScoped<ITokenService, TokenService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
+
+    // Fabric CA enrollment (singleton because it caches admin crypto material)
+    builder.Services.Configure<FabricCaOptions>(builder.Configuration.GetSection(FabricCaOptions.SectionName));
+    builder.Services.AddSingleton<IFabricCaService, FabricCaService>();
 
     // JWT Authentication Configuration
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");
