@@ -20,11 +20,6 @@ public class Staff
     public StaffRole Role { get; set; }
 
     /// <summary>
-    /// Hospital/Organization ID (từ Organization Service)
-    /// </summary>
-    public Guid? HospitalId { get; set; }
-
-    /// <summary>
     /// Số giấy phép hành nghề (cho Pharmacist, LabTech)
     /// </summary>
     [MaxLength(100)]

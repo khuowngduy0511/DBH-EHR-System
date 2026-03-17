@@ -89,7 +89,7 @@ public class AuthService : IAuthService
             Phone = request.Phone,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
-            // PublicKey = keyPair.PublicKey,
+            PublicKey = keyPair.PublicKey,
             CreatedAt = DateTime.UtcNow
         };
         
@@ -116,16 +116,14 @@ public class AuthService : IAuthService
         await _securityRepository.AddAsync(security);
 
         // Save Private Key in User Credentials
-        // var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-        // await _credentialRepository.AddAsync(new UserCredential
-        // {
-        //     UserId = user.UserId,
-        //     Provider = ProviderType.SystemKey,
-        //     PublicKey = keyPair.PublicKey,
-        //     EncryptedPrivateKey = encryptedPrivateKey,
-        //     CreatedAt = DateTime.UtcNow,
-        //     Verified = true 
-        // });
+        var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
+        await _credentialRepository.AddAsync(new UserCredential
+        {
+            UserId = user.UserId,
+            Provider = ProviderType.EncryptedPrivateKey,
+            CredentialValue = encryptedPrivateKey,
+            CreatedAt = DateTime.UtcNow,
+        });
 
         // Enroll a Fabric CA blockchain identity for this user.
         // Non-blocking: a failure here does not fail registration.
@@ -165,7 +163,7 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Invalid role specified." };
         }
 
-        // var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
+        var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
 
         var user = new User
         {
@@ -174,7 +172,7 @@ public class AuthService : IAuthService
             Phone = request.Phone,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
-            // PublicKey = keyPair.PublicKey,
+            PublicKey = keyPair.PublicKey,
             CreatedAt = DateTime.UtcNow
         };
         
@@ -197,16 +195,14 @@ public class AuthService : IAuthService
         };
         await _securityRepository.AddAsync(security);
 
-        // var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-        // await _credentialRepository.AddAsync(new UserCredential
-        // {
-        //     UserId = user.UserId,
-        //     Provider = ProviderType.SystemKey,
-        //     PublicKey = keyPair.PublicKey,
-        //     EncryptedPrivateKey = encryptedPrivateKey,
-        //     CreatedAt = DateTime.UtcNow,
-        //     Verified = true 
-        // });
+        var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
+        await _credentialRepository.AddAsync(new UserCredential
+        {
+            UserId = user.UserId,
+            Provider = ProviderType.EncryptedPrivateKey,            
+            CredentialValue= encryptedPrivateKey,
+            CreatedAt = DateTime.UtcNow,            
+        });
 
         return new AuthResponse
         {
@@ -324,8 +320,8 @@ public class AuthService : IAuthService
 
     public async Task<UserKeysDto?> GetUserKeysAsync(Guid userId)
     {
-        var credentials = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == ProviderType.SystemKey);
-        if (credentials == null || string.IsNullOrEmpty(credentials.PublicKey) || string.IsNullOrEmpty(credentials.EncryptedPrivateKey))
+        var privateCredential = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == ProviderType.EncryptedPrivateKey);
+        if (privateCredential == null || string.IsNullOrEmpty(privateCredential.CredentialValue))
         {
             return null;
         }
@@ -333,8 +329,7 @@ public class AuthService : IAuthService
         return new UserKeysDto
         {
             UserId = userId,
-            PublicKey = credentials.PublicKey,
-            EncryptedPrivateKey = credentials.EncryptedPrivateKey
+            EncryptedPrivateKey = privateCredential.CredentialValue
         };
     }
 
@@ -359,7 +354,6 @@ public class AuthService : IAuthService
                 Provider = Models.Enums.ProviderType.RefreshToken,
                 CredentialValue = refreshToken,
                 CreatedAt = DateTime.UtcNow,
-                Verified = true 
             });
         }
 
