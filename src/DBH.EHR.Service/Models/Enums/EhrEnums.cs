@@ -11,24 +11,6 @@ public enum TxStatus
 }
 
 /// <summary>
-/// Loại báo cáo EHR (
-/// </summary>
-public enum ReportType
-{
-    LAB,
-    PRESCRIPTION,
-    VITAL_SIGNS,
-    DIAGNOSIS,
-    PROCEDURE,
-    IMAGING,
-    IMMUNIZATION,
-    ALLERGY,
-    DISCHARGE_SUMMARY,
-    CONSULTATION,
-    OTHER
-}
-
-/// <summary>
 /// Trạng thái subscription 
 /// </summary>
 public enum SubscriptionStatus

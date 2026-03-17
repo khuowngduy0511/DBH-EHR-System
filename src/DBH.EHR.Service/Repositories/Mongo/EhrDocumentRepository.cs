@@ -1,6 +1,5 @@
 using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Models.Documents;
-using DBH.EHR.Service.Models.Enums;
 using MongoDB.Bson;
 using MongoDB.Driver;
 
@@ -74,7 +73,7 @@ public class EhrDocumentRepository : IEhrDocumentRepository
         
         var filter = Builders<EhrDocument>.Filter.Eq(d => d.EhrId, ehrId);
         return await collection.Find(filter)
-            .SortByDescending(d => d.Version)
+            .SortByDescending(d => d.VersionNumber)
             .FirstOrDefaultAsync();
     }
 
@@ -117,26 +116,7 @@ public class EhrDocumentRepository : IEhrDocumentRepository
         
         var filter = Builders<EhrDocument>.Filter.Eq(d => d.EhrId, ehrId);
         return await collection.Find(filter)
-            .SortByDescending(d => d.Version)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<EhrDocument>> GetByReportTypeAsync(Guid patientId, ReportType reportType, bool useSecondary = false)
-    {
-        var node = useSecondary ? "SECONDARY" : "PRIMARY";
-        _logger.LogDebug("Đọc EhrDocuments loại {ReportType} cho bệnh nhân {PatientId} từ MongoDB {Node}", 
-            reportType, patientId, node);
-        
-        var collection = useSecondary 
-            ? _mongoContext.GetEhrDocumentsWithReadPreference(ReadPreference.SecondaryPreferred)
-            : _mongoContext.EhrDocuments;
-        
-        var filter = Builders<EhrDocument>.Filter.And(
-            Builders<EhrDocument>.Filter.Eq(d => d.PatientId, patientId),
-            Builders<EhrDocument>.Filter.Eq(d => d.ReportType, reportType.ToString())
-        );
-        return await collection.Find(filter)
-            .SortByDescending(d => d.CreatedAt)
+            .SortByDescending(d => d.VersionNumber)
             .ToListAsync();
     }
 

@@ -24,6 +24,7 @@ services:
       - consent_service
       - audit_service
       - notification_service
+      - appointment_service
     networks:
       - dbh_network
     healthcheck:
@@ -175,6 +176,36 @@ services:
       timeout: 10s
       retries: 3
 
+  appointment_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Appointment.Service/Dockerfile
+    container_name: dbh_appointment_service
+    ports:
+      - "5007:5007"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5007
+      - ConnectionStrings__AppointmentDb=Host=pg_primary;Port=5432;Database=dbh_appointment;Username=admin;Password=dbh_123
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=admin
+      - RabbitMQ__Password=dbh_123
+      - ServiceUrls__EhrService=http://ehr_service:5003
+      - ServiceUrls__OrganizationService=http://organization_service:5002
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # ============================================================================
   # DATABASES
   # ============================================================================
@@ -187,7 +218,7 @@ services:
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=dbh_123
-      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit,dbh_organization,dbh_consent,dbh_notification
+      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit,dbh_organization,dbh_consent,dbh_notification,dbh_appointment
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
       - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh

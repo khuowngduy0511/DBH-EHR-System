@@ -1,5 +1,4 @@
 using DBH.EHR.Service.Models.Entities;
-using DBH.EHR.Service.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace DBH.EHR.Service.DbContext;
@@ -29,27 +28,17 @@ public class EhrReplicaDbContext : Microsoft.EntityFrameworkCore.DbContext
         {
             entity.HasIndex(e => new { e.PatientId, e.CreatedAt });
             entity.HasIndex(e => e.EncounterId);
-            entity.HasIndex(e => new { e.HospitalId, e.CreatedAt });
+            entity.HasIndex(e => new { e.OrgId, e.CreatedAt });
         });
 
         modelBuilder.Entity<EhrVersion>(entity =>
         {
-            entity.HasIndex(e => new { e.EhrId, e.Version }).IsUnique();
-            entity.HasIndex(e => e.BlockchainTxHash).IsUnique();
-            
-            entity.Property(e => e.TxStatus)
-                .HasConversion<string>()
-                .HasMaxLength(20);
+            entity.HasIndex(e => new { e.EhrId, e.VersionNumber }).IsUnique();
         });
 
         modelBuilder.Entity<EhrFile>(entity =>
         {
-            entity.HasIndex(e => new { e.EhrId, e.Version, e.ReportType });
-            entity.HasIndex(e => new { e.CreatedBy, e.CreatedAt });
-            
-            entity.Property(e => e.ReportType)
-                .HasConversion<string>()
-                .HasMaxLength(30);
+            entity.HasIndex(e => e.EhrId);
         });
 
         modelBuilder.Entity<EhrSubscription>(entity =>

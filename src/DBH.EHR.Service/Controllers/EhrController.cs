@@ -19,7 +19,7 @@ public class EhrController : ControllerBase
         _logger = logger;
     }
 
-    //EHR Records
+    // EHR Records
 
     /// <summary>
     /// Tạo EHR mới - Ghi PG Primary + Mongo Primary
@@ -33,8 +33,8 @@ public class EhrController : ControllerBase
             return BadRequest(ModelState);
 
         _logger.LogInformation(
-            "POST /api/ehr/records - Tạo EHR cho bệnh nhân {PatientId} bởi bác sĩ {DoctorId}",
-            request.PatientId, request.CreatedByDoctorId);
+            "POST /api/ehr/records - Tạo EHR cho bệnh nhân {PatientId}",
+            request.PatientId);
 
         var result = await _ehrService.CreateEhrRecordAsync(request);
 
@@ -119,19 +119,19 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy EHR theo bệnh viện
+    /// Lấy EHR theo tổ chức (organization)
     /// </summary>
-    [HttpGet("records/hospital/{hospitalId:guid}")]
+    [HttpGet("records/org/{orgId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetHospitalEhrRecords(
-        Guid hospitalId, 
+    public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetOrgEhrRecords(
+        Guid orgId, 
         [FromQuery] bool useReplica = false)
     {
-        var records = await _ehrService.GetHospitalEhrRecordsAsync(hospitalId, useReplica);
+        var records = await _ehrService.GetOrgEhrRecordsAsync(orgId, useReplica);
         return Ok(records);
     }
 
-    //  EHR Versions 
+    // EHR Versions 
 
     /// <summary>
     /// Lấy tất cả versions của EHR
@@ -155,10 +155,9 @@ public class EhrController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<EhrFileDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrFileDto>>> GetEhrFiles(
         Guid ehrId,
-        [FromQuery] int? version = null,
         [FromQuery] bool useReplica = false)
     {
-        var files = await _ehrService.GetEhrFilesAsync(ehrId, version, useReplica);
+        var files = await _ehrService.GetEhrFilesAsync(ehrId, useReplica);
         return Ok(files);
     }
 }

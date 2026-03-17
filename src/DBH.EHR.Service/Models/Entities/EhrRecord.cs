@@ -4,7 +4,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace DBH.EHR.Service.Models.Entities;
 
 
-/// Bản ghi EHR chính 
+/// <summary>
+/// EHR Record entity — matches ERD: ehr_records table
+/// Fields: ehr_id, patient_id, encounter_id, org_id, data (jsonb), created_at
+/// </summary>
 [Table("ehr_records")]
 public class EhrRecord
 {
@@ -16,21 +19,23 @@ public class EhrRecord
     [Column("patient_id")]
     public Guid PatientId { get; set; }
 
-    ///  lượt khám 
+    /// <summary>
+    /// Encounter that created this EHR
+    /// </summary>
     [Column("encounter_id")]
     public Guid? EncounterId { get; set; }
 
-    /// Bệnh viện nơi tạo EHR
-    [Column("hospital_id")]
-    public Guid? HospitalId { get; set; }
+    /// <summary>
+    /// Organization where EHR was created
+    /// </summary>
+    [Column("org_id")]
+    public Guid? OrgId { get; set; }
 
-    [Required]
-    [Column("created_by_doctor")]
-    public Guid CreatedByDoctorId { get; set; }
-    
-    /// Version hiện tại 
-    [Column("current_version")]
-    public int CurrentVersion { get; set; } = 1;
+    /// <summary>
+    /// EHR data stored as JSONB (FHIR-compliant JSON, encrypted reference, etc.)
+    /// </summary>
+    [Column("data", TypeName = "jsonb")]
+    public string? Data { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

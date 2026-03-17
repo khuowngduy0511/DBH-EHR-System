@@ -1,95 +1,79 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
-using DBH.EHR.Service.Models.Enums;
 
 namespace DBH.EHR.Service.Models.DTOs;
 
 
-/// Request tạo EHR mới
+/// <summary>
+/// Request tạo EHR mới — aligned with ERD ehr_records table
+/// </summary>
 public class CreateEhrRecordDto
 {
     [Required]
     public Guid PatientId { get; set; }
 
-    [Required]
-    public Guid CreatedByDoctorId { get; set; }
-
-    /// ID lượt khám (nếu có)
+    /// <summary>
+    /// ID lượt khám (encounter) liên kết
+    /// </summary>
     public Guid? EncounterId { get; set; }
 
     /// <summary>
-    /// ID bệnh viện
+    /// ID tổ chức (organization)
     /// </summary>
-    public Guid? HospitalId { get; set; }
+    public Guid? OrgId { get; set; }
 
-
-    [Required]
-    public ReportType ReportType { get; set; }
-
-    /// Dữ liệu EHR (JSON)
+    /// <summary>
+    /// Dữ liệu EHR (FHIR JSON, chẩn đoán, phác đồ, etc.)
+    /// </summary>
     [Required]
     public JsonElement Data { get; set; }
-
-
-    /// Metadata bổ sung
-    public JsonElement? Metadata { get; set; }
 }
 
+/// <summary>
 /// Response sau khi tạo EHR
+/// </summary>
 public class CreateEhrRecordResponseDto
 {
     public Guid EhrId { get; set; }
-    public Guid VersionId { get; set; }
-    public Guid FileId { get; set; }
-    public int Version { get; set; }
+    public Guid? VersionId { get; set; }
+    public Guid? FileId { get; set; }
+    public int VersionNumber { get; set; }
     public string? OffchainDocId { get; set; }
     public string? DataHash { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
 /// Response EHR record đầy đủ
+/// </summary>
 public class EhrRecordResponseDto
 {
     public Guid EhrId { get; set; }
     public Guid PatientId { get; set; }
     public Guid? EncounterId { get; set; }
-    public Guid? HospitalId { get; set; }
-    public int CurrentVersion { get; set; }
+    public Guid? OrgId { get; set; }
     public EhrVersionDto? LatestVersionInfo { get; set; }
     public List<EhrFileDto>? Files { get; set; }
-    public Guid CreatedByDoctorId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
-/// Chi tiết version EHR
+/// Chi tiết version EHR — aligned with ERD ehr_versions table
 /// </summary>
 public class EhrVersionDto
 {
     public Guid VersionId { get; set; }
-    public int Version { get; set; }
-    public string? FileHash { get; set; }
-    public Guid? ChangedBy { get; set; }
-    public string? ChangeReason { get; set; }
-    public string? BlockchainTxHash { get; set; }
-    public string? TxStatus { get; set; }
+    public int VersionNumber { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
-/// Chi tiết file EHR
+/// Chi tiết file EHR — aligned with ERD ehr_files table
 /// </summary>
 public class EhrFileDto
 {
     public Guid FileId { get; set; }
-    public int Version { get; set; }
-    public string ReportType { get; set; } = string.Empty;
     public string? FileUrl { get; set; }
     public string? FileHash { get; set; }
-    public string? MimeType { get; set; }
-    public long? SizeBytes { get; set; }
-    public Guid? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; }
 }
-
-
