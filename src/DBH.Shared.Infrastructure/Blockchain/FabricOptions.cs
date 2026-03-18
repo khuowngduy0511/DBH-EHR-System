@@ -15,7 +15,7 @@ public class FabricOptions
     /// Khi false + crypto loaded: kết nối thật đến Fabric peer.
     /// Mặc định true để tránh crash khi chưa chạy network.sh
     /// </summary>
-    public bool SimulationMode { get; set; } = true;
+    public bool SimulationMode { get; set; } = false;
 
     /// <summary>Fabric Gateway peer endpoint (e.g., localhost:7051)</summary>
     public string PeerEndpoint { get; set; } = "localhost:7051";

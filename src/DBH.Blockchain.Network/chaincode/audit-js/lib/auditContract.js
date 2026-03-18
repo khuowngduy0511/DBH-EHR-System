@@ -25,7 +25,9 @@ class AuditContract extends Contract {
 
         // Composite key: AUDIT_{auditId}
         const key = ctx.stub.createCompositeKey('AUDIT', [auditID]);
-        const now = new Date().toISOString();
+        const txTimestamp = ctx.stub.getTxTimestamp();
+        const txMillis = (txTimestamp.seconds.low * 1000) + Math.floor(txTimestamp.nanos / 1000000);
+        const eventTimestamp = new Date(txMillis).toISOString();
         // Check for duplicate
         const existing = await ctx.stub.getState(key);
         if (existing && existing.length > 0) {
@@ -35,7 +37,7 @@ class AuditContract extends Contract {
         // Set metadata
         entry.txId = ctx.stub.getTxID();
         if (!entry.timestamp) {
-            entry.timestamp = new Date().toISOString();
+            entry.timestamp = eventTimestamp;
         }
 
         const entryBytes = Buffer.from(JSON.stringify(entry));
@@ -66,7 +68,7 @@ class AuditContract extends Contract {
             targetType: entry.targetType,
             targetId: entry.targetId,
             txId: entry.txId,
-            timestamp: now,
+            timestamp: eventTimestamp,
         }));
         ctx.stub.setEvent('AuditCreated', eventPayload);
     }

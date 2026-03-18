@@ -1,6 +1,8 @@
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 
 namespace DBH.Shared.Infrastructure.Blockchain.Services;
 
@@ -9,6 +11,12 @@ namespace DBH.Shared.Infrastructure.Blockchain.Services;
 /// </summary>
 public class ConsentBlockchainService : IConsentBlockchainService
 {
+    private static readonly JsonSerializerSettings ChaincodeJsonSettings = new()
+    {
+        ContractResolver = new CamelCasePropertyNamesContractResolver(),
+        NullValueHandling = NullValueHandling.Ignore
+    };
+
     private readonly IFabricGateway _gateway;
     private readonly ILogger<ConsentBlockchainService> _logger;
 
@@ -26,7 +34,7 @@ public class ConsentBlockchainService : IConsentBlockchainService
             "Granting consent on blockchain: ConsentId={ConsentId}, Patient={PatientDid}, Grantee={GranteeDid}",
             record.ConsentId, record.PatientDid, record.GranteeDid);
 
-        var recordJson = JsonConvert.SerializeObject(record);
+        var recordJson = JsonConvert.SerializeObject(record, ChaincodeJsonSettings);
 
         var result = await _gateway.SubmitTransactionAsync(
             FabricChannels.ConsentChannel,
@@ -108,8 +116,9 @@ public class ConsentBlockchainService : IConsentBlockchainService
             if (string.IsNullOrEmpty(resultJson) || resultJson == "{}")
                 return false;
 
-            var result = JsonConvert.DeserializeAnonymousType(resultJson, new { Valid = false });
-            return result?.Valid ?? false;
+            var payload = JObject.Parse(resultJson);
+            var validToken = payload.GetValue("valid", StringComparison.OrdinalIgnoreCase);
+            return validToken?.Value<bool>() ?? false;
         }
         catch (Exception ex)
         {
