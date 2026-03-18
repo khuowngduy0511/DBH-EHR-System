@@ -29,7 +29,7 @@ public class RefreshTokenRequest
     public string RefreshToken { get; set; } = string.Empty;
 }
 
-public class RegisterAdminRequest
+public class RegisterStaffDoctorRequest
 {
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;

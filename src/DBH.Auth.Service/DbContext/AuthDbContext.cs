@@ -35,14 +35,17 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.HasKey(e => e.UserId);
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.FullName).HasColumnName("full_name").HasMaxLength(255);
+            entity.Property(e => e.Gender).HasColumnName("gender");
             entity.Property(e => e.Email).HasColumnName("email").HasMaxLength(255);
             entity.HasIndex(e => e.Email).IsUnique();
             entity.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(50);
             entity.Property(e => e.Password).HasColumnName("password").HasMaxLength(255);
+            entity.Property(e => e.DateOfBirth).HasColumnName("date_of_birth");
+            entity.Property(e => e.Address).HasColumnName("address");
+            entity.Property(e => e.DepartmentId).HasColumnName("department_id");
             entity.Property(e => e.Status).HasColumnName("status").HasConversion<string>();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-            entity.Property(e => e.IpAddress).HasColumnName("ip_adrress").HasMaxLength(255); // Typo in ERD kept for consistency
-            entity.Property(e => e.PublicKey).HasColumnName("public_key").HasMaxLength(255);
+            entity.Property(e => e.PublicKey).HasColumnName("public_key");
         });
 
         // Role
@@ -82,11 +85,8 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.CredentialId).HasColumnName("credential_id");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.Property(e => e.Provider).HasColumnName("provider").HasConversion<string>();
-            entity.Property(e => e.CredentialValue).HasColumnName("credential_value").HasMaxLength(255);
-            entity.Property(e => e.Verified).HasColumnName("verified");
-            entity.Property(e => e.VerifiedAt).HasColumnName("verified_at");
+            entity.Property(e => e.CredentialValue).HasColumnName("credential_value");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-
             entity.HasIndex(e => new { e.UserId, e.Provider }).IsUnique();
 
             entity.HasOne(d => d.User)
@@ -120,11 +120,10 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.DoctorId).HasColumnName("doctor_id");
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.HasIndex(e => e.UserId).IsUnique();
-            entity.Property(e => e.HospitalId).HasColumnName("hospital_id");
             entity.Property(e => e.Specialty).HasColumnName("specialty").HasMaxLength(255);
             entity.Property(e => e.LicenseNumber).HasColumnName("license_number").HasMaxLength(100);
             entity.Property(e => e.LicenseImage).HasColumnName("license_image").HasMaxLength(255);
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.VerifiedStatus).HasColumnName("verified_status").HasConversion<string>();
 
             entity.HasOne(d => d.User)
                 .WithOne(p => p.DoctorProfile)
@@ -141,15 +140,29 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.UserId).HasColumnName("user_id");
             entity.HasIndex(e => e.UserId).IsUnique();
             entity.Property(e => e.Role).HasColumnName("role").HasConversion<string>();
-            entity.Property(e => e.HospitalId).HasColumnName("hospital_id");
             entity.Property(e => e.LicenseNumber).HasColumnName("license_number").HasMaxLength(100);
             entity.Property(e => e.Specialty).HasColumnName("specialty").HasMaxLength(255);
             entity.Property(e => e.VerifiedStatus).HasColumnName("verified_status").HasConversion<string>();
-            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
 
             entity.HasOne(d => d.User)
                 .WithOne(p => p.StaffProfile)
                 .HasForeignKey<Staff>(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Patient
+        modelBuilder.Entity<Patient>(entity =>
+        {
+            entity.ToTable("patients");
+            entity.HasKey(e => e.PatientId);
+            entity.Property(e => e.PatientId).HasColumnName("patient_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.Property(e => e.Dob).HasColumnName("dob");
+            entity.Property(e => e.BloodType).HasColumnName("blood_type").HasMaxLength(10);
+            entity.HasOne(d => d.User)
+                .WithOne(p => p.PatientProfile)
+                .HasForeignKey<Patient>(d => d.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -241,12 +254,12 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         modelBuilder.Entity<UserSecurity>().HasData(securities);
 
         // 5. Profiles (Seed basic placeholders)
-        modelBuilder.Entity<Doctor>().HasData(new Doctor { DoctorId = Guid.NewGuid(), UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc) });
-        modelBuilder.Entity<Patient>().HasData(new Patient { PatientId = Guid.NewGuid(), UserId = patientUserId, Gender = "Male", Dob = new DateOnly(1990, 1, 1), CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc) });
+        modelBuilder.Entity<Doctor>().HasData(new Doctor { DoctorId = Guid.NewGuid(), UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", VerifiedStatus = VerificationStatus.Verified });
+        modelBuilder.Entity<Patient>().HasData(new Patient { PatientId = Guid.NewGuid(), UserId = patientUserId, Dob = new DateOnly(1990, 1, 1) });
         modelBuilder.Entity<Staff>().HasData(
-            new Staff { StaffId = Guid.NewGuid(), UserId = pharmacistUserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM123", VerifiedStatus = VerificationStatus.Verified, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc) },
-            new Staff { StaffId = Guid.NewGuid(), UserId = nurseUserId, Role = StaffRole.Nurse, Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc) },
-            new Staff { StaffId = Guid.NewGuid(), UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc) }
+            new Staff { StaffId = Guid.NewGuid(), UserId = pharmacistUserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM123", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = Guid.NewGuid(), UserId = nurseUserId, Role = StaffRole.Nurse, Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = Guid.NewGuid(), UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified }
         );
     }
 }

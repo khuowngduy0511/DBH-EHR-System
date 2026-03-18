@@ -36,5 +36,4 @@ public class Staff
     /// </summary>
     public VerificationStatus VerifiedStatus { get; set; } = VerificationStatus.Pending;
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

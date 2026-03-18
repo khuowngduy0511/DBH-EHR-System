@@ -18,6 +18,9 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<UserSecurity> _securityRepository; 
     private readonly IGenericRepository<Role> _roleRepository;
     private readonly IGenericRepository<UserRole> _userRoleRepository;
+    private readonly IGenericRepository<Doctor> _doctorRepository;
+    private readonly IGenericRepository<Patient> _patientRepository;
+    private readonly IGenericRepository<Staff> _staffRepository;
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthService> _logger;
     private readonly IFabricCaService _fabricCa;
@@ -28,6 +31,9 @@ public class AuthService : IAuthService
         IGenericRepository<UserSecurity> securityRepository,
         IGenericRepository<Role> roleRepository,
         IGenericRepository<UserRole> userRoleRepository,
+        IGenericRepository<Doctor> doctorRepository,
+        IGenericRepository<Patient> patientRepository,
+        IGenericRepository<Staff> staffRepository,
         ILogger<AuthService> logger,
         ITokenService tokenService,
         IFabricCaService fabricCa)
@@ -37,6 +43,9 @@ public class AuthService : IAuthService
         _securityRepository = securityRepository;
         _roleRepository = roleRepository;
         _userRoleRepository = userRoleRepository;
+        _doctorRepository = doctorRepository;
+        _patientRepository = patientRepository;
+        _staffRepository = staffRepository;
         _tokenService = tokenService;
         _logger = logger;
         _fabricCa = fabricCa;
@@ -105,6 +114,8 @@ public class AuthService : IAuthService
                 UserId = user.UserId,
                 RoleId = patientRole.RoleId
             });
+
+            await EnsureRoleProfileAsync(user.UserId, patientRole.RoleName);
         }
         
         // Initialize Security
@@ -151,7 +162,7 @@ public class AuthService : IAuthService
         };
     }
 
-    public async Task<AuthResponse> RegisterAdminAsync(RegisterAdminRequest request)
+    public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
@@ -186,6 +197,8 @@ public class AuthService : IAuthService
                 UserId = user.UserId,
                 RoleId = assignedRole.RoleId
             });
+
+            await EnsureRoleProfileAsync(user.UserId, assignedRole.RoleName);
         }
 
         var security = new UserSecurity
@@ -244,6 +257,8 @@ public class AuthService : IAuthService
             });
         }
 
+        await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
+
         return new AuthResponse { Success = true, Message = "User role updated successfully." };
     }
 
@@ -291,17 +306,48 @@ public class AuthService : IAuthService
             switch (roleName)
             {
                 case Models.Enums.RoleName.Doctor:
-                    if (user.DoctorProfile != null) profiles.Add(roleName.ToString(), user.DoctorProfile);
+                    if (user.DoctorProfile != null)
+                    {
+                        profiles[roleName.ToString()] = new
+                        {
+                            user.DoctorProfile.DoctorId,
+                            user.DoctorProfile.UserId,
+                            user.DoctorProfile.Specialty,
+                            user.DoctorProfile.LicenseNumber,
+                            user.DoctorProfile.LicenseImage,
+                            VerifiedStatus = user.DoctorProfile.VerifiedStatus.ToString()
+                        };
+                    }
                     break;
                 case Models.Enums.RoleName.Patient:
-                    if (user.PatientProfile != null) profiles.Add(roleName.ToString(), user.PatientProfile);
+                    if (user.PatientProfile != null)
+                    {
+                        profiles[roleName.ToString()] = new
+                        {
+                            user.PatientProfile.PatientId,
+                            user.PatientProfile.UserId,
+                            user.PatientProfile.Dob,
+                            user.PatientProfile.BloodType
+                        };
+                    }
                     break;
                 case Models.Enums.RoleName.Nurse:
                 case Models.Enums.RoleName.Pharmacist:
                 case Models.Enums.RoleName.Receptionist:
                 case Models.Enums.RoleName.LabTech:
                     // Tất cả staff roles sử dụng chung StaffProfile
-                    if (user.StaffProfile != null) profiles.Add(roleName.ToString(), user.StaffProfile);
+                    if (user.StaffProfile != null)
+                    {
+                        profiles[roleName.ToString()] = new
+                        {
+                            user.StaffProfile.StaffId,
+                            user.StaffProfile.UserId,
+                            Role = user.StaffProfile.Role.ToString(),
+                            user.StaffProfile.LicenseNumber,
+                            user.StaffProfile.Specialty,
+                            VerifiedStatus = user.StaffProfile.VerifiedStatus.ToString()
+                        };
+                    }
                     break;
             }
         }
@@ -364,6 +410,75 @@ public class AuthService : IAuthService
             RefreshToken = refreshToken,
             UserId = user.UserId,
             Message = "Authentication successful."
+        };
+    }
+
+    private async Task EnsureRoleProfileAsync(Guid userId, RoleName roleName)
+    {
+        switch (roleName)
+        {
+            case RoleName.Patient:
+            {
+                if (!await _patientRepository.ExistsAsync(p => p.UserId == userId))
+                {
+                    await _patientRepository.AddAsync(new Patient
+                    {
+                        UserId = userId
+                    });
+                }
+
+                break;
+            }
+            case RoleName.Doctor:
+            {
+                if (!await _doctorRepository.ExistsAsync(d => d.UserId == userId))
+                {
+                    await _doctorRepository.AddAsync(new Doctor
+                    {
+                        UserId = userId,
+                        VerifiedStatus = VerificationStatus.Pending
+                    });
+                }
+
+                break;
+            }
+            case RoleName.Nurse:
+            case RoleName.Pharmacist:
+            case RoleName.Receptionist:
+            case RoleName.LabTech:
+            {
+                var expectedStaffRole = MapToStaffRole(roleName);
+                var staffProfile = await _staffRepository.FindAsync(s => s.UserId == userId);
+
+                if (staffProfile == null)
+                {
+                    await _staffRepository.AddAsync(new Staff
+                    {
+                        UserId = userId,
+                        Role = expectedStaffRole,
+                        VerifiedStatus = VerificationStatus.Pending
+                    });
+                }
+                else if (staffProfile.Role != expectedStaffRole)
+                {
+                    staffProfile.Role = expectedStaffRole;
+                    await _staffRepository.UpdateAsync(staffProfile);
+                }
+
+                break;
+            }
+        }
+    }
+
+    private static StaffRole MapToStaffRole(RoleName roleName)
+    {
+        return roleName switch
+        {
+            RoleName.Nurse => StaffRole.Nurse,
+            RoleName.Pharmacist => StaffRole.Pharmacist,
+            RoleName.Receptionist => StaffRole.Receptionist,
+            RoleName.LabTech => StaffRole.LabTech,
+            _ => throw new InvalidOperationException($"Role '{roleName}' is not a staff role.")
         };
     }
 }

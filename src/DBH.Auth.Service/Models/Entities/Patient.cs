@@ -15,5 +15,4 @@ public class Patient
     [MaxLength(10)]
     public string? BloodType { get; set; }
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

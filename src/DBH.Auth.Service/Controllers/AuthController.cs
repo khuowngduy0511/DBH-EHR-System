@@ -1,6 +1,7 @@
 
 using DBH.Auth.Service.Services;
 using DBH.Auth.Service.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Auth.Service.Controllers;
@@ -16,6 +17,11 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
+    /// <summary>
+    /// Registers a new user and creates an associated profile Patient    
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -27,10 +33,16 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
-    [HttpPost("registerAdmin")]
-    public async Task<IActionResult> RegisterAdmin([FromBody] RegisterAdminRequest request)
+    /// <summary>    
+    /// Registers a new user and creates an associated profile for either Staff or Doctor based on the role specified in the request. Only users with Admin role can access this endpoint.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
+    [Authorize(Roles = "Admin")]
+    [HttpPost("registerStaffDoctor")]
+    public async Task<IActionResult> RegisterStaffDoctor([FromBody] RegisterStaffDoctorRequest request)
     {
-        var response = await _authService.RegisterAdminAsync(request);
+        var response = await _authService.RegisterStaffDoctorAsync(request);
         if (!response.Success)
             return BadRequest(response);
         return Ok(response);

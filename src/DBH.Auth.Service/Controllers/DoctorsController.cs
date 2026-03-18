@@ -1,0 +1,149 @@
+using DBH.Auth.Service.DTOs;
+using DBH.Auth.Service.Models.Entities;
+using DBH.Auth.Service.Models.Enums;
+using DBH.Auth.Service.Repositories;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace DBH.Auth.Service.Controllers;
+
+[ApiController]
+[Authorize(Roles = "Admin")]
+[Route("api/v1/doctors")]
+public class DoctorsController : ControllerBase
+{
+    private readonly IGenericRepository<Doctor> _doctorRepository;
+    private readonly IUserRepository _userRepository;
+    private readonly IGenericRepository<Role> _roleRepository;
+    private readonly IGenericRepository<UserRole> _userRoleRepository;
+
+    public DoctorsController(
+        IGenericRepository<Doctor> doctorRepository,
+        IUserRepository userRepository,
+        IGenericRepository<Role> roleRepository,
+        IGenericRepository<UserRole> userRoleRepository)
+    {
+        _doctorRepository = doctorRepository;
+        _userRepository = userRepository;
+        _roleRepository = roleRepository;
+        _userRoleRepository = userRoleRepository;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+    {
+        var doctors = await _doctorRepository.GetAllAsync();
+        return Ok(doctors.Select(MapToResponse));
+    }
+
+    [HttpGet("{doctorId:guid}")]
+    public async Task<IActionResult> GetById(Guid doctorId)
+    {
+        var doctor = await _doctorRepository.GetByIdAsync(doctorId);
+        if (doctor == null)
+        {
+            return NotFound("Doctor not found.");
+        }
+
+        return Ok(MapToResponse(doctor));
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] CreateDoctorRequest request)
+    {
+        var user = await _userRepository.GetByIdAsync(request.UserId);
+        if (user == null)
+        {
+            return BadRequest("User not found.");
+        }
+
+        if (await _doctorRepository.ExistsAsync(d => d.UserId == request.UserId))
+        {
+            return BadRequest("This user already has a doctor profile.");
+        }
+
+        var doctor = new Doctor
+        {
+            UserId = request.UserId,
+            Specialty = request.Specialty,
+            LicenseNumber = request.LicenseNumber,
+            LicenseImage = request.LicenseImage,
+            VerifiedStatus = request.VerifiedStatus
+        };
+
+        await _doctorRepository.AddAsync(doctor);
+        await EnsureUserRoleAsync(request.UserId, RoleName.Doctor);
+
+        return CreatedAtAction(nameof(GetById), new { doctorId = doctor.DoctorId }, MapToResponse(doctor));
+    }
+
+    [HttpPut("{doctorId:guid}")]
+    public async Task<IActionResult> Update(Guid doctorId, [FromBody] UpdateDoctorRequest request)
+    {
+        var doctor = await _doctorRepository.GetByIdAsync(doctorId);
+        if (doctor == null)
+        {
+            return NotFound("Doctor not found.");
+        }
+
+        doctor.Specialty = request.Specialty;
+        doctor.LicenseNumber = request.LicenseNumber;
+        doctor.LicenseImage = request.LicenseImage;
+        doctor.VerifiedStatus = request.VerifiedStatus;
+
+        await _doctorRepository.UpdateAsync(doctor);
+        return Ok(MapToResponse(doctor));
+    }
+
+    [HttpDelete("{doctorId:guid}")]
+    public async Task<IActionResult> Delete(Guid doctorId)
+    {
+        var doctor = await _doctorRepository.GetByIdAsync(doctorId);
+        if (doctor == null)
+        {
+            return NotFound("Doctor not found.");
+        }
+
+        await _doctorRepository.DeleteAsync(doctor);
+        return Ok("Doctor deleted successfully.");
+    }
+
+    private async Task EnsureUserRoleAsync(Guid userId, RoleName roleName)
+    {
+        var role = await _roleRepository.FindAsync(r => r.RoleName == roleName);
+        if (role == null)
+        {
+            return;
+        }
+
+        var userRole = await _userRoleRepository.FindAsync(ur => ur.UserId == userId);
+        if (userRole == null)
+        {
+            await _userRoleRepository.AddAsync(new UserRole
+            {
+                UserId = userId,
+                RoleId = role.RoleId
+            });
+            return;
+        }
+
+        if (userRole.RoleId != role.RoleId)
+        {
+            userRole.RoleId = role.RoleId;
+            await _userRoleRepository.UpdateAsync(userRole);
+        }
+    }
+
+    private static DoctorResponse MapToResponse(Doctor doctor)
+    {
+        return new DoctorResponse
+        {
+            DoctorId = doctor.DoctorId,
+            UserId = doctor.UserId,
+            Specialty = doctor.Specialty,
+            LicenseNumber = doctor.LicenseNumber,
+            LicenseImage = doctor.LicenseImage,
+            VerifiedStatus = doctor.VerifiedStatus
+        };
+    }
+}
