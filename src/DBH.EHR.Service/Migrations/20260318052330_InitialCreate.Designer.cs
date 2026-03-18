@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DBH.EHR.Service.Migrations
 {
     [DbContext(typeof(EhrPrimaryDbContext))]
-    [Migration("20260203134349_EhrSchemaV2")]
-    partial class EhrSchemaV2
+    [Migration("20260318052330_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -89,16 +89,9 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by");
-
                     b.Property<Guid>("EhrId")
                         .HasColumnType("uuid")
                         .HasColumnName("ehr_id");
-
-                    b.Property<Guid?>("EhrVersionVersionId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("FileHash")
                         .HasMaxLength(255)
@@ -110,36 +103,9 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("file_url");
 
-                    b.Property<string>("Metadata")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("metadata");
-
-                    b.Property<string>("MimeType")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("mime_type");
-
-                    b.Property<string>("ReportType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("report_type");
-
-                    b.Property<long?>("SizeBytes")
-                        .HasColumnType("bigint")
-                        .HasColumnName("size_bytes");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer")
-                        .HasColumnName("version");
-
                     b.HasKey("FileId");
 
-                    b.HasIndex("EhrVersionVersionId");
-
-                    b.HasIndex("CreatedBy", "CreatedAt");
-
-                    b.HasIndex("EhrId", "Version", "ReportType");
+                    b.HasIndex("EhrId");
 
                     b.ToTable("ehr_files");
                 });
@@ -155,21 +121,17 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<Guid>("CreatedByDoctorId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_doctor");
-
-                    b.Property<int>("CurrentVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("current_version");
+                    b.Property<string>("Data")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("data");
 
                     b.Property<Guid?>("EncounterId")
                         .HasColumnType("uuid")
                         .HasColumnName("encounter_id");
 
-                    b.Property<Guid?>("HospitalId")
+                    b.Property<Guid?>("OrgId")
                         .HasColumnType("uuid")
-                        .HasColumnName("hospital_id");
+                        .HasColumnName("org_id");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid")
@@ -179,7 +141,7 @@ namespace DBH.EHR.Service.Migrations
 
                     b.HasIndex("EncounterId");
 
-                    b.HasIndex("HospitalId", "CreatedAt");
+                    b.HasIndex("OrgId", "CreatedAt");
 
                     b.HasIndex("PatientId", "CreatedAt");
 
@@ -251,53 +213,25 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("version_id");
 
-                    b.Property<string>("BlockchainTxHash")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("blockchain_tx_hash");
-
-                    b.Property<string>("ChangeReason")
-                        .HasColumnType("text")
-                        .HasColumnName("change_reason");
-
-                    b.Property<Guid?>("ChangedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("changed_by");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Data")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("data");
 
                     b.Property<Guid>("EhrId")
                         .HasColumnType("uuid")
                         .HasColumnName("ehr_id");
 
-                    b.Property<string>("FileHash")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("file_hash");
-
-                    b.Property<Guid?>("PreviousVersionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("previous_version_id");
-
-                    b.Property<string>("TxStatus")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("tx_status");
-
-                    b.Property<int>("Version")
+                    b.Property<int>("VersionNumber")
                         .HasColumnType("integer")
-                        .HasColumnName("version");
+                        .HasColumnName("version_number");
 
                     b.HasKey("VersionId");
 
-                    b.HasIndex("BlockchainTxHash")
-                        .IsUnique();
-
-                    b.HasIndex("PreviousVersionId");
-
-                    b.HasIndex("EhrId", "Version")
+                    b.HasIndex("EhrId", "VersionNumber")
                         .IsUnique();
 
                     b.ToTable("ehr_versions");
@@ -322,10 +256,6 @@ namespace DBH.EHR.Service.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("DBH.EHR.Service.Models.Entities.EhrVersion", null)
-                        .WithMany("Files")
-                        .HasForeignKey("EhrVersionVersionId");
-
                     b.Navigation("EhrRecord");
                 });
 
@@ -347,14 +277,7 @@ namespace DBH.EHR.Service.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("DBH.EHR.Service.Models.Entities.EhrVersion", "PreviousVersion")
-                        .WithMany()
-                        .HasForeignKey("PreviousVersionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("EhrRecord");
-
-                    b.Navigation("PreviousVersion");
                 });
 
             modelBuilder.Entity("DBH.EHR.Service.Models.Entities.EhrRecord", b =>
@@ -362,11 +285,6 @@ namespace DBH.EHR.Service.Migrations
                     b.Navigation("Files");
 
                     b.Navigation("Versions");
-                });
-
-            modelBuilder.Entity("DBH.EHR.Service.Models.Entities.EhrVersion", b =>
-                {
-                    b.Navigation("Files");
                 });
 #pragma warning restore 612, 618
         }

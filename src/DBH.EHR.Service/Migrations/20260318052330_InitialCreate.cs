@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace DBH.EHR.Service.Migrations
 {
     /// <inheritdoc />
-    public partial class EhrSchemaV2 : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -18,9 +18,8 @@ namespace DBH.EHR.Service.Migrations
                     ehr_id = table.Column<Guid>(type: "uuid", nullable: false),
                     patient_id = table.Column<Guid>(type: "uuid", nullable: false),
                     encounter_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    hospital_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    created_by_doctor = table.Column<Guid>(type: "uuid", nullable: false),
-                    current_version = table.Column<int>(type: "integer", nullable: false),
+                    org_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    data = table.Column<string>(type: "jsonb", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -47,6 +46,27 @@ namespace DBH.EHR.Service.Migrations
                     table.PrimaryKey("PK_ehr_access_log", x => x.access_id);
                     table.ForeignKey(
                         name: "FK_ehr_access_log_ehr_records_ehr_id",
+                        column: x => x.ehr_id,
+                        principalTable: "ehr_records",
+                        principalColumn: "ehr_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ehr_files",
+                columns: table => new
+                {
+                    file_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ehr_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    file_url = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    file_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ehr_files", x => x.file_id);
+                    table.ForeignKey(
+                        name: "FK_ehr_files_ehr_records_ehr_id",
                         column: x => x.ehr_id,
                         principalTable: "ehr_records",
                         principalColumn: "ehr_id",
@@ -86,13 +106,8 @@ namespace DBH.EHR.Service.Migrations
                 {
                     version_id = table.Column<Guid>(type: "uuid", nullable: false),
                     ehr_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    version = table.Column<int>(type: "integer", nullable: false),
-                    file_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    changed_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    change_reason = table.Column<string>(type: "text", nullable: true),
-                    previous_version_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    blockchain_tx_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    tx_status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    version_number = table.Column<int>(type: "integer", nullable: false),
+                    data = table.Column<string>(type: "jsonb", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -104,45 +119,6 @@ namespace DBH.EHR.Service.Migrations
                         principalTable: "ehr_records",
                         principalColumn: "ehr_id",
                         onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_ehr_versions_ehr_versions_previous_version_id",
-                        column: x => x.previous_version_id,
-                        principalTable: "ehr_versions",
-                        principalColumn: "version_id",
-                        onDelete: ReferentialAction.SetNull);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "ehr_files",
-                columns: table => new
-                {
-                    file_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    ehr_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    version = table.Column<int>(type: "integer", nullable: false),
-                    report_type = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
-                    file_url = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    file_hash = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    mime_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    size_bytes = table.Column<long>(type: "bigint", nullable: true),
-                    created_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    metadata = table.Column<string>(type: "jsonb", nullable: true),
-                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    EhrVersionVersionId = table.Column<Guid>(type: "uuid", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ehr_files", x => x.file_id);
-                    table.ForeignKey(
-                        name: "FK_ehr_files_ehr_records_ehr_id",
-                        column: x => x.ehr_id,
-                        principalTable: "ehr_records",
-                        principalColumn: "ehr_id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_ehr_files_ehr_versions_EhrVersionVersionId",
-                        column: x => x.EhrVersionVersionId,
-                        principalTable: "ehr_versions",
-                        principalColumn: "version_id");
                 });
 
             migrationBuilder.CreateIndex(
@@ -156,19 +132,9 @@ namespace DBH.EHR.Service.Migrations
                 columns: new[] { "ehr_id", "accessed_at" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ehr_files_created_by_created_at",
+                name: "IX_ehr_files_ehr_id",
                 table: "ehr_files",
-                columns: new[] { "created_by", "created_at" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ehr_files_ehr_id_version_report_type",
-                table: "ehr_files",
-                columns: new[] { "ehr_id", "version", "report_type" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ehr_files_EhrVersionVersionId",
-                table: "ehr_files",
-                column: "EhrVersionVersionId");
+                column: "ehr_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ehr_records_encounter_id",
@@ -176,9 +142,9 @@ namespace DBH.EHR.Service.Migrations
                 column: "encounter_id");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ehr_records_hospital_id_created_at",
+                name: "IX_ehr_records_org_id_created_at",
                 table: "ehr_records",
-                columns: new[] { "hospital_id", "created_at" });
+                columns: new[] { "org_id", "created_at" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ehr_records_patient_id_created_at",
@@ -196,21 +162,10 @@ namespace DBH.EHR.Service.Migrations
                 columns: new[] { "patient_id", "status" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ehr_versions_blockchain_tx_hash",
+                name: "IX_ehr_versions_ehr_id_version_number",
                 table: "ehr_versions",
-                column: "blockchain_tx_hash",
+                columns: new[] { "ehr_id", "version_number" },
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ehr_versions_ehr_id_version",
-                table: "ehr_versions",
-                columns: new[] { "ehr_id", "version" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ehr_versions_previous_version_id",
-                table: "ehr_versions",
-                column: "previous_version_id");
         }
 
         /// <inheritdoc />
