@@ -1,6 +1,7 @@
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace DBH.Shared.Infrastructure.Blockchain.Services;
 
@@ -9,6 +10,12 @@ namespace DBH.Shared.Infrastructure.Blockchain.Services;
 /// </summary>
 public class AuditBlockchainService : IAuditBlockchainService
 {
+    private static readonly JsonSerializerSettings ChaincodeJsonSettings = new()
+    {
+        ContractResolver = new CamelCasePropertyNamesContractResolver(),
+        NullValueHandling = NullValueHandling.Ignore
+    };
+
     private readonly IFabricGateway _gateway;
     private readonly ILogger<AuditBlockchainService> _logger;
 
@@ -26,7 +33,7 @@ public class AuditBlockchainService : IAuditBlockchainService
             "Committing audit entry to blockchain: AuditId={AuditId}, Action={Action}, Target={TargetType}:{TargetId}",
             entry.AuditId, entry.Action, entry.TargetType, entry.TargetId);
 
-        var entryJson = JsonConvert.SerializeObject(entry);
+        var entryJson = JsonConvert.SerializeObject(entry, ChaincodeJsonSettings);
 
         var result = await _gateway.SubmitTransactionAsync(
             FabricChannels.AuditChannel,

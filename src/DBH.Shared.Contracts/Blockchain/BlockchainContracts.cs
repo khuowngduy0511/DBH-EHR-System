@@ -72,9 +72,9 @@ public static class FabricChannels
 
 public static class FabricChaincodes
 {
-    public const string EhrChaincode = "ehr-chaincode";
-    public const string ConsentChaincode = "consent-chaincode";
-    public const string AuditChaincode = "audit-chaincode";
+    public const string EhrChaincode = "ehrcc";
+    public const string ConsentChaincode = "consentcc";
+    public const string AuditChaincode = "auditcc";
 }
 
 // ============================================================================

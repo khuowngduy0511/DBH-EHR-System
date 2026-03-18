@@ -1,3 +1,5 @@
+using System.Formats.Asn1;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -7,6 +9,7 @@ using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using ProtoBuf;
 
 namespace DBH.Shared.Infrastructure.Blockchain;
 
@@ -238,15 +241,11 @@ public class FabricGatewayClient : IFabricGateway
     {
         var channel = GetOrCreateChannel();
 
-        // Build the proposal payload
         var nonce = new byte[24];
         RandomNumberGenerator.Fill(nonce);
-        var txId = ComputeTxId(nonce, _certificate!);
-
-        var proposalPayload = BuildProposalPayload(channelName, chaincodeName, functionName, args, txId, nonce);
-
-        // Sign the proposal
-        var signature = SignPayload(proposalPayload);
+        var creatorIdentity = GetSerializedIdentity();
+        var txId = ComputeTxId(nonce, creatorIdentity);
+        var signedProposal = BuildSignedProposal(channelName, chaincodeName, functionName, args, txId, nonce, creatorIdentity);
 
         // Use the Fabric Gateway gRPC service
         // The gateway.Gateway service has: Evaluate, Endorse, Submit, CommitStatus
@@ -257,8 +256,7 @@ public class FabricGatewayClient : IFabricGateway
         {
             TransactionId = txId,
             ChannelId = channelName,
-            ProposedTransaction = proposalPayload,
-            ProposalSignature = signature
+            ProposedTransaction = signedProposal
         };
 
         _logger.LogDebug("Endorsing transaction {TxId}...", txId);
@@ -275,7 +273,7 @@ public class FabricGatewayClient : IFabricGateway
 
         var endorseResponse = await invoker.AsyncUnaryCall(endorseMethod, null, callOptions, endorseRequest);
 
-        if (endorseResponse == null || string.IsNullOrEmpty(endorseResponse.PreparedTransaction))
+        if (endorseResponse == null || endorseResponse.PreparedTransaction == null)
         {
             return new BlockchainTransactionResult
             {
@@ -286,14 +284,14 @@ public class FabricGatewayClient : IFabricGateway
         }
 
         // Step 2: Submit (send to orderer)
-        var submitSignature = SignPayload(Encoding.UTF8.GetBytes(endorseResponse.PreparedTransaction));
+        var submitSignature = SignPayload(endorseResponse.PreparedTransaction.Payload);
+        endorseResponse.PreparedTransaction.Signature = submitSignature;
 
         var submitRequest = new SubmitRequest
         {
             TransactionId = txId,
             ChannelId = channelName,
-            PreparedTransaction = endorseResponse.PreparedTransaction,
-            Signature = submitSignature
+            PreparedTransaction = endorseResponse.PreparedTransaction
         };
 
         var submitMethod = new Method<SubmitRequest, SubmitResponse>(
@@ -309,27 +307,35 @@ public class FabricGatewayClient : IFabricGateway
         var commitStatusRequest = new CommitStatusRequest
         {
             TransactionId = txId,
-            ChannelId = channelName
+            ChannelId = channelName,
+            Identity = creatorIdentity
         };
 
-        var commitMethod = new Method<CommitStatusRequest, CommitStatusResponse>(
+        var commitStatusRequestBytes = SerializeProto(commitStatusRequest);
+        var signedCommitStatusRequest = new SignedCommitStatusRequest
+        {
+            Request = commitStatusRequestBytes,
+            Signature = SignPayload(commitStatusRequestBytes)
+        };
+
+        var commitMethod = new Method<SignedCommitStatusRequest, CommitStatusResponse>(
             MethodType.Unary,
             "gateway.Gateway",
             "CommitStatus",
-            CommitStatusRequest.Marshaller,
+            SignedCommitStatusRequest.Marshaller,
             CommitStatusResponse.Marshaller);
 
-        var commitResponse = await invoker.AsyncUnaryCall(commitMethod, null, callOptions, commitStatusRequest);
+        var commitResponse = await invoker.AsyncUnaryCall(commitMethod, null, callOptions, signedCommitStatusRequest);
 
         var txHash = "0x" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(txId))).ToLowerInvariant();
 
         return new BlockchainTransactionResult
         {
-            Success = commitResponse.Status == "VALID",
+            Success = commitResponse.Result == TxValidationCode.Valid,
             TxHash = txHash,
-            BlockNumber = commitResponse.BlockNumber,
+            BlockNumber = (long)commitResponse.BlockNumber,
             Timestamp = DateTime.UtcNow,
-            ErrorMessage = commitResponse.Status != "VALID" ? $"Commit status: {commitResponse.Status}" : null
+            ErrorMessage = commitResponse.Result != TxValidationCode.Valid ? $"Commit status: {commitResponse.Result}" : null
         };
     }
 
@@ -340,10 +346,9 @@ public class FabricGatewayClient : IFabricGateway
 
         var nonce = new byte[24];
         RandomNumberGenerator.Fill(nonce);
-        var txId = ComputeTxId(nonce, _certificate!);
-
-        var proposalPayload = BuildProposalPayload(channelName, chaincodeName, functionName, args, txId, nonce);
-        var signature = SignPayload(proposalPayload);
+        var creatorIdentity = GetSerializedIdentity();
+        var txId = ComputeTxId(nonce, creatorIdentity);
+        var signedProposal = BuildSignedProposal(channelName, chaincodeName, functionName, args, txId, nonce, creatorIdentity);
 
         var invoker = channel.CreateCallInvoker();
 
@@ -351,8 +356,7 @@ public class FabricGatewayClient : IFabricGateway
         {
             TransactionId = txId,
             ChannelId = channelName,
-            ProposedTransaction = proposalPayload,
-            ProposalSignature = signature
+            ProposedTransaction = signedProposal
         };
 
         var evaluateMethod = new Method<EvaluateRequest, EvaluateResponse>(
@@ -367,7 +371,12 @@ public class FabricGatewayClient : IFabricGateway
 
         var response = await invoker.AsyncUnaryCall(evaluateMethod, null, callOptions, evaluateRequest);
 
-        return response?.Result ?? "{}";
+        if (response?.Result?.Payload == null || response.Result.Payload.Length == 0)
+        {
+            return "{}";
+        }
+
+        return Encoding.UTF8.GetString(response.Result.Payload);
     }
 
     // ========================================================================
@@ -410,14 +419,13 @@ public class FabricGatewayClient : IFabricGateway
 
     /// <summary>
     /// Compute transaction ID = SHA-256(nonce || creator)
-    /// This matches Fabric's txID algorithm
+    /// where creator is the serialized msp.SerializedIdentity bytes.
     /// </summary>
-    private static string ComputeTxId(byte[] nonce, string certificatePem)
+    private static string ComputeTxId(byte[] nonce, byte[] serializedIdentity)
     {
-        var certBytes = Encoding.UTF8.GetBytes(certificatePem);
-        var combined = new byte[nonce.Length + certBytes.Length];
+        var combined = new byte[nonce.Length + serializedIdentity.Length];
         Buffer.BlockCopy(nonce, 0, combined, 0, nonce.Length);
-        Buffer.BlockCopy(certBytes, 0, combined, nonce.Length, certBytes.Length);
+        Buffer.BlockCopy(serializedIdentity, 0, combined, nonce.Length, serializedIdentity.Length);
 
         var hash = SHA256.HashData(combined);
         return Convert.ToHexString(hash).ToLowerInvariant();
@@ -432,50 +440,156 @@ public class FabricGatewayClient : IFabricGateway
             return Array.Empty<byte>();
 
         var hash = SHA256.HashData(payload);
-        return _signingKey.SignHash(hash, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        var signature = _signingKey.SignHash(hash, DSASignatureFormat.Rfc3279DerSequence);
+        return NormalizeEcdsaSignatureLowS(signature, _signingKey.KeySize);
     }
 
-    /// <summary>
-    /// Build chaincode invocation proposal payload
-    /// This is a simplified version of the Fabric proposal structure
-    /// </summary>
-    private byte[] BuildProposalPayload(
-        string channelName, string chaincodeName, string functionName,
-        string[] args, string txId, byte[] nonce)
+    private static byte[] NormalizeEcdsaSignatureLowS(byte[] derSignature, int keySizeBits)
     {
-        // The proposal payload contains the chaincode invocation spec
-        var invocationSpec = JsonConvert.SerializeObject(new
-        {
-            ChaincodeSpec = new
-            {
-                Type = "NODE",
-                ChaincodeId = new { Name = chaincodeName },
-                Input = new
-                {
-                    Args = new[] { functionName }.Concat(args).Select(Encoding.UTF8.GetBytes).ToArray()
-                }
-            },
-            ChannelHeader = new
-            {
-                Type = 3, // ENDORSER_TRANSACTION
-                TxId = txId,
-                ChannelId = channelName,
-                Timestamp = DateTime.UtcNow.ToString("o"),
-                Epoch = 0,
-                Extension = new { ChaincodeId = new { Name = chaincodeName } }
-            },
-            SignatureHeader = new
-            {
-                Creator = new
-                {
-                    MspId = _options.MspId,
-                    IdBytes = _certificate
-                },
-                Nonce = Convert.ToBase64String(nonce)
-            }
-        });
+        var curveOrder = GetCurveOrder(keySizeBits);
+        if (curveOrder <= BigInteger.Zero)
+            return derSignature;
 
-        return Encoding.UTF8.GetBytes(invocationSpec);
+        try
+        {
+            var reader = new AsnReader(derSignature, AsnEncodingRules.DER);
+            var sequence = reader.ReadSequence();
+            var rBytes = sequence.ReadIntegerBytes().ToArray();
+            var sBytes = sequence.ReadIntegerBytes().ToArray();
+            sequence.ThrowIfNotEmpty();
+            reader.ThrowIfNotEmpty();
+
+            var r = new BigInteger(rBytes, isUnsigned: true, isBigEndian: true);
+            var s = new BigInteger(sBytes, isUnsigned: true, isBigEndian: true);
+
+            var halfOrder = curveOrder >> 1;
+            if (s <= halfOrder)
+                return derSignature;
+
+            var lowS = curveOrder - s;
+
+            var writer = new AsnWriter(AsnEncodingRules.DER);
+            writer.PushSequence();
+            writer.WriteInteger(r);
+            writer.WriteInteger(lowS);
+            writer.PopSequence();
+            return writer.Encode();
+        }
+        catch
+        {
+            // If signature parsing fails unexpectedly, keep original signature.
+            return derSignature;
+        }
+    }
+
+    private static BigInteger GetCurveOrder(int keySizeBits)
+    {
+        // NIST P-256
+        if (keySizeBits <= 256)
+            return ParseUnsignedHex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
+
+        // NIST P-384
+        if (keySizeBits <= 384)
+            return ParseUnsignedHex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973");
+
+        // NIST P-521
+        return ParseUnsignedHex("01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    }
+
+    private static BigInteger ParseUnsignedHex(string hex)
+    {
+        return new BigInteger(Convert.FromHexString(hex), isUnsigned: true, isBigEndian: true);
+    }
+
+    private byte[] GetSerializedIdentity()
+    {
+        if (string.IsNullOrWhiteSpace(_certificate))
+        {
+            throw new InvalidOperationException("Certificate is not loaded.");
+        }
+
+        var identity = new SerializedIdentity
+        {
+            MspId = _options.MspId,
+            IdBytes = Encoding.UTF8.GetBytes(_certificate)
+        };
+
+        return SerializeProto(identity);
+    }
+
+    private SignedProposal BuildSignedProposal(
+        string channelName,
+        string chaincodeName,
+        string functionName,
+        string[] args,
+        string txId,
+        byte[] nonce,
+        byte[] serializedIdentity)
+    {
+        var signatureHeader = new SignatureHeader
+        {
+            Creator = serializedIdentity,
+            Nonce = nonce
+        };
+
+        var channelHeader = new ChannelHeader
+        {
+            Type = (int)HeaderType.EndorserTransaction,
+            Version = 0,
+            Timestamp = ProtoTimestamp.FromDateTime(DateTime.UtcNow),
+            ChannelId = channelName,
+            TxId = txId,
+            Epoch = 0,
+            Extension = SerializeProto(new ChaincodeHeaderExtension
+            {
+                ChaincodeId = new ChaincodeId { Name = chaincodeName }
+            })
+        };
+
+        var header = new Header
+        {
+            ChannelHeader = SerializeProto(channelHeader),
+            SignatureHeader = SerializeProto(signatureHeader)
+        };
+
+        var invocationSpec = new ChaincodeInvocationSpec
+        {
+            ChaincodeSpec = new ChaincodeSpec
+            {
+                Type = ChaincodeSpecType.Node,
+                ChaincodeId = new ChaincodeId { Name = chaincodeName },
+                Input = new ChaincodeInput
+                {
+                    Args = new[] { functionName }.Concat(args).Select(Encoding.UTF8.GetBytes).ToList()
+                }
+            }
+        };
+
+        var payload = new ChaincodeProposalPayload
+        {
+            Input = SerializeProto(invocationSpec)
+        };
+
+        var proposal = new Proposal
+        {
+            Header = SerializeProto(header),
+            Payload = SerializeProto(payload)
+        };
+
+        var proposalBytes = SerializeProto(proposal);
+
+        return new SignedProposal
+        {
+            ProposalBytes = proposalBytes,
+            Signature = SignPayload(proposalBytes)
+        };
+    }
+
+    private static byte[] SerializeProto<T>(T value)
+    {
+        using var ms = new MemoryStream();
+        Serializer.Serialize(ms, value);
+        return ms.ToArray();
     }
 
     // ========================================================================
@@ -577,92 +691,255 @@ public class FabricGatewayClient : IFabricGateway
 // ============================================================================
 // Fabric Gateway gRPC Protocol Models
 // ============================================================================
-// These are simplified C# representations of the Fabric Gateway gRPC messages.
-// In production, generate from proto files:
-//   github.com/hyperledger/fabric-protos/gateway/gateway.proto
+// Protobuf-net contracts aligned with:
+//   github.com/hyperledger/fabric-protos
 // ============================================================================
 
 #region Fabric Gateway gRPC Protocol
 
+internal static class ProtobufMarshaller
+{
+    public static Marshaller<T> Create<T>() where T : class, new() =>
+        Marshallers.Create(
+            serializer: value =>
+            {
+                using var ms = new MemoryStream();
+                Serializer.Serialize(ms, value);
+                return ms.ToArray();
+            },
+            deserializer: data =>
+            {
+                using var ms = new MemoryStream(data);
+                return Serializer.Deserialize<T>(ms);
+            });
+}
+
+[ProtoContract]
 internal class EndorseRequest
 {
-    public string TransactionId { get; set; } = string.Empty;
-    public string ChannelId { get; set; } = string.Empty;
-    public byte[] ProposedTransaction { get; set; } = Array.Empty<byte>();
-    public byte[] ProposalSignature { get; set; } = Array.Empty<byte>();
+    [ProtoMember(1)] public string TransactionId { get; set; } = string.Empty;
+    [ProtoMember(2)] public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(3)] public SignedProposal ProposedTransaction { get; set; } = new();
+    [ProtoMember(4)] public List<string> EndorsingOrganizations { get; set; } = [];
 
-    internal static readonly Marshaller<EndorseRequest> Marshaller = Marshallers.Create(
-        serializer: req => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(req)),
-        deserializer: bytes => JsonConvert.DeserializeObject<EndorseRequest>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<EndorseRequest> Marshaller = ProtobufMarshaller.Create<EndorseRequest>();
 }
 
+[ProtoContract]
 internal class EndorseResponse
 {
-    public string PreparedTransaction { get; set; } = string.Empty;
+    [ProtoMember(1)] public Envelope PreparedTransaction { get; set; } = new();
 
-    internal static readonly Marshaller<EndorseResponse> Marshaller = Marshallers.Create(
-        serializer: resp => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(resp)),
-        deserializer: bytes => JsonConvert.DeserializeObject<EndorseResponse>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<EndorseResponse> Marshaller = ProtobufMarshaller.Create<EndorseResponse>();
 }
 
+[ProtoContract]
 internal class SubmitRequest
 {
-    public string TransactionId { get; set; } = string.Empty;
-    public string ChannelId { get; set; } = string.Empty;
-    public string PreparedTransaction { get; set; } = string.Empty;
-    public byte[] Signature { get; set; } = Array.Empty<byte>();
+    [ProtoMember(1)] public string TransactionId { get; set; } = string.Empty;
+    [ProtoMember(2)] public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(3)] public Envelope PreparedTransaction { get; set; } = new();
 
-    internal static readonly Marshaller<SubmitRequest> Marshaller = Marshallers.Create(
-        serializer: req => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(req)),
-        deserializer: bytes => JsonConvert.DeserializeObject<SubmitRequest>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<SubmitRequest> Marshaller = ProtobufMarshaller.Create<SubmitRequest>();
 }
 
+[ProtoContract]
 internal class SubmitResponse
 {
-    internal static readonly Marshaller<SubmitResponse> Marshaller = Marshallers.Create(
-        serializer: resp => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(resp)),
-        deserializer: bytes => JsonConvert.DeserializeObject<SubmitResponse>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<SubmitResponse> Marshaller = ProtobufMarshaller.Create<SubmitResponse>();
 }
 
+[ProtoContract]
 internal class EvaluateRequest
 {
-    public string TransactionId { get; set; } = string.Empty;
-    public string ChannelId { get; set; } = string.Empty;
-    public byte[] ProposedTransaction { get; set; } = Array.Empty<byte>();
-    public byte[] ProposalSignature { get; set; } = Array.Empty<byte>();
+    [ProtoMember(1)] public string TransactionId { get; set; } = string.Empty;
+    [ProtoMember(2)] public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(3)] public SignedProposal ProposedTransaction { get; set; } = new();
+    [ProtoMember(4)] public List<string> TargetOrganizations { get; set; } = [];
 
-    internal static readonly Marshaller<EvaluateRequest> Marshaller = Marshallers.Create(
-        serializer: req => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(req)),
-        deserializer: bytes => JsonConvert.DeserializeObject<EvaluateRequest>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<EvaluateRequest> Marshaller = ProtobufMarshaller.Create<EvaluateRequest>();
 }
 
+[ProtoContract]
 internal class EvaluateResponse
 {
-    public string Result { get; set; } = string.Empty;
+    [ProtoMember(1)] public PeerResponse Result { get; set; } = new();
 
-    internal static readonly Marshaller<EvaluateResponse> Marshaller = Marshallers.Create(
-        serializer: resp => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(resp)),
-        deserializer: bytes => JsonConvert.DeserializeObject<EvaluateResponse>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<EvaluateResponse> Marshaller = ProtobufMarshaller.Create<EvaluateResponse>();
 }
 
+[ProtoContract]
 internal class CommitStatusRequest
 {
-    public string TransactionId { get; set; } = string.Empty;
-    public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(1)] public string TransactionId { get; set; } = string.Empty;
+    [ProtoMember(2)] public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(3)] public byte[] Identity { get; set; } = Array.Empty<byte>();
 
-    internal static readonly Marshaller<CommitStatusRequest> Marshaller = Marshallers.Create(
-        serializer: req => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(req)),
-        deserializer: bytes => JsonConvert.DeserializeObject<CommitStatusRequest>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<CommitStatusRequest> Marshaller = ProtobufMarshaller.Create<CommitStatusRequest>();
 }
 
+[ProtoContract]
+internal class SignedCommitStatusRequest
+{
+    [ProtoMember(1)] public byte[] Request { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] Signature { get; set; } = Array.Empty<byte>();
+
+    internal static readonly Marshaller<SignedCommitStatusRequest> Marshaller = ProtobufMarshaller.Create<SignedCommitStatusRequest>();
+}
+
+[ProtoContract]
 internal class CommitStatusResponse
 {
-    public string Status { get; set; } = string.Empty;
-    public long BlockNumber { get; set; }
+    [ProtoMember(1)] public TxValidationCode Result { get; set; }
+    [ProtoMember(2)] public ulong BlockNumber { get; set; }
 
-    internal static readonly Marshaller<CommitStatusResponse> Marshaller = Marshallers.Create(
-        serializer: resp => Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(resp)),
-        deserializer: bytes => JsonConvert.DeserializeObject<CommitStatusResponse>(Encoding.UTF8.GetString(bytes))!);
+    internal static readonly Marshaller<CommitStatusResponse> Marshaller = ProtobufMarshaller.Create<CommitStatusResponse>();
+}
+
+[ProtoContract]
+internal class SignedProposal
+{
+    [ProtoMember(1)] public byte[] ProposalBytes { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] Signature { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class Proposal
+{
+    [ProtoMember(1)] public byte[] Header { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] Payload { get; set; } = Array.Empty<byte>();
+    [ProtoMember(3)] public byte[] Extension { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class Header
+{
+    [ProtoMember(1)] public byte[] ChannelHeader { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] SignatureHeader { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class ChannelHeader
+{
+    [ProtoMember(1)] public int Type { get; set; }
+    [ProtoMember(2)] public int Version { get; set; }
+    [ProtoMember(3)] public ProtoTimestamp Timestamp { get; set; } = new();
+    [ProtoMember(4)] public string ChannelId { get; set; } = string.Empty;
+    [ProtoMember(5)] public string TxId { get; set; } = string.Empty;
+    [ProtoMember(6)] public ulong Epoch { get; set; }
+    [ProtoMember(7)] public byte[] Extension { get; set; } = Array.Empty<byte>();
+    [ProtoMember(8)] public byte[] TlsCertHash { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class SignatureHeader
+{
+    [ProtoMember(1)] public byte[] Creator { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] Nonce { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class ChaincodeHeaderExtension
+{
+    [ProtoMember(2)] public ChaincodeId ChaincodeId { get; set; } = new();
+}
+
+[ProtoContract]
+internal class ChaincodeProposalPayload
+{
+    [ProtoMember(1)] public byte[] Input { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class ChaincodeInvocationSpec
+{
+    [ProtoMember(1)] public ChaincodeSpec ChaincodeSpec { get; set; } = new();
+}
+
+[ProtoContract]
+internal class ChaincodeSpec
+{
+    [ProtoMember(1)] public ChaincodeSpecType Type { get; set; }
+    [ProtoMember(2)] public ChaincodeId ChaincodeId { get; set; } = new();
+    [ProtoMember(3)] public ChaincodeInput Input { get; set; } = new();
+    [ProtoMember(4)] public int Timeout { get; set; }
+}
+
+[ProtoContract]
+internal class ChaincodeId
+{
+    [ProtoMember(1)] public string Path { get; set; } = string.Empty;
+    [ProtoMember(2)] public string Name { get; set; } = string.Empty;
+    [ProtoMember(3)] public string Version { get; set; } = string.Empty;
+}
+
+[ProtoContract]
+internal class ChaincodeInput
+{
+    [ProtoMember(1)] public List<byte[]> Args { get; set; } = [];
+    [ProtoMember(3)] public bool IsInit { get; set; }
+}
+
+[ProtoContract]
+internal class SerializedIdentity
+{
+    [ProtoMember(1)] public string MspId { get; set; } = string.Empty;
+    [ProtoMember(2)] public byte[] IdBytes { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class Envelope
+{
+    [ProtoMember(1)] public byte[] Payload { get; set; } = Array.Empty<byte>();
+    [ProtoMember(2)] public byte[] Signature { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class PeerResponse
+{
+    [ProtoMember(1)] public int Status { get; set; }
+    [ProtoMember(2)] public string Message { get; set; } = string.Empty;
+    [ProtoMember(3)] public byte[] Payload { get; set; } = Array.Empty<byte>();
+}
+
+[ProtoContract]
+internal class ProtoTimestamp
+{
+    [ProtoMember(1)] public long Seconds { get; set; }
+    [ProtoMember(2)] public int Nanos { get; set; }
+
+    public static ProtoTimestamp FromDateTime(DateTime utc)
+    {
+        var dto = new DateTimeOffset(utc.ToUniversalTime());
+        var seconds = dto.ToUnixTimeSeconds();
+        var nanos = (int)((dto - DateTimeOffset.FromUnixTimeSeconds(seconds)).Ticks * 100);
+        return new ProtoTimestamp
+        {
+            Seconds = seconds,
+            Nanos = nanos
+        };
+    }
+}
+
+internal enum HeaderType
+{
+    EndorserTransaction = 3
+}
+
+internal enum ChaincodeSpecType
+{
+    Undefined = 0,
+    Golang = 1,
+    Node = 2,
+    Car = 3,
+    Java = 4
+}
+
+internal enum TxValidationCode
+{
+    Valid = 0,
+    NotValidated = 254,
+    InvalidOtherReason = 255
 }
 
 #endregion

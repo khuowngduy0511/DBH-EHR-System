@@ -94,6 +94,10 @@ public class AuthController : ControllerBase
         return Ok("Token revoked.");
     }
 
+    /// <summary>
+    /// Gets the profile of the currently authenticated user.
+    /// </summary>
+    /// <returns></returns>
     [HttpGet("me")]
     public async Task<IActionResult> GetMyProfile()
     {

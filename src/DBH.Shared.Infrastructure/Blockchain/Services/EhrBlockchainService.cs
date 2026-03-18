@@ -1,6 +1,7 @@
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace DBH.Shared.Infrastructure.Blockchain.Services;
 
@@ -9,6 +10,12 @@ namespace DBH.Shared.Infrastructure.Blockchain.Services;
 /// </summary>
 public class EhrBlockchainService : IEhrBlockchainService
 {
+    private static readonly JsonSerializerSettings ChaincodeJsonSettings = new()
+    {
+        ContractResolver = new CamelCasePropertyNamesContractResolver(),
+        NullValueHandling = NullValueHandling.Ignore
+    };
+
     private readonly IFabricGateway _gateway;
     private readonly ILogger<EhrBlockchainService> _logger;
 
@@ -26,7 +33,7 @@ public class EhrBlockchainService : IEhrBlockchainService
             "Committing EHR hash to blockchain: EhrId={EhrId}, Version={Version}, Hash={Hash}",
             record.EhrId, record.Version, record.ContentHash);
 
-        var recordJson = JsonConvert.SerializeObject(record);
+        var recordJson = JsonConvert.SerializeObject(record, ChaincodeJsonSettings);
 
         var result = await _gateway.SubmitTransactionAsync(
             FabricChannels.EhrHashChannel,
