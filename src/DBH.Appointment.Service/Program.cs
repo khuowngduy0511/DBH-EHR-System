@@ -1,9 +1,9 @@
 using System.Text.Json.Serialization;
 using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.Services;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,10 +52,37 @@ builder.Services.AddDbContext<AppointmentDbContext>(options =>
 });
 
 // ============================================================================
+// Infrastructure — RabbitMQ / MassTransit
+// ============================================================================
+
+builder.Services.AddInfrastructure(builder.Configuration, options =>
+{
+    options.UseRabbitMQ = true;
+});
+
+// ============================================================================
 // Application Services
 // ============================================================================
 
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+
+// ============================================================================
+// HttpClient Factory — inter-service communication
+// ============================================================================
+
+var serviceUrls = builder.Configuration.GetSection("ServiceUrls");
+
+builder.Services.AddHttpClient("EhrService", client =>
+{
+    client.BaseAddress = new Uri(serviceUrls["EhrService"] ?? "http://ehr_service:5003");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient("OrganizationService", client =>
+{
+    client.BaseAddress = new Uri(serviceUrls["OrganizationService"] ?? "http://organization_service:5002");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 var app = builder.Build();
 

@@ -123,3 +123,33 @@ public class NotifyNewEhrRecordCommand : NotificationCommand
     public string EhrTitle { get; init; } = string.Empty;
     public Guid EhrId { get; init; }
 }
+
+// ============================================================================
+// Appointment Notification Commands
+// ============================================================================
+
+public class NotifyAppointmentConfirmedCommand : NotificationCommand
+{
+    public Guid PatientUserId { get; init; }
+    public string DoctorName { get; init; } = string.Empty;
+    public string OrganizationName { get; init; } = string.Empty;
+    public DateTime ScheduledAt { get; init; }
+    public Guid AppointmentId { get; init; }
+}
+
+public class NotifyAppointmentCancelledCommand : NotificationCommand
+{
+    public Guid RecipientUserId { get; init; }
+    public string CancelledByName { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public Guid AppointmentId { get; init; }
+}
+
+public class NotifyAppointmentReminderCommand : NotificationCommand
+{
+    public Guid PatientUserId { get; init; }
+    public string DoctorName { get; init; } = string.Empty;
+    public string OrganizationName { get; init; } = string.Empty;
+    public DateTime ScheduledAt { get; init; }
+    public Guid AppointmentId { get; init; }
+}

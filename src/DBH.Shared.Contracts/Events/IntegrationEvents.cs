@@ -202,6 +202,31 @@ public class AppointmentCreatedEvent : IntegrationEvent
     public DateTime ScheduledAt { get; init; }
 }
 
+public class AppointmentConfirmedEvent : IntegrationEvent
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid DoctorId { get; init; }
+    public Guid OrganizationId { get; init; }
+    public DateTime ScheduledAt { get; init; }
+}
+
+public class AppointmentCancelledEvent : IntegrationEvent
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid DoctorId { get; init; }
+    public Guid OrganizationId { get; init; }
+    public string Reason { get; init; } = string.Empty;
+}
+
+public class AppointmentCheckedInEvent : IntegrationEvent
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid OrganizationId { get; init; }
+}
+
 public class AppointmentStatusChangedEvent : IntegrationEvent
 {
     public Guid AppointmentId { get; init; }
@@ -216,4 +241,14 @@ public class EncounterCreatedEvent : IntegrationEvent
     public Guid PatientId { get; init; }
     public Guid DoctorId { get; init; }
     public Guid OrganizationId { get; init; }
+}
+
+public class EncounterCompletedEvent : IntegrationEvent
+{
+    public Guid EncounterId { get; init; }
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid DoctorId { get; init; }
+    public Guid OrganizationId { get; init; }
+    public Guid? EhrId { get; init; }
 }

@@ -62,15 +62,10 @@ public class MassTransitMessagePublisher : IMessagePublisher
     {
         try
         {
-            // Schedule message using delayed exchange or in-memory scheduler
-            // Note: Requires RabbitMQ delayed message exchange plugin in production
-            var delay = scheduledTime - DateTimeOffset.UtcNow;
-            if (delay > TimeSpan.Zero)
-            {
-                await Task.Delay(delay, cancellationToken);
-            }
+            // In production: use RabbitMQ delayed message exchange plugin
+            // For now: publish immediately and let consumers handle timing
             await PublishAsync(message, cancellationToken);
-            _logger.LogDebug("Scheduled message of type {MessageType} for {ScheduledTime}", typeof(T).Name, scheduledTime);
+            _logger.LogDebug("Published scheduled message of type {MessageType} (intended for {ScheduledTime})", typeof(T).Name, scheduledTime);
         }
         catch (Exception ex)
         {

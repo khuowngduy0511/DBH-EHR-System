@@ -1,11 +1,9 @@
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DBH.EHR.Service.Models.Documents;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Models.Entities;
-using DBH.EHR.Service.Models.Enums;
 using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
@@ -18,6 +16,7 @@ namespace DBH.EHR.Service.Services;
 /// <summary>
 ///  Ghi Primary + Mongo Primary, đọc từ Replica
 ///  Tích hợp: Blockchain hash commit + Consent verification
+///  ERD-aligned: ehr_records(ehr_id, patient_id, encounter_id, org_id, data, created_at)
 /// </summary>
 public class EhrService : IEhrService
 {
@@ -49,69 +48,43 @@ public class EhrService : IEhrService
     public async Task<CreateEhrRecordResponseDto> CreateEhrRecordAsync(CreateEhrRecordDto request)
     {
         _logger.LogInformation(
-            "Tạo EHR cho bệnh nhân {PatientId} bởi bác sĩ {DoctorId}, loại: {ReportType}",
-            request.PatientId, request.CreatedByDoctorId, request.ReportType);
+            "Tạo EHR cho bệnh nhân {PatientId}, org: {OrgId}",
+            request.PatientId, request.OrgId);
 
-        // Tạo EHR record trong PG Primary
+        var documentJson = request.Data.GetRawText();
+        var dataHash = ComputeHash(documentJson);
+
+        // Tạo EHR record trong PG Primary (ERD: ehr_records)
         var ehrRecord = new EhrRecord
         {
             PatientId = request.PatientId,
-            CreatedByDoctorId = request.CreatedByDoctorId,
             EncounterId = request.EncounterId,
-            HospitalId = request.HospitalId,
-            CurrentVersion = 1
+            OrgId = request.OrgId,
+            Data = documentJson
         };
         
         var savedRecord = await _ehrRecordRepo.CreateAsync(ehrRecord);
         
-        // Tạo version đầu tiên
-        var documentJson = request.Data.GetRawText();
-        var dataHash = ComputeHash(documentJson);
-        
+        // Tạo version đầu tiên (ERD: ehr_versions)
         var version = new EhrVersion
         {
             EhrId = savedRecord.EhrId,
-            Version = 1,
-            FileHash = dataHash,
-            ChangedBy = request.CreatedByDoctorId,
-            ChangeReason = "Tạo mới",
-            TxStatus = TxStatus.PENDING
+            VersionNumber = 1,
+            Data = documentJson
         };
         
         var savedVersion = await _ehrRecordRepo.CreateVersionAsync(version);
         
-        // Tạo EHR file
-        var metadataJson = request.Metadata?.GetRawText();
+        // Tạo EHR file (ERD: ehr_files)
         var file = new EhrFile
         {
             EhrId = savedRecord.EhrId,
-            Version = 1,
-            ReportType = request.ReportType,
-            FileHash = dataHash,
-            MimeType = "application/json",
-            SizeBytes = Encoding.UTF8.GetByteCount(documentJson),
-            CreatedBy = request.CreatedByDoctorId,
-            Metadata = metadataJson
+            FileHash = dataHash
         };
         
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
         
-        //Lưu document vào Mongo Primary 
-        // Parse metadata chỉ khi nó là JSON object
-        BsonDocument? metadataBson = null;
-        if (metadataJson != null)
-        {
-            try
-            {
-                metadataBson = BsonDocument.Parse(metadataJson);
-            }
-            catch
-            {
-                // Nếu metadata không phải JSON object, wrap nó
-                metadataBson = new BsonDocument("value", metadataJson);
-            }
-        }
-        
+        // Lưu document vào Mongo Primary 
         // Generate AES-256 Blue Key and encrypt data
         using var aes = System.Security.Cryptography.Aes.Create();
         aes.KeySize = 256;
@@ -172,12 +145,9 @@ public class EhrService : IEhrService
             VersionId = savedVersion.VersionId,
             FileId = savedFile.FileId,
             PatientId = request.PatientId,
-            ReportType = request.ReportType.ToString(),
             Data = encryptedDataBson,
             DataHash = dataHash,
-            Version = 1,
-            CreatedBy = request.CreatedByDoctorId,
-            Metadata = metadataBson
+            VersionNumber = 1
         };
         
         var savedDocument = await _ehrDocumentRepo.CreateAsync(ehrDocument);
@@ -194,8 +164,8 @@ public class EhrService : IEhrService
                 {
                     EhrId = savedRecord.EhrId.ToString(),
                     PatientDid = $"did:fabric:patient:{request.PatientId}",
-                    CreatedByDid = $"did:fabric:doctor:{request.CreatedByDoctorId}",
-                    OrganizationId = request.HospitalId.ToString(),
+                    CreatedByDid = $"did:fabric:org:{request.OrgId}",
+                    OrganizationId = request.OrgId.ToString(),
                     Version = 1,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
@@ -206,8 +176,6 @@ public class EhrService : IEhrService
                 var txResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
                 if (txResult.Success)
                 {
-                    savedVersion.TxStatus = TxStatus.COMMITTED;
-                    savedVersion.BlockchainTxHash = txResult.TxHash;
                     _logger.LogInformation("EHR hash committed to blockchain: {TxHash}", txResult.TxHash);
                 }
                 else
@@ -230,7 +198,7 @@ public class EhrService : IEhrService
             EhrId = savedRecord.EhrId,
             VersionId = savedVersion.VersionId,
             FileId = savedFile.FileId,
-            Version = 1,
+            VersionNumber = 1,
             OffchainDocId = savedDocument.Id,
             DataHash = dataHash,
             CreatedAt = savedRecord.CreatedAt
@@ -242,7 +210,7 @@ public class EhrService : IEhrService
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
         if (record == null) return null;
         
-        return MapToEhrRecordResponse(record, useReplica);
+        return MapToEhrRecordResponse(record);
     }
 
     /// <inheritdoc />
@@ -253,11 +221,11 @@ public class EhrService : IEhrService
         if (record == null)
             return (null, false, null);
 
-        // Bypass consent check nếu requester là chính bệnh nhân hoặc bác sĩ tạo
-        if (requesterId == record.PatientId || requesterId == record.CreatedByDoctorId)
+        // Bypass consent check nếu requester là chính bệnh nhân
+        if (requesterId == record.PatientId)
         {
-            _logger.LogInformation("Consent bypass: requester {RequesterId} is owner/creator of EHR {EhrId}", requesterId, ehrId);
-            return (MapToEhrRecordResponse(record, useReplica), false, null);
+            _logger.LogInformation("Consent bypass: requester {RequesterId} is owner of EHR {EhrId}", requesterId, ehrId);
+            return (MapToEhrRecordResponse(record), false, null);
         }
 
         // Gọi Consent Service để kiểm tra quyền truy cập
@@ -270,7 +238,7 @@ public class EhrService : IEhrService
         }
 
         _logger.LogInformation("Consent verified: requester {RequesterId} granted access to EHR {EhrId}", requesterId, ehrId);
-        return (MapToEhrRecordResponse(record, useReplica), false, null);
+        return (MapToEhrRecordResponse(record), false, null);
     }
 
     public async Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(Guid ehrId, Guid requesterId, bool useReplica = false)
@@ -365,13 +333,13 @@ public class EhrService : IEhrService
     public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false)
     {
         var records = await _ehrRecordRepo.GetByPatientIdAsync(patientId, useReplica);
-        return records.Select(r => MapToEhrRecordResponse(r, useReplica));
+        return records.Select(r => MapToEhrRecordResponse(r));
     }
 
-    public async Task<IEnumerable<EhrRecordResponseDto>> GetHospitalEhrRecordsAsync(Guid hospitalId, bool useReplica = false)
+    public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId, bool useReplica = false)
     {
-        var records = await _ehrRecordRepo.GetByHospitalIdAsync(hospitalId, useReplica);
-        return records.Select(r => MapToEhrRecordResponse(r, useReplica));
+        var records = await _ehrRecordRepo.GetByOrgIdAsync(orgId, useReplica);
+        return records.Select(r => MapToEhrRecordResponse(r));
     }
 
     public async Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId, bool useReplica = false)
@@ -380,29 +348,19 @@ public class EhrService : IEhrService
         return versions.Select(v => new EhrVersionDto
         {
             VersionId = v.VersionId,
-            Version = v.Version,
-            FileHash = v.FileHash,
-            ChangedBy = v.ChangedBy,
-            ChangeReason = v.ChangeReason,
-            TxStatus = v.TxStatus.ToString(),
-            BlockchainTxHash = v.BlockchainTxHash,
+            VersionNumber = v.VersionNumber,
             CreatedAt = v.CreatedAt
         });
     }
 
-    public async Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId, int? version = null, bool useReplica = false)
+    public async Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId, bool useReplica = false)
     {
-        var files = await _ehrRecordRepo.GetFilesAsync(ehrId, version, useReplica);
+        var files = await _ehrRecordRepo.GetFilesAsync(ehrId, useReplica);
         return files.Select(f => new EhrFileDto
         {
             FileId = f.FileId,
-            Version = f.Version,
-            ReportType = f.ReportType.ToString(),
             FileUrl = f.FileUrl,
             FileHash = f.FileHash,
-            MimeType = f.MimeType,
-            SizeBytes = f.SizeBytes,
-            CreatedBy = f.CreatedBy,
             CreatedAt = f.CreatedAt
         });
     }
@@ -418,7 +376,6 @@ public class EhrService : IEhrService
         {
             var client = _httpClientFactory.CreateClient("ConsentService");
             
-            // POST /api/consents/verify với body VerifyConsentRequest
             var verifyRequest = new
             {
                 PatientId = patientId,
@@ -436,7 +393,6 @@ public class EhrService : IEhrService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Consent Service returned {StatusCode} for verify request", response.StatusCode);
-                // Fail-closed: nếu Consent Service không available, từ chối truy cập
                 return (false, null);
             }
             
@@ -451,7 +407,6 @@ public class EhrService : IEhrService
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Cannot reach Consent Service for EHR {EhrId} consent verification", ehrId);
-            // Fail-closed: không kết nối được thì từ chối
             return (false, null);
         }
         catch (Exception ex)
@@ -468,41 +423,29 @@ public class EhrService : IEhrService
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private static EhrRecordResponseDto MapToEhrRecordResponse(EhrRecord record, bool usedReplica)
+    private static EhrRecordResponseDto MapToEhrRecordResponse(EhrRecord record)
     {
-        var latestVersion = record.Versions?.OrderByDescending(v => v.Version).FirstOrDefault();
+        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
         
         return new EhrRecordResponseDto
         {
             EhrId = record.EhrId,
             PatientId = record.PatientId,
             EncounterId = record.EncounterId,
-            HospitalId = record.HospitalId,
-            CurrentVersion = record.CurrentVersion,
+            OrgId = record.OrgId,
             LatestVersionInfo = latestVersion != null ? new EhrVersionDto
             {
                 VersionId = latestVersion.VersionId,
-                Version = latestVersion.Version,
-                FileHash = latestVersion.FileHash,
-                ChangedBy = latestVersion.ChangedBy,
-                ChangeReason = latestVersion.ChangeReason,
-                TxStatus = latestVersion.TxStatus.ToString(),
-                BlockchainTxHash = latestVersion.BlockchainTxHash,
+                VersionNumber = latestVersion.VersionNumber,
                 CreatedAt = latestVersion.CreatedAt
             } : null,
             Files = record.Files?.Select(f => new EhrFileDto
             {
                 FileId = f.FileId,
-                Version = f.Version,
-                ReportType = f.ReportType.ToString(),
                 FileUrl = f.FileUrl,
                 FileHash = f.FileHash,
-                MimeType = f.MimeType,
-                SizeBytes = f.SizeBytes,
-                CreatedBy = f.CreatedBy,
                 CreatedAt = f.CreatedAt
             }).ToList(),
-            CreatedByDoctorId = record.CreatedByDoctorId,
             CreatedAt = record.CreatedAt
         };
     }
