@@ -15,12 +15,11 @@ public interface IEhrRecordRepository
     Task<EhrRecord?> GetByIdAsync(Guid ehrId, bool useReplica = false);
     Task<EhrRecord?> GetByIdWithVersionsAsync(Guid ehrId, bool useReplica = false);
     Task<IEnumerable<EhrRecord>> GetByPatientIdAsync(Guid patientId, bool useReplica = false);
-    Task<IEnumerable<EhrRecord>> GetByDoctorIdAsync(Guid doctorId, bool useReplica = false);
-    Task<IEnumerable<EhrRecord>> GetByHospitalIdAsync(Guid hospitalId, bool useReplica = false);
+    Task<IEnumerable<EhrRecord>> GetByOrgIdAsync(Guid orgId, bool useReplica = false);
     Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId, bool useReplica = false);
     Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId, bool useReplica = false);
-    Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId, int? version = null, bool useReplica = false);
+    Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId, bool useReplica = false);
     
-    //  Kiểm tra replication 
+    // Kiểm tra replication 
     Task<bool> ExistsOnReplicaAsync(Guid ehrId);
 }
