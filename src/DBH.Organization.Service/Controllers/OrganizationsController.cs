@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DBH.Organization.Service.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/organizations")]
 public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
@@ -106,7 +106,7 @@ public class OrganizationsController : ControllerBase
 }
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/departments")]
 public class DepartmentsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
@@ -192,7 +192,7 @@ public class DepartmentsController : ControllerBase
 }
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/memberships")]
 public class MembershipsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;

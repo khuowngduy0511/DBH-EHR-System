@@ -1,12 +1,13 @@
 using DBH.Audit.Service.DTOs;
 using DBH.Audit.Service.Models.Enums;
 using DBH.Audit.Service.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Audit.Service.Controllers;
 
 [ApiController]
-[Route("api/audit-logs")]
+[Route("api/v1/audit")]
 public class AuditLogsController : ControllerBase
 {
     private readonly IAuditService _auditService;
@@ -27,9 +28,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/{id} - Lấy audit log theo ID
+    /// GET /api/v1/audit/{id} - Lấy audit log theo ID
     /// </summary>
     [HttpGet("{id:guid}")]
+    [Authorize]
     public async Task<IActionResult> GetAuditLog(Guid id)
     {
         var result = await _auditService.GetAuditLogByIdAsync(id);
@@ -37,9 +39,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/search - Search với filters
+    /// GET /api/v1/audit/search - Search với filters
     /// </summary>
     [HttpGet("search")]
+    [Authorize]
     public async Task<IActionResult> SearchAuditLogs([FromQuery] AuditLogQueryParams query)
     {
         var result = await _auditService.SearchAuditLogsAsync(query);
@@ -47,9 +50,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/by-patient/{patientId} - Logs của patient
+    /// GET /api/v1/audit/by-patient/{patientId} - Logs của patient
     /// </summary>
     [HttpGet("by-patient/{patientId:guid}")]
+    [Authorize]
     public async Task<IActionResult> GetByPatient(Guid patientId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var result = await _auditService.GetAuditLogsByPatientAsync(patientId, page, pageSize);
@@ -57,9 +61,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/by-actor/{actorUserId} - Logs của user
+    /// GET /api/v1/audit/by-actor/{actorUserId} - Logs của user
     /// </summary>
     [HttpGet("by-actor/{actorUserId:guid}")]
+    [Authorize]
     public async Task<IActionResult> GetByActor(Guid actorUserId, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var result = await _auditService.GetAuditLogsByActorAsync(actorUserId, page, pageSize);
@@ -67,9 +72,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/by-target/{targetId} - Logs của target object
+    /// GET /api/v1/audit/by-target/{targetId} - Logs của target object
     /// </summary>
     [HttpGet("by-target/{targetId:guid}")]
+    [Authorize]
     public async Task<IActionResult> GetByTarget(Guid targetId, [FromQuery] TargetType targetType, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var result = await _auditService.GetAuditLogsByTargetAsync(targetId, targetType, page, pageSize);
@@ -77,9 +83,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// GET /api/audit-logs/stats - Thống kê audit
+    /// GET /api/v1/audit/stats - Thống kê audit
     /// </summary>
     [HttpGet("stats")]
+    [Authorize(Roles = "Admin,SystemAdmin")]
     public async Task<IActionResult> GetStats(
         [FromQuery] Guid? organizationId,
         [FromQuery] DateTime? fromDate,
@@ -90,9 +97,10 @@ public class AuditLogsController : ControllerBase
     }
 
     /// <summary>
-    /// POST /api/audit-logs/sync/{blockchainAuditId} - Sync từ blockchain
+    /// POST /api/v1/audit/sync/{blockchainAuditId} - Sync từ blockchain
     /// </summary>
     [HttpPost("sync/{blockchainAuditId}")]
+    [Authorize(Roles = "Admin,SystemAdmin")]
     public async Task<IActionResult> SyncFromBlockchain(string blockchainAuditId)
     {
         var result = await _auditService.SyncFromBlockchainAsync(blockchainAuditId);

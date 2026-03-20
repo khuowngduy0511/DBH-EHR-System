@@ -1,11 +1,13 @@
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
-[Route("api/notification-preferences")]
+[Route("api/v1/notifications/preferences")]
+[Authorize]
 public class PreferencesController : ControllerBase
 {
     private readonly INotificationService _notificationService;

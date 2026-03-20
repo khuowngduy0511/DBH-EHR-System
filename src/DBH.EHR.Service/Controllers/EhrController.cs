@@ -1,13 +1,15 @@
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.EHR.Service.Controllers;
 
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/v1/ehr")]
 [Produces("application/json")]
+[Authorize]
 public class EhrController : ControllerBase
 {
     private readonly IEhrService _ehrService;
@@ -25,6 +27,7 @@ public class EhrController : ControllerBase
     /// Tạo EHR mới - Ghi PG Primary + Mongo Primary
     /// </summary>
     [HttpPost("records")]
+    [Authorize(Roles = "Doctor,Admin")]
     [ProducesResponseType(typeof(CreateEhrRecordResponseDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<CreateEhrRecordResponseDto>> CreateEhrRecord([FromBody] CreateEhrRecordDto request)
@@ -33,12 +36,31 @@ public class EhrController : ControllerBase
             return BadRequest(ModelState);
 
         _logger.LogInformation(
-            "POST /api/ehr/records - Tạo EHR cho bệnh nhân {PatientId}",
+            "POST /api/v1/ehr/records - Tạo EHR cho bệnh nhân {PatientId}",
             request.PatientId);
 
         var result = await _ehrService.CreateEhrRecordAsync(request);
 
         return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.EhrId }, result);
+    }
+
+    /// <summary>
+    /// Cập nhật EHR - Tạo version mới 
+    /// </summary>
+    [HttpPut("records/{ehrId:guid}")]
+    [Authorize(Roles = "Doctor,Admin")]
+    [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EhrRecordResponseDto>> UpdateEhrRecord(Guid ehrId, [FromBody] UpdateEhrRecordDto request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var result = await _ehrService.UpdateEhrRecordAsync(ehrId, request);
+        if (result == null)
+            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -146,6 +168,23 @@ public class EhrController : ControllerBase
         return Ok(versions);
     }
 
+    /// <summary>
+    /// Lấy chi tiết một version của EHR 
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/versions/{versionId:guid}")]
+    [ProducesResponseType(typeof(EhrVersionDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EhrVersionDetailDto>> GetEhrVersionById(
+        Guid ehrId, Guid versionId,
+        [FromQuery] bool useReplica = false)
+    {
+        var version = await _ehrService.GetVersionByIdAsync(ehrId, versionId, useReplica);
+        if (version == null)
+            return NotFound(new { Message = $"Version {versionId} of EHR {ehrId} không tìm thấy" });
+
+        return Ok(version);
+    }
+
     // EHR Files
 
     /// <summary>
@@ -159,5 +198,40 @@ public class EhrController : ControllerBase
     {
         var files = await _ehrService.GetEhrFilesAsync(ehrId, useReplica);
         return Ok(files);
+    }
+
+    /// <summary>
+    /// Thêm file vào EHR (Flow : upload kết quả xét nghiệm, hình ảnh, đơn thuốc)
+    /// </summary>
+    [HttpPost("records/{ehrId:guid}/files")]
+    [Authorize(Roles = "Doctor,Admin")]
+    [ProducesResponseType(typeof(EhrFileDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, [FromBody] AddEhrFileDto request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var result = await _ehrService.AddFileAsync(ehrId, request);
+        if (result == null)
+            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+
+        return CreatedAtAction(nameof(GetEhrFiles), new { ehrId }, result);
+    }
+
+    /// <summary>
+    /// Xóa file khỏi EHR
+    /// </summary>
+    [HttpDelete("records/{ehrId:guid}/files/{fileId:guid}")]
+    [Authorize(Roles = "Doctor,Admin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteEhrFile(Guid ehrId, Guid fileId)
+    {
+        var deleted = await _ehrService.DeleteFileAsync(ehrId, fileId);
+        if (!deleted)
+            return NotFound(new { Message = $"File {fileId} trong EHR {ehrId} không tìm thấy" });
+
+        return NoContent();
     }
 }
