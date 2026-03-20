@@ -203,6 +203,37 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     // Kiểm tra replication
 
+    public async Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false)
+    {
+        if (useReplica)
+        {
+            return await _replicaDb.EhrVersions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(v => v.EhrId == ehrId && v.VersionId == versionId);
+        }
+        return await _primaryDb.EhrVersions
+            .FirstOrDefaultAsync(v => v.EhrId == ehrId && v.VersionId == versionId);
+    }
+
+    public async Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId, bool useReplica = false)
+    {
+        if (useReplica)
+        {
+            return await _replicaDb.EhrFiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(f => f.EhrId == ehrId && f.FileId == fileId);
+        }
+        return await _primaryDb.EhrFiles
+            .FirstOrDefaultAsync(f => f.EhrId == ehrId && f.FileId == fileId);
+    }
+
+    public async Task DeleteFileAsync(EhrFile file)
+    {
+        _primaryDb.EhrFiles.Remove(file);
+        await _primaryDb.SaveChangesAsync();
+        _logger.LogInformation("Deleted EhrFile {FileId} from EHR {EhrId}", file.FileId, file.EhrId);
+    }
+
     public async Task<bool> ExistsOnReplicaAsync(Guid ehrId)
     {
         return await _replicaDb.EhrRecords.AsNoTracking().AnyAsync(e => e.EhrId == ehrId);

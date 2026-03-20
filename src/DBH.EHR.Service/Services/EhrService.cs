@@ -365,6 +365,92 @@ public class EhrService : IEhrService
         });
     }
 
+    public async Task<EhrRecordResponseDto?> UpdateEhrRecordAsync(Guid ehrId, UpdateEhrRecordDto request)
+    {
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
+        if (record == null) return null;
+
+        var documentJson = request.Data.GetRawText();
+        var dataHash = ComputeHash(documentJson);
+
+        // Update the record's data
+        record.Data = documentJson;
+        await _ehrRecordRepo.UpdateAsync(record);
+
+        // Create new version
+        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        var newVersionNumber = (latestVersion?.VersionNumber ?? 0) + 1;
+
+        var version = new EhrVersion
+        {
+            EhrId = ehrId,
+            VersionNumber = newVersionNumber,
+            Data = documentJson
+        };
+        await _ehrRecordRepo.CreateVersionAsync(version);
+
+        _logger.LogInformation("Updated EHR {EhrId} to version {Version}", ehrId, newVersionNumber);
+
+        // Reload record with updated versions
+        var updatedRecord = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
+        return updatedRecord != null ? MapToEhrRecordResponse(updatedRecord) : null;
+    }
+
+    public async Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false)
+    {
+        var version = await _ehrRecordRepo.GetVersionByIdAsync(ehrId, versionId, useReplica);
+        if (version == null) return null;
+
+        JsonElement? dataElement = null;
+        if (!string.IsNullOrEmpty(version.Data))
+        {
+            dataElement = JsonSerializer.Deserialize<JsonElement>(version.Data);
+        }
+
+        return new EhrVersionDetailDto
+        {
+            VersionId = version.VersionId,
+            EhrId = version.EhrId,
+            VersionNumber = version.VersionNumber,
+            Data = dataElement,
+            CreatedAt = version.CreatedAt
+        };
+    }
+
+    public async Task<EhrFileDto?> AddFileAsync(Guid ehrId, AddEhrFileDto request)
+    {
+        var record = await _ehrRecordRepo.GetByIdAsync(ehrId);
+        if (record == null) return null;
+
+        var file = new EhrFile
+        {
+            EhrId = ehrId,
+            FileUrl = request.FileUrl,
+            FileHash = request.FileHash
+        };
+        var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
+
+        _logger.LogInformation("Added file {FileId} to EHR {EhrId}", savedFile.FileId, ehrId);
+
+        return new EhrFileDto
+        {
+            FileId = savedFile.FileId,
+            FileUrl = savedFile.FileUrl,
+            FileHash = savedFile.FileHash,
+            CreatedAt = savedFile.CreatedAt
+        };
+    }
+
+    public async Task<bool> DeleteFileAsync(Guid ehrId, Guid fileId)
+    {
+        var file = await _ehrRecordRepo.GetFileByIdAsync(ehrId, fileId);
+        if (file == null) return false;
+
+        await _ehrRecordRepo.DeleteFileAsync(file);
+        _logger.LogInformation("Deleted file {FileId} from EHR {EhrId}", fileId, ehrId);
+        return true;
+    }
+
     // Private Helpers
 
     /// <summary>
@@ -388,7 +474,7 @@ public class EhrService : IEhrService
                 Encoding.UTF8,
                 "application/json");
             
-            var response = await client.PostAsync("api/consents/verify", content);
+            var response = await client.PostAsync("api/v1/consents/verify", content);
             
             if (!response.IsSuccessStatusCode)
             {

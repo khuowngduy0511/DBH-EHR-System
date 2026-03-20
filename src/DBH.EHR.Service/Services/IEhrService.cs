@@ -28,4 +28,12 @@ public interface IEhrService
     Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId, bool useReplica = false);
     
     Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId, bool useReplica = false);
+    
+    Task<EhrRecordResponseDto?> UpdateEhrRecordAsync(Guid ehrId, UpdateEhrRecordDto request);
+    
+    Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false);
+    
+    Task<EhrFileDto?> AddFileAsync(Guid ehrId, AddEhrFileDto request);
+    
+    Task<bool> DeleteFileAsync(Guid ehrId, Guid fileId);
 }
