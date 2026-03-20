@@ -109,10 +109,18 @@ public class EhrService : IEhrService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS");
-            ipfsCid = "IPFS_UPLOAD_FAILED";
+            ipfsCid = "";
         }
 
-        var encryptedDataBson = new BsonDocument("ipfsCid", ipfsCid);
+        BsonDocument encryptedDataBson;
+        if (string.IsNullOrEmpty(ipfsCid) || ipfsCid == "IPFS_UPLOAD_FAILED")
+        {
+            encryptedDataBson = new BsonDocument("encryptedText", encryptedDataStr);
+        }
+        else
+        {
+            encryptedDataBson = new BsonDocument("ipfsCid", ipfsCid);
+        }
         
         // Wrap AES blue key with Patient's Public Key
         string encryptedAesKey = string.Empty;
