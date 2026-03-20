@@ -94,6 +94,8 @@ services:
       - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
       - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
       - MongoDB__DatabaseName=dbh_fhir
+      - ServiceUrls__AuthService=http://auth_service:5101
+      - ServiceUrls__ConsentService=http://consent_service:5004
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -214,7 +216,7 @@ services:
     image: postgres:15-alpine
     container_name: dbh_pg_primary
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=dbh_123

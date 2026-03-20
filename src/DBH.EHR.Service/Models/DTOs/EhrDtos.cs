@@ -77,3 +77,37 @@ public class EhrFileDto
     public string? FileHash { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+/// <summary>
+/// Request cập nhật EHR — tạo version mới
+/// </summary>
+public class UpdateEhrRecordDto
+{
+    [Required]
+    public JsonElement Data { get; set; }
+}
+
+/// <summary>
+/// Request thêm file vào EHR
+/// </summary>
+public class AddEhrFileDto
+{
+    [Required]
+    [MaxLength(1000)]
+    public string FileUrl { get; set; } = string.Empty;
+
+    [MaxLength(255)]
+    public string? FileHash { get; set; }
+}
+
+/// <summary>
+/// Chi tiết version EHR (bao gồm data snapshot)
+/// </summary>
+public class EhrVersionDetailDto
+{
+    public Guid VersionId { get; set; }
+    public Guid EhrId { get; set; }
+    public int VersionNumber { get; set; }
+    public JsonElement? Data { get; set; }
+    public DateTime CreatedAt { get; set; }
+}

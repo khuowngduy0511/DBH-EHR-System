@@ -245,8 +245,16 @@ public class AuthService : IAuthService
         var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == user.UserId);
         if (existingUserRole != null)
         {
-            existingUserRole.RoleId = newRoleEntity.RoleId;
-            await _userRoleRepository.UpdateAsync(existingUserRole);
+            if (existingUserRole.RoleId == newRoleEntity.RoleId)
+            {
+                return new AuthResponse { Success = true, Message = "User already has the specified role." };
+            }
+            await _userRoleRepository.DeleteAsync(existingUserRole);
+            await _userRoleRepository.AddAsync(new UserRole
+            {
+                UserId = user.UserId,
+                RoleId = newRoleEntity.RoleId
+            });
         }
         else
         {

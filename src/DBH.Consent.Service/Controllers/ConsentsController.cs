@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DBH.Consent.Service.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/consents")]
 public class ConsentsController : ControllerBase
 {
     private readonly IConsentService _consentService;
@@ -136,7 +136,7 @@ public class ConsentsController : ControllerBase
 }
 
 [ApiController]
-[Route("api/access-requests")]
+[Route("api/v1/access-requests")]
 public class AccessRequestsController : ControllerBase
 {
     private readonly IConsentService _consentService;

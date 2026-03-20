@@ -129,8 +129,12 @@ public class DoctorsController : ControllerBase
 
         if (userRole.RoleId != role.RoleId)
         {
-            userRole.RoleId = role.RoleId;
-            await _userRoleRepository.UpdateAsync(userRole);
+            await _userRoleRepository.DeleteAsync(userRole);
+            await _userRoleRepository.AddAsync(new UserRole
+            {
+                UserId = userId,
+                RoleId = role.RoleId
+            });
         }
     }
 

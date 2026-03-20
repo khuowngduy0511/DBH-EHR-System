@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DBH.Organization.Service.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/organizations")]
 public class OrganizationsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
@@ -94,7 +94,7 @@ public class OrganizationsController : ControllerBase
     /// Verify organization (admin approval)
     /// </summary>
     [HttpPost("{id:guid}/verify")]
-    [Authorize(Roles = "SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> VerifyOrganization(Guid id, [FromQuery] Guid verifiedByUserId)
     {
         var result = await _organizationService.VerifyOrganizationAsync(id, verifiedByUserId);
@@ -106,7 +106,7 @@ public class OrganizationsController : ControllerBase
 }
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/departments")]
 public class DepartmentsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
@@ -192,7 +192,7 @@ public class DepartmentsController : ControllerBase
 }
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/memberships")]
 public class MembershipsController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;

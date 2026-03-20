@@ -2,7 +2,9 @@ using System.Text.Json.Serialization;
 using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.Services;
 using DBH.Shared.Infrastructure;
+using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +27,25 @@ builder.Services.AddSwaggerGen(options =>
         Title = "DBH Consent Service API", 
         Version = "v1",
         Description = "Consent Management Service (Blockchain) cho hệ thống DBH-EHR"
+    });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Bearer token",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
     });
 });
 
@@ -73,6 +94,13 @@ builder.Services.AddHttpClient("EhrService", client =>
 // ============================================================================
 builder.Services.AddHyperledgerFabric(builder.Configuration);
 
+// ============================================================================
+// JWT Authentication
+// ============================================================================
+
+builder.Services.AddDbhAuthentication(builder.Configuration);
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // ============================================================================
@@ -107,6 +135,9 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "DBH Consent Service API v1");
     c.RoutePrefix = "swagger";
 });
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

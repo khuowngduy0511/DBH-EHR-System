@@ -1,11 +1,13 @@
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DBH.Notification.Service.Controllers;
 
 [ApiController]
-[Route("api/device-tokens")]
+[Route("api/v1/notifications/device-tokens")]
+[Authorize]
 public class DeviceTokensController : ControllerBase
 {
     private readonly INotificationService _notificationService;

@@ -4,6 +4,7 @@ using DBH.Appointment.Service.Services;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,10 +28,30 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "Appointment and Encounter Management Service for DBH-EHR System"
     });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Bearer token",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 // Configure standard JWT Auth from DBH.Shared.Infrastructure if present
 builder.Services.AddDbhAuthentication(builder.Configuration);
+builder.Services.AddAuthorization();
 
 // ============================================================================
 // Database Configuration
@@ -65,6 +86,7 @@ builder.Services.AddInfrastructure(builder.Configuration, options =>
 // ============================================================================
 
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddHttpContextAccessor();
 
 // ============================================================================
 // HttpClient Factory — inter-service communication

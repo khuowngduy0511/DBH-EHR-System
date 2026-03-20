@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using DBH.Appointment.Service.DbContext;
@@ -17,16 +18,19 @@ public class AppointmentService : IAppointmentService
     private readonly ILogger<AppointmentService> _logger;
     private readonly IMessagePublisher? _messagePublisher;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AppointmentService(
         AppointmentDbContext context,
         ILogger<AppointmentService> logger,
         IHttpClientFactory httpClientFactory,
+        IHttpContextAccessor httpContextAccessor,
         IMessagePublisher? messagePublisher = null)
     {
         _context = context;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _messagePublisher = messagePublisher;
     }
 
@@ -654,6 +658,13 @@ public class AppointmentService : IAppointmentService
         {
             var client = _httpClientFactory.CreateClient("EhrService");
 
+            // Forward JWT token for authentication
+            var token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(token))
+            {
+                client.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse(token);
+            }
+
             var createEhrRequest = new
             {
                 PatientId = encounter.PatientId,
@@ -667,7 +678,7 @@ public class AppointmentService : IAppointmentService
                 Encoding.UTF8,
                 "application/json");
 
-            var response = await client.PostAsync("Ehr/records", content);
+            var response = await client.PostAsync("api/v1/ehr/records", content);
 
             if (response.IsSuccessStatusCode)
             {

@@ -19,6 +19,9 @@ public interface IEhrRecordRepository
     Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId, bool useReplica = false);
     Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId, bool useReplica = false);
     Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId, bool useReplica = false);
+    Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false);
+    Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId, bool useReplica = false);
+    Task DeleteFileAsync(EhrFile file);
     
     // Kiểm tra replication 
     Task<bool> ExistsOnReplicaAsync(Guid ehrId);
