@@ -94,7 +94,7 @@ public class OrganizationsController : ControllerBase
     /// Verify organization (admin approval)
     /// </summary>
     [HttpPost("{id:guid}/verify")]
-    [Authorize(Roles = "SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> VerifyOrganization(Guid id, [FromQuery] Guid verifiedByUserId)
     {
         var result = await _organizationService.VerifyOrganizationAsync(id, verifiedByUserId);
