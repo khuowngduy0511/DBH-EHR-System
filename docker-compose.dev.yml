@@ -214,7 +214,7 @@ services:
     image: postgres:15-alpine
     container_name: dbh_pg_primary
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=dbh_123
