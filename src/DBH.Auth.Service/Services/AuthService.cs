@@ -96,6 +96,10 @@ public class AuthService : IAuthService
             FullName = request.FullName,
             Email = request.Email,
             Phone = request.Phone,
+            Gender = request.Gender,
+            DateOfBirth = request.DateOfBirth,
+            Address = request.Address,
+            OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
@@ -181,6 +185,10 @@ public class AuthService : IAuthService
             FullName = request.FullName,
             Email = request.Email,
             Phone = request.Phone,
+            Gender = request.Gender,
+            DateOfBirth = request.DateOfBirth,
+            Address = request.Address,
+            OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
@@ -390,7 +398,7 @@ public class AuthService : IAuthService
     private async Task<AuthResponse> GenerateAuthResponseAsync(User user)
     {
         var roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()).ToList();
-        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, user.FullName, roles);
+        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, user.FullName, user.OrganizationId ?? string.Empty, roles);
         var refreshToken = _tokenService.GenerateRefreshToken();
 
         var existingCredential = await _credentialRepository.FindAsync(c => c.UserId == user.UserId && c.Provider == Models.Enums.ProviderType.RefreshToken);

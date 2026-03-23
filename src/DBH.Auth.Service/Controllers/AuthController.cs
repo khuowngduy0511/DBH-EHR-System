@@ -101,11 +101,11 @@ public class AuthController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> GetMyProfile()
     {
-        Console.WriteLine($"IsAuthenticated: {User.Identity?.IsAuthenticated}");
-        foreach (var claim in User.Claims)
-        {
-            Console.WriteLine($"Claim: {claim.Type} = {claim.Value}");
-        }
+        // Console.WriteLine($"IsAuthenticated: {User.Identity?.IsAuthenticated}");
+        // foreach (var claim in User.Claims)
+        // {
+        //     Console.WriteLine($"Claim: {claim.Type} = {claim.Value}");
+        // }
 
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
