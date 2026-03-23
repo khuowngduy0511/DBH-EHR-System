@@ -1,0 +1,18 @@
+using DBH.Organization.Service.DTOs;
+
+namespace DBH.Organization.Service.Services;
+
+public interface IAuthUserClient
+{
+    Task<DoctorUserInfoDto?> GetDoctorByUserIdInMyOrganizationAsync(string bearerToken, Guid orgId, Guid userId);
+}
+
+public class DoctorUserInfoDto
+{
+    public Guid UserId { get; set; }
+    public string? FullName { get; set; }
+    public string? Gender { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? OrganizationId { get; set; }
+}

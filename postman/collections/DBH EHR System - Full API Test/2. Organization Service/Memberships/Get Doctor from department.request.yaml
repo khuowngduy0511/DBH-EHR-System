@@ -1,0 +1,18 @@
+$kind: http-request
+name: Get Doctor from department
+url: "{{baseUrl}}/api/v1/memberships/doctors/search"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"orgId\": \"63b0bcea-79f9-4074-b786-6688ac4283ae\",\r
+
+    \  \"departmentId\": \"6b21553e-e586-4f84-9ec7-0f3b34e6b756\",\r
+
+    \  \"page\": 1,\r
+
+    \  \"pageSize\": 1\r
+
+    }"
+order: 4124211000902136

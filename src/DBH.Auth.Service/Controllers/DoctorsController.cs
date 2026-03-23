@@ -4,11 +4,12 @@ using DBH.Auth.Service.Models.Enums;
 using DBH.Auth.Service.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace DBH.Auth.Service.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin")]
+
 [Route("api/v1/doctors")]
 public class DoctorsController : ControllerBase
 {
@@ -29,6 +30,8 @@ public class DoctorsController : ControllerBase
         _userRoleRepository = userRoleRepository;
     }
 
+
+    [Authorize(Roles = "Admin")]
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -36,6 +39,55 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToResponse));
     }
 
+    [Authorize(Roles = "Admin,OrgAdmin,HR,Nurse,Pharmacist,Receptionist,LabTech")]
+    [HttpGet("organization/me")]
+    public async Task<IActionResult> GetAllByMyOrganization()
+    {
+        var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+        // if (string.IsNullOrWhiteSpace(organizationId) && !string.IsNullOrWhiteSpace(orgId))
+        // {
+        //     organizationId = orgId;
+        // }
+
+        if (string.IsNullOrWhiteSpace(organizationId))
+        {
+            return Unauthorized("Organization claim is missing in token.");
+        }
+
+        var doctors = await _userRepository.GetDoctorsByOrganizationAsync(organizationId);
+        return Ok(doctors.Select(MapToBasicInfoResponse));
+    }
+
+    [Authorize(Roles = "Admin,OrgAdmin,HR,Nurse,Pharmacist,Receptionist,LabTech")]
+    [HttpGet("organization/me/{userId:guid}")]
+    public async Task<IActionResult> GetDoctorByUserIdInMyOrganization(Guid userId, [FromQuery] string? orgId = null)
+    {
+        var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+        if (string.IsNullOrWhiteSpace(organizationId) && !string.IsNullOrWhiteSpace(orgId))
+        {
+            organizationId = orgId;
+        }
+
+        if (string.IsNullOrWhiteSpace(organizationId))
+        {
+            return Unauthorized("Organization claim is missing in token.");
+        }
+
+        var doctorUser = await _userRepository.GetByIdAsync(userId);
+        if (doctorUser == null)
+        {
+            return NotFound("User not found.");
+        }
+
+        // if (!string.Equals(doctorUser.OrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
+        // {
+        //     return NotFound("Doctor not found in your organization.");
+        // }
+
+        return Ok(MapToBasicInfoResponse(doctorUser));
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpGet("{doctorId:guid}")]
     public async Task<IActionResult> GetById(Guid doctorId)
     {
@@ -49,6 +101,7 @@ public class DoctorsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] CreateDoctorRequest request)
     {
         var user = await _userRepository.GetByIdAsync(request.UserId);
@@ -77,6 +130,7 @@ public class DoctorsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { doctorId = doctor.DoctorId }, MapToResponse(doctor));
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpPut("{doctorId:guid}")]
     public async Task<IActionResult> Update(Guid doctorId, [FromBody] UpdateDoctorRequest request)
     {
@@ -95,6 +149,7 @@ public class DoctorsController : ControllerBase
         return Ok(MapToResponse(doctor));
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{doctorId:guid}")]
     public async Task<IActionResult> Delete(Guid doctorId)
     {
@@ -148,6 +203,19 @@ public class DoctorsController : ControllerBase
             LicenseNumber = doctor.LicenseNumber,
             LicenseImage = doctor.LicenseImage,
             VerifiedStatus = doctor.VerifiedStatus
+        };
+    }
+
+    private static DoctorBasicInfoResponse MapToBasicInfoResponse(User user)
+    {
+        return new DoctorBasicInfoResponse
+        {
+            UserId = user.UserId,
+            FullName = user.FullName,
+            Gender = user.Gender,
+            Email = user.Email,
+            Phone = user.Phone,
+            OrganizationId = user.OrganizationId
         };
     }
 }

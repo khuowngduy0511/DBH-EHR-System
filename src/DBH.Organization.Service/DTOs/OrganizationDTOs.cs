@@ -229,10 +229,28 @@ public class UpdateMembershipRequest
     public string? Notes { get; set; }
 }
 
+public class SearchDoctorsRequest
+{
+    [Required]
+    public Guid OrgId { get; set; }
+
+    public Guid? DepartmentId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int Page { get; set; } = 1;
+
+    [Range(1, 100)]
+    public int PageSize { get; set; } = 10;
+}
+
 public class MembershipResponse
 {
     public Guid MembershipId { get; set; }
     public Guid UserId { get; set; }
+    public string? FullName { get; set; }
+    public string? Gender { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
     public Guid OrgId { get; set; }
     public string? OrgName { get; set; }
     public Guid? DepartmentId { get; set; }

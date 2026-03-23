@@ -25,3 +25,4 @@ scripts:
           pm.expect(pm.response.code).to.equal(200);
       });
 order: 5000
+examples: ./.resources\Login as Admin.resources\examples

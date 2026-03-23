@@ -30,12 +30,12 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 
-ENV ASPNETCORE_URLS=http://+:5050
-ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_URLS=http://+:5003
+ENV ASPNETCORE_ENVIRONMENT=Development
 
-EXPOSE 5050
+EXPOSE 5003
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:5050/health || exit 1
+    CMD curl -f http://localhost:5003/health || exit 1
 
 ENTRYPOINT ["dotnet", "DBH.EHR.Service.dll"]

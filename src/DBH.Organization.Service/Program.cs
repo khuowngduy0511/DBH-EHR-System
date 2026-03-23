@@ -71,6 +71,11 @@ builder.Services.AddDbContext<OrganizationDbContext>(options =>
 // Application Services
 // ============================================================================
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient<IAuthUserClient, AuthUserClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 
 // ============================================================================
