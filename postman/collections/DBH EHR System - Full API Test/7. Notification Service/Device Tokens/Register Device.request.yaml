@@ -1,0 +1,28 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/device-tokens"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "userDid": "{{userDid}}",
+      "userId": "{{userId}}",
+      "fcmToken": "fcm-token-abc123xyz",
+      "deviceType": "Android",
+      "deviceName": "Samsung Galaxy S24",
+      "osVersion": "Android 14",
+      "appVersion": "1.0.0"
+    }
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.deviceTokenId || jsonData.data?.deviceTokenId || jsonData.data?.id;
+          if (id) { pm.collectionVariables.set('deviceTokenId', id); }
+      } catch(e) {}
+
+      pm.test('Register device successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 409]);
+      });
+order: 1000

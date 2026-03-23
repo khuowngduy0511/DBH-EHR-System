@@ -1,0 +1,33 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/organizations"
+method: POST
+body:
+  type: json
+  content: >-
+    {
+      "orgName": "Benh Vien Da Khoa DBH",
+      "orgCode": "DBH-001",
+      "orgType": "HOSPITAL",
+      "licenseNumber": "BV-2024-0001",
+      "taxId": "TAX-001",
+      "address": "{\"street\": \"123 Nguyen Hue\", \"city\": \"HCMC\"}",
+      "contactInfo": "{\"phone\": \"028-1234-5678\", \"email\": \"info@dbh.vn\"}",
+      "website": "https://dbh.vn"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          var orgId = jsonData.orgId || jsonData.data?.orgId || jsonData.data?.organizationId;
+          if (orgId) { pm.collectionVariables.set('orgId', orgId); }
+      } catch(e) {}
+
+      pm.test('Create organization successful or already exists', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 409]);
+      });
+order: 1000

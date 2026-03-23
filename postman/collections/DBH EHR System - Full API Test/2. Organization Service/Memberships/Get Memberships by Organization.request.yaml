@@ -1,0 +1,11 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/memberships/by-organization/{{orgId}}?page=1&pageSize=10"
+method: GET
+queryParams:
+  page: "1"
+  pageSize: "10"
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 3000

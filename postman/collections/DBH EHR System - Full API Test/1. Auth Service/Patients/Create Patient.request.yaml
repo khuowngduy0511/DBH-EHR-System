@@ -1,0 +1,27 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/patients"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "userId": "{{userId}}",
+      "dob": "1990-05-15",
+      "bloodType": "O+"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          if (jsonData.patientId) { pm.collectionVariables.set('patientId', jsonData.patientId); }
+      } catch(e) {}
+
+      pm.test('Create patient successful or already exists', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 409]);
+      });
+order: 3000

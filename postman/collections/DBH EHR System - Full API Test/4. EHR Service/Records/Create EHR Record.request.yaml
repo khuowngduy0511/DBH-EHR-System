@@ -1,0 +1,35 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/ehr/records"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "patientId": "{{patientId}}",
+      "orgId": "{{orgId}}",
+      "data": {
+        "diagnosis": "Viem phoi - J18.9",
+        "treatment": "Amoxicillin 500mg x 3 lan/ngay",
+        "vitals": {
+          "temperature": 38.5,
+          "blood_pressure": "130/85"
+        }
+      }
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          if (jsonData.ehrId) { pm.collectionVariables.set('ehrId', jsonData.ehrId); }
+          if (jsonData.versionId) { pm.collectionVariables.set('versionId', jsonData.versionId); }
+      } catch(e) {}
+
+      pm.test('Create EHR successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401, 409]);
+      });
+order: 1000

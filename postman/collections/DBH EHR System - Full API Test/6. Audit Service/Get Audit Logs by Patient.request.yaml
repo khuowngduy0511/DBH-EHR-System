@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/audit/by-patient/{{patientId}}?page=1&pageSize=50"
+method: GET
+queryParams:
+  page: "1"
+  pageSize: "50"
+order: 4000

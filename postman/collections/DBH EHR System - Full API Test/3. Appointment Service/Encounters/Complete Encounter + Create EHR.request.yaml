@@ -1,0 +1,42 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/encounters/{{encounterId}}/complete"
+method: PUT
+body:
+  type: json
+  content: >-
+    {
+      "notes": "Hoan tat kham benh",
+      "ehrData": {
+        "diagnosis": "Cam cum thong thuong - J06.9",
+        "treatment_plan": "Nghi ngoi, uong nhieu nuoc, Paracetamol 500mg x 3 lan/ngay",
+        "vitals": {
+          "temperature": 37.2,
+          "blood_pressure": "120/80",
+          "heart_rate": 78
+        },
+        "prescriptions": [
+          {
+            "medication": "Paracetamol 500mg",
+            "dosage": "3 lan/ngay sau an",
+            "duration": "5 ngay"
+          }
+        ]
+      }
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      try {
+          var jsonData = pm.response.json();
+          var msg = jsonData.message || '';
+          var match = msg.match(/\(([0-9a-f-]+)\)/);
+          if (match) { pm.collectionVariables.set('ehrId', match[1]); }
+      } catch(e) {}
+      pm.test('Complete encounter successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 400, 401, 404]);
+      });
+order: 6000

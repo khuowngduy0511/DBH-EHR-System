@@ -1,0 +1,15 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/organizations/{{orgId}}"
+method: DELETE
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      pm.test('Delete organization successful or requires SystemAdmin', function
+      () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 204, 403]);
+      });
+order: 6000

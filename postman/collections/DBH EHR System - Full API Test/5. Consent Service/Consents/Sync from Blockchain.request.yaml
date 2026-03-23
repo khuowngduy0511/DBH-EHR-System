@@ -1,0 +1,8 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/consents/sync/blockchain-consent-id-here"
+method: POST
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 8000

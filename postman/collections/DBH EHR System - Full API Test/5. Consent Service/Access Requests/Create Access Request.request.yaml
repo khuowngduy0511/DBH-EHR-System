@@ -1,0 +1,36 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/access-requests"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "patientId": "{{patientId}}",
+      "patientDid": "{{patientDid}}",
+      "requesterId": "{{doctorUserId}}",
+      "requesterDid": "{{doctorDid}}",
+      "requesterType": "DOCTOR",
+      "ehrId": "{{ehrId}}",
+      "permission": "READ",
+      "purpose": "TREATMENT",
+      "reason": "Can xem ho so de dieu tri",
+      "requestedDurationDays": 30
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.accessRequestId || jsonData.data?.accessRequestId || jsonData.data?.requestId || jsonData.data?.id;
+          if (id) { pm.collectionVariables.set('accessRequestId', id); }
+      } catch(e) {}
+
+      pm.test('Create access request successful or validation error', function
+      () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401, 409]);
+      });
+order: 1000

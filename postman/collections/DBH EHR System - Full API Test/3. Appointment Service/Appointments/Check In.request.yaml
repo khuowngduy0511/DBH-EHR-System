@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/check-in"
+method: PUT
+order: 6000

@@ -24,6 +24,7 @@ public class AuthService : IAuthService
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthService> _logger;
     private readonly IFabricCaService _fabricCa;
+    private readonly IOrganizationServiceClient _organizationServiceClient;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -36,7 +37,8 @@ public class AuthService : IAuthService
         IGenericRepository<Staff> staffRepository,
         ILogger<AuthService> logger,
         ITokenService tokenService,
-        IFabricCaService fabricCa)
+        IFabricCaService fabricCa,
+        IOrganizationServiceClient organizationServiceClient)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -49,6 +51,7 @@ public class AuthService : IAuthService
         _tokenService = tokenService;
         _logger = logger;
         _fabricCa = fabricCa;
+        _organizationServiceClient = organizationServiceClient;
     }
 
 
@@ -158,10 +161,14 @@ public class AuthService : IAuthService
             }
         });
 
+        var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
+
         return new AuthResponse
         {
             Success = true,
-            Message = "User registered successfully.",
+            Message = string.IsNullOrEmpty(organizationWarning)
+                ? "User registered successfully."
+                : $"User registered successfully. {organizationWarning}",
             UserId = user.UserId,
         };
     }
@@ -225,10 +232,14 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow,            
         });
 
+        var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
+
         return new AuthResponse
         {
             Success = true,
-            Message = "Admin/User registered successfully with the specified role.",
+            Message = string.IsNullOrEmpty(organizationWarning)
+                ? "Admin/User registered successfully with the specified role."
+                : $"Admin/User registered successfully with the specified role. {organizationWarning}",
             UserId = user.UserId,
         };
     }
@@ -374,6 +385,10 @@ public class AuthService : IAuthService
             user.FullName,
             user.Email,
             user.Phone,
+            user.Gender,
+            user.DateOfBirth,
+            user.Address,
+            user.OrganizationId,
             user.Status,
             Roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()),
             Profiles = profiles
@@ -398,7 +413,7 @@ public class AuthService : IAuthService
     private async Task<AuthResponse> GenerateAuthResponseAsync(User user)
     {
         var roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()).ToList();
-        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, user.FullName, user.OrganizationId ?? string.Empty, roles);
+        var accessToken = _tokenService.GenerateToken(user.UserId, user.Email!, user.FullName ?? "Unknown", user.OrganizationId ?? string.Empty, roles);
         var refreshToken = _tokenService.GenerateRefreshToken();
 
         var existingCredential = await _credentialRepository.FindAsync(c => c.UserId == user.UserId && c.Provider == Models.Enums.ProviderType.RefreshToken);
@@ -496,5 +511,48 @@ public class AuthService : IAuthService
             RoleName.LabTech => StaffRole.LabTech,
             _ => throw new InvalidOperationException($"Role '{roleName}' is not a staff role.")
         };
+    }
+
+    private async Task<string?> HandleOrganizationMembershipAsync(User user, string? requestedOrganizationId, string? jobTitle)
+    {
+        if (string.IsNullOrWhiteSpace(requestedOrganizationId))
+        {
+            return null;
+        }
+
+        if (!Guid.TryParse(requestedOrganizationId, out var organizationId))
+        {
+            user.OrganizationId = "666";
+            await _userRepository.UpdateAsync(user);
+            _logger.LogWarning(
+                "Invalid organization ID format provided for user {UserId}. Assigned fake OrganizationId=666. Membership was not created.",
+                user.UserId);
+
+            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+        }
+
+        var membershipResult = await _organizationServiceClient.CreateMembershipAsync(
+            userId: user.UserId,
+            organizationId: organizationId,
+            departmentId: null,
+            jobTitle: jobTitle);
+
+        if (!membershipResult.Success)
+        {
+            user.OrganizationId = "666";
+            await _userRepository.UpdateAsync(user);
+
+            _logger.LogWarning(
+                "Membership was not created for user {UserId} in organization {OrgId}: {Error}. Assigned fake OrganizationId=666.",
+                user.UserId, organizationId, membershipResult.Message);
+
+            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+        }
+
+        _logger.LogInformation(
+            "Successfully created membership for user {UserId} in organization {OrgId}",
+            user.UserId, organizationId);
+
+        return null;
     }
 }

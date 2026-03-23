@@ -65,6 +65,13 @@
     builder.Services.AddScoped<ITokenService, TokenService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
 
+    // HTTP Client for Organization Service
+    builder.Services.AddHttpClient<IOrganizationServiceClient, OrganizationServiceClient>()
+        .ConfigureHttpClient(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+
     // Fabric CA enrollment (singleton because it caches admin crypto material)
     builder.Services.Configure<FabricCaOptions>(builder.Configuration.GetSection(FabricCaOptions.SectionName));
     builder.Services.AddSingleton<IFabricCaService, FabricCaService>();

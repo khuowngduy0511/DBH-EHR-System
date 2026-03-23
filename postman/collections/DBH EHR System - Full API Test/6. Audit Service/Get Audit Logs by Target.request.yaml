@@ -1,0 +1,9 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/audit/by-target/{{ehrId}}?targetType=EHR&page=1&pageSi\
+  ze=50"
+method: GET
+queryParams:
+  targetType: EHR
+  page: "1"
+  pageSize: "50"
+order: 6000

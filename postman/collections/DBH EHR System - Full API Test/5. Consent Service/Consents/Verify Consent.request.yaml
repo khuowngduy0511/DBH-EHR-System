@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/consents/verify"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "patientId": "{{patientId}}",
+      "granteeId": "{{doctorUserId}}",
+      "ehrId": "{{ehrId}}",
+      "requiredPermission": "READ"
+    }
+order: 6000

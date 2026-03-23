@@ -23,6 +23,9 @@ public class AuthController : ControllerBase
     /// <param name="request"></param>
     /// <returns></returns>
     [HttpPost("register")]
+    // [Authorize(Roles = "Admin, Staff")]
+    // Cái organizationId sẽ được lấy từ tài khoản của staff
+    // Một là FE tự truyền xuong, hai là BE lấy từ claim của staff đang đăng nhập
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var response = await _authService.RegisterAsync(request);
@@ -98,6 +101,7 @@ public class AuthController : ControllerBase
     /// Gets the profile of the currently authenticated user.
     /// </summary>
     /// <returns></returns>
+    [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMyProfile()
     {

@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/organizations/{{orgId}}/verify?verifiedByUserId={{userId}}"
+method: POST
+queryParams:
+  verifiedByUserId: "{{userId}}"
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      pm.test('Verify organization successful or requires SystemAdmin', function
+      () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 403]);
+      });
+order: 5000

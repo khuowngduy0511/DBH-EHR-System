@@ -1,0 +1,12 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/organizations?page=1&pageSize=10"
+method: GET
+queryParams:
+  - key: page
+    value: "1"
+  - key: pageSize
+    value: "10"
+  - key: search
+    value: ""
+    disabled: true
+order: 2000

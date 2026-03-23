@@ -1,0 +1,8 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/memberships/{{membershipId}}"
+method: DELETE
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 6000

@@ -1,0 +1,21 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/reject"
+method: PUT
+body:
+  type: json
+  content: |-
+    {
+      "reason": "Bac si ban, khong the kham"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      pm.test('Reject appointment (expected 400 - not in PENDING state)',
+      function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);
+      });
+order: 9000

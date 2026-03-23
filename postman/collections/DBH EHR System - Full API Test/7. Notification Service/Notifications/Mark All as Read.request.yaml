@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/by-user/{{userDid}}/mark-all-read"
+method: POST
+order: 7000
