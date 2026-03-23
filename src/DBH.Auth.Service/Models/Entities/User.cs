@@ -21,7 +21,7 @@ public class User
     public string? Phone { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string? Address { get; set; }
-    public string? DepartmentId { get; set; } 
+    public string? OrganizationId { get; set; } 
     public UserStatus Status { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
