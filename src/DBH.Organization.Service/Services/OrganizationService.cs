@@ -471,6 +471,11 @@ public class OrganizationService : IOrganizationService
             query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.Specialty))
+        {
+            query = query.Where(m => m.Specialty != null && m.Specialty.Contains(request.Specialty));
+        }
+
         var candidates = await query
             .OrderByDescending(m => m.CreatedAt)
             .ToListAsync();
@@ -496,11 +501,21 @@ public class OrganizationService : IOrganizationService
                         response.Gender = userInfo.Gender;
                         response.Email = userInfo.Email;
                         response.Phone = userInfo.Phone;
+                        response.DateOfBirth = userInfo.DateOfBirth;
+                    }
+                }
+
+                if (request.DateOfBirth.HasValue && response.DateOfBirth.HasValue)
+                {
+                    var searchDate = request.DateOfBirth.Value;
+                    if (response.DateOfBirth.Value.Date != searchDate.Date)
+                    {
+                        return null;
                     }
                 }
 
                 return response;
-            }))).ToList(),
+            }))).Where(r => r != null).Cast<MembershipResponse>().ToList(),
             Page = request.Page,
             PageSize = request.PageSize,
             TotalCount = totalCount

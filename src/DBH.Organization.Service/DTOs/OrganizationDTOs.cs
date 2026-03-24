@@ -236,6 +236,10 @@ public class SearchDoctorsRequest
 
     public Guid? DepartmentId { get; set; }
 
+    public DateTime? DateOfBirth { get; set; }
+
+    public string? Specialty { get; set; }
+
     [Range(1, int.MaxValue)]
     public int Page { get; set; } = 1;
 
@@ -251,6 +255,7 @@ public class MembershipResponse
     public string? Gender { get; set; }
     public string? Email { get; set; }
     public string? Phone { get; set; }
+    public DateTime? DateOfBirth { get; set; }
     public Guid OrgId { get; set; }
     public string? OrgName { get; set; }
     public Guid? DepartmentId { get; set; }
