@@ -23,6 +23,9 @@ public class AuthController : ControllerBase
     /// <param name="request"></param>
     /// <returns></returns>
     [HttpPost("register")]
+    // [Authorize(Roles = "Admin, Receptionist")]
+    // Cái organizationId sẽ được lấy từ tài khoản của staff
+    // Một là FE tự truyền xuong, hai là BE lấy từ claim của staff đang đăng nhập
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var response = await _authService.RegisterAsync(request);
@@ -98,14 +101,15 @@ public class AuthController : ControllerBase
     /// Gets the profile of the currently authenticated user.
     /// </summary>
     /// <returns></returns>
+    [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMyProfile()
     {
-        Console.WriteLine($"IsAuthenticated: {User.Identity?.IsAuthenticated}");
-        foreach (var claim in User.Claims)
-        {
-            Console.WriteLine($"Claim: {claim.Type} = {claim.Value}");
-        }
+        // Console.WriteLine($"IsAuthenticated: {User.Identity?.IsAuthenticated}");
+        // foreach (var claim in User.Claims)
+        // {
+        //     Console.WriteLine($"Claim: {claim.Type} = {claim.Value}");
+        // }
 
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))

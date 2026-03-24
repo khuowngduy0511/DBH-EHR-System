@@ -25,6 +25,7 @@ public interface IOrganizationService
     Task<ApiResponse<MembershipResponse>> GetMembershipByIdAsync(Guid membershipId);
     Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, int page = 1, int pageSize = 10);
     Task<PagedResponse<MembershipResponse>> GetMembershipsByUserAsync(Guid userId, int page = 1, int pageSize = 10);
+    Task<PagedResponse<MembershipResponse>> SearchDoctorsAsync(SearchDoctorsRequest request);
     Task<ApiResponse<MembershipResponse>> UpdateMembershipAsync(Guid membershipId, UpdateMembershipRequest request);
     Task<ApiResponse<bool>> DeleteMembershipAsync(Guid membershipId);
 }

@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/ehr/records/{{ehrId}}/versions/{{versionId}}"
+method: GET
+order: 2000

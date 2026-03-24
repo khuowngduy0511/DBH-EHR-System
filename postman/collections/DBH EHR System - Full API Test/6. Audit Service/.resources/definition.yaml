@@ -1,0 +1,3 @@
+$kind: collection
+description: Audit Logging & Compliance (port 5005)
+order: 6000

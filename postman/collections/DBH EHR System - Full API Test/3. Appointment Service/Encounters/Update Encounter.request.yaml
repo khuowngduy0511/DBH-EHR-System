@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/encounters/{{encounterId}}"
+method: PUT
+body:
+  type: json
+  content: >-
+    {
+      "notes": "Da kham - benh nhan co trieu chung sot nhe, huyet ap binh thuong"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+order: 5000

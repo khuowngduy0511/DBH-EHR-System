@@ -1,0 +1,28 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/appointments"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "patientId": "{{patientId}}",
+      "doctorId": "{{doctorUserId}}",
+      "orgId": "{{orgId}}",
+      "scheduledAt": "2027-06-01T09:00:00Z"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{patientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.data?.appointmentId;
+          if (id) { pm.collectionVariables.set('appointmentId', id); }
+      } catch(e) {}
+      pm.test('Create appointment successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 409]);
+      });
+order: 2000

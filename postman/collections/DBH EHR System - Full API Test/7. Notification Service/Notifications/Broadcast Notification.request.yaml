@@ -1,0 +1,18 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/broadcast"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "recipientDids": ["{{patientDid}}", "{{doctorDid}}"],
+      "title": "Thong bao bao tri he thong",
+      "body": "He thong se bao tri tu 23:00 - 01:00 ngay 25/03/2026",
+      "type": "System",
+      "priority": "High"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 2000

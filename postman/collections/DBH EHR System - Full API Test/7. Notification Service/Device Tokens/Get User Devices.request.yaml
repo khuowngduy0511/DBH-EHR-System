@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/device-tokens/by-user/{{userDid}}"
+method: GET
+order: 2000

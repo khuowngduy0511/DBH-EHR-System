@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/preferences/by-user/{{userDid}}"
+method: GET
+order: 1000

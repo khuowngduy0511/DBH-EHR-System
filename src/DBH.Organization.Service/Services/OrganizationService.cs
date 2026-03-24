@@ -11,11 +11,19 @@ public class OrganizationService : IOrganizationService
 {
     private readonly OrganizationDbContext _context;
     private readonly ILogger<OrganizationService> _logger;
+    private readonly IAuthUserClient _authUserClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public OrganizationService(OrganizationDbContext context, ILogger<OrganizationService> logger)
+    public OrganizationService(
+        OrganizationDbContext context,
+        ILogger<OrganizationService> logger,
+        IAuthUserClient authUserClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _logger = logger;
+        _authUserClient = authUserClient;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     // =========================================================================
@@ -441,6 +449,60 @@ public class OrganizationService : IOrganizationService
             Data = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
+            TotalCount = totalCount
+        };
+    }
+
+    public async Task<PagedResponse<MembershipResponse>> SearchDoctorsAsync(SearchDoctorsRequest request)
+    {
+        var token = _httpContextAccessor.HttpContext?.Request.Headers.Authorization
+            .ToString()
+            .Replace("Bearer ", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        var query = _context.Memberships
+            .Include(m => m.Organization)
+            .Include(m => m.Department)
+            .Where(m => m.OrgId == request.OrgId)
+            .Where(m => m.Status == MembershipStatus.ACTIVE);
+
+        if (request.DepartmentId.HasValue)
+        {
+            query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
+        }
+
+        var candidates = await query
+            .OrderByDescending(m => m.CreatedAt)
+            .ToListAsync();
+        _logger.LogInformation("Found {Count} doctor memberships in organization {OrgId}", candidates.Count, request.OrgId);
+
+        var totalCount = candidates.Count;
+        var items = candidates
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToList();
+
+        return new PagedResponse<MembershipResponse>
+        {
+            Data = (await Task.WhenAll(items.Select(async m =>
+            {
+                var response = MapToResponse(m);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, request.OrgId, m.UserId);
+                    if (userInfo != null)
+                    {
+                        response.FullName = userInfo.FullName;
+                        response.Gender = userInfo.Gender;
+                        response.Email = userInfo.Email;
+                        response.Phone = userInfo.Phone;
+                    }
+                }
+
+                return response;
+            }))).ToList(),
+            Page = request.Page,
+            PageSize = request.PageSize,
             TotalCount = totalCount
         };
     }

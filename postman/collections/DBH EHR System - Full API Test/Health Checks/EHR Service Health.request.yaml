@@ -1,0 +1,6 @@
+$kind: http-request
+url: http://localhost:5003/health
+method: GET
+auth:
+  type: noauth
+order: 4000

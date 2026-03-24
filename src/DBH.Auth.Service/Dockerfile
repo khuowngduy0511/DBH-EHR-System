@@ -44,7 +44,7 @@ RUN adduser --disabled-password --gecos "" appuser
 COPY --from=build /app/publish .
 
 # Set environment variables
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_URLS=http://+:5101
 ENV ASPNETCORE_ENVIRONMENT=Development
 
 # Health check
@@ -55,7 +55,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 USER appuser
 
 # Expose port
-EXPOSE 8080
+EXPOSE 5101
 
 # Start the application
 ENTRYPOINT ["dotnet", "DBH.Auth.Service.dll"]

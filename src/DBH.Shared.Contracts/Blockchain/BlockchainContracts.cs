@@ -68,6 +68,11 @@ public static class FabricChannels
     /// Channel lưu audit log — truy vết minh bạch, không thể sửa/xóa
     /// </summary>
     public const string AuditChannel = "audit-channel";
+
+    /// <summary>
+    /// Channel tổng hợp one for all
+    /// </summary>
+    public const string EhrChannel = "ehr-channel";
 }
 
 public static class FabricChaincodes

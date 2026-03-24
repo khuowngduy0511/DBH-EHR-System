@@ -32,6 +32,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Gateway
+        - action: rebuild
+          path: ./src/DBH.Gateway/Dockerfile
 
   # ============================================================================
   # MICROSERVICES
@@ -58,6 +64,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Auth.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Auth.Service/Dockerfile
 
   organization_service:
     build:
@@ -80,6 +98,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Organization.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Organization.Service/Dockerfile
 
   ehr_service:
     build:
@@ -108,6 +138,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.EHR.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.EHR.Service/Dockerfile
 
   consent_service:
     build:
@@ -131,6 +173,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Consent.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Consent.Service/Dockerfile
 
   audit_service:
     build:
@@ -153,6 +207,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Audit.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Audit.Service/Dockerfile
 
   notification_service:
     build:
@@ -177,6 +243,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Notification.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Notification.Service/Dockerfile
 
   appointment_service:
     build:
@@ -207,6 +285,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Appointment.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Appointment.Service/Dockerfile
 
   # ============================================================================
   # DATABASES

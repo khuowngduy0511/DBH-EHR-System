@@ -263,6 +263,17 @@ public class MembershipsController : ControllerBase
     }
 
     /// <summary>
+    /// Search doctors by organization and optional department (request body)
+    /// </summary>
+    [HttpPost("doctors/search")]
+    [Authorize(Roles = "Admin,OrgAdmin,HR, Staff,Receptionist")]
+    public async Task<IActionResult> SearchDoctors([FromBody] SearchDoctorsRequest request)
+    {
+        var result = await _organizationService.SearchDoctorsAsync(request);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Update membership details
     /// </summary>
     [HttpPut("{id:guid}")]

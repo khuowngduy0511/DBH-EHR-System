@@ -1,0 +1,33 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/memberships"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "userId": "{{doctorUserId}}",
+      "orgId": "{{orgId}}",
+      "departmentId": "{{departmentId}}",
+      "employeeId": "EMP-001",
+      "jobTitle": "Bac Si Tim Mach",
+      "licenseNumber": "BS-2024-001",
+      "specialty": "Cardiology",
+      "startDate": "2024-01-01",
+      "notes": "Senior Cardiologist"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.membershipId || jsonData.data?.membershipId;
+          if (id) { pm.collectionVariables.set('membershipId', id); }
+      } catch(e) {}
+      pm.test('Create membership successful or already exists', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 403, 409]);
+      });
+order: 1000

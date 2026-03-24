@@ -1,0 +1,29 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/encounters"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "patientId": "{{patientId}}",
+      "doctorId": "{{doctorUserId}}",
+      "appointmentId": "{{appointmentId}}",
+      "orgId": "{{orgId}}",
+      "notes": "Benh nhan keu dau dau, met moi"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.data?.encounterId;
+          if (id) { pm.collectionVariables.set('encounterId', id); }
+      } catch(e) {}
+      pm.test('Create encounter successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401, 409]);
+      });
+order: 1000

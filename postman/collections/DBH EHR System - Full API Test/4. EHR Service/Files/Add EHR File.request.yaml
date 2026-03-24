@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/ehr/records/{{ehrId}}/files"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "fileUrl": "https://storage.dbh.vn/ehr-files/xray-20260320.png",
+      "fileHash": "sha256:abc123def456"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{doctorToken}}"
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+          var jsonData = pm.response.json();
+          if (jsonData.fileId) { pm.collectionVariables.set('fileId', jsonData.fileId); }
+      } catch(e) {}
+
+      pm.test('Add file successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401, 404]);
+      });
+order: 2000

@@ -15,7 +15,7 @@ public class TokenService : ITokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(Guid userId, string email, string fullName, IEnumerable<string> roles)
+    public string GenerateToken(Guid userId, string email, string fullName, string organizationId, IEnumerable<string> roles)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
         var secretKey = jwtSettings["Key"] ?? throw new InvalidOperationException("JWT Key is missing in configuration.");
@@ -32,7 +32,8 @@ public class TokenService : ITokenService
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new(JwtRegisteredClaimNames.Email, email),
             new(ClaimTypes.Name, fullName),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(ClaimTypes.GroupSid, organizationId)
         };
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));

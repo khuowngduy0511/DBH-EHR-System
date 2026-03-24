@@ -1,0 +1,48 @@
+$kind: collection
+description: |-
+  Complete API test collection for DBH-EHR Healthcare System.
+  Includes all 102 endpoints across 8 microservices.
+
+  Setup:
+  1. Register a patient via Auth > Register
+  2. Login to get JWT token (auto-saved)
+  3. Register staff/doctor via Auth > RegisterStaffDoctor
+  4. Login as doctor to get doctor token
+  5. Run flows in order
+
+  Variables are auto-populated from responses.
+variables:
+  baseUrl: http://localhost:5000
+  authUrl: http://localhost:5101
+  token: ""
+  refreshToken: ""
+  doctorToken: ""
+  adminToken: ""
+  patientToken: ""
+  userId: ""
+  patientId: ""
+  doctorId: ""
+  doctorUserId: ""
+  staffId: ""
+  orgId: ""
+  departmentId: ""
+  membershipId: ""
+  appointmentId: ""
+  encounterId: ""
+  ehrId: ""
+  versionId: ""
+  fileId: ""
+  consentId: ""
+  accessRequestId: ""
+  auditLogId: ""
+  notificationId: ""
+  deviceTokenId: ""
+  userDid: ""
+  patientDid: ""
+  doctorDid: ""
+auth:
+  - id: c2362b16-2528-4170-bb25-3fc9a0e7ac72
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{token}}"

@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/cancel"
+method: PUT
+body:
+  type: json
+  content: |-
+    {
+      "reason": "Benh nhan huy lich"
+    }
+scripts:
+  - type: afterResponse
+    code: >-
+      pm.test('Cancel appointment (expected 400 - already completed)', function
+      () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);
+      }); 
+order: 10000

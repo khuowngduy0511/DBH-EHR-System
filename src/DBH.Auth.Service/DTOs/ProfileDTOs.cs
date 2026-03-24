@@ -50,6 +50,16 @@ public class DoctorResponse
     public VerificationStatus VerifiedStatus { get; set; }
 }
 
+public class DoctorBasicInfoResponse
+{
+    public Guid UserId { get; set; }
+    public string? FullName { get; set; }
+    public string? Gender { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? OrganizationId { get; set; }
+}
+
 public class CreateStaffRequest
 {
     public Guid UserId { get; set; }

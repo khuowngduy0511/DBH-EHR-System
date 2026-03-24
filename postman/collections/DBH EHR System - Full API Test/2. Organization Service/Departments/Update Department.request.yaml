@@ -1,0 +1,15 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/departments/{{departmentId}}"
+method: PUT
+body:
+  type: json
+  content: |-
+    {
+      "departmentName": "Khoa Tim Mach (Updated)",
+      "description": "Cardiology Department - Updated"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 4000

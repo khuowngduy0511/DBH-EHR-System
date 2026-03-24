@@ -1,0 +1,3 @@
+$kind: collection
+description: Health check endpoints for all services
+order: 8000

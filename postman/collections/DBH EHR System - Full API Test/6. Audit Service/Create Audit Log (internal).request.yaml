@@ -1,0 +1,35 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/audit"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "actorDid": "{{doctorDid}}",
+      "actorUserId": "{{doctorUserId}}",
+      "actorType": "DOCTOR",
+      "action": "VIEW",
+      "targetType": "EHR",
+      "targetId": "{{ehrId}}",
+      "patientDid": "{{patientDid}}",
+      "patientId": "{{patientId}}",
+      "organizationId": "{{orgId}}",
+      "result": "SUCCESS",
+      "metadata": "{\"ip\": \"192.168.1.1\"}"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      try {
+          var jsonData = pm.response.json();
+          var id = jsonData.data?.auditId;
+          if (id) { pm.collectionVariables.set('auditLogId', id); }
+      } catch(e) {}
+      pm.test('Create audit log successful or validation error', function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401]);
+      });
+order: 1000

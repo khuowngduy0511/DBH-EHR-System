@@ -63,7 +63,7 @@ namespace DBH.Auth.Service.Migrations
                     b.HasData(
                         new
                         {
-                            DoctorId = new Guid("7aff0606-4b5b-4250-a4c1-328a247b7a44"),
+                            DoctorId = new Guid("bae7fc92-70d8-44de-a290-872b162b4149"),
                             LicenseNumber = "DOC123",
                             Specialty = "General",
                             UserId = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
@@ -101,7 +101,7 @@ namespace DBH.Auth.Service.Migrations
                     b.HasData(
                         new
                         {
-                            PatientId = new Guid("9ffadc0b-e1ff-4ab2-aad6-7bf9cb4210cf"),
+                            PatientId = new Guid("5cfd42fd-cf29-43a6-9279-413574bd8a98"),
                             Dob = new DateOnly(1990, 1, 1),
                             UserId = new Guid("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
                         });
@@ -245,7 +245,7 @@ namespace DBH.Auth.Service.Migrations
                     b.HasData(
                         new
                         {
-                            StaffId = new Guid("778ba4f1-7150-41ae-b1d2-cd91a4c6e51f"),
+                            StaffId = new Guid("d3b17b77-f3de-4142-81ac-7dd9bdbdce96"),
                             LicenseNumber = "PHARM123",
                             Role = "Pharmacist",
                             UserId = new Guid("cccccccc-cccc-cccc-cccc-cccccccccccc"),
@@ -253,7 +253,7 @@ namespace DBH.Auth.Service.Migrations
                         },
                         new
                         {
-                            StaffId = new Guid("605ae037-284a-499f-8e4c-728839d28d88"),
+                            StaffId = new Guid("d322dbb4-a935-4a47-9622-d02f899aca5d"),
                             Role = "Nurse",
                             Specialty = "Pediatrics",
                             UserId = new Guid("dddddddd-dddd-dddd-dddd-dddddddddddd"),
@@ -261,7 +261,7 @@ namespace DBH.Auth.Service.Migrations
                         },
                         new
                         {
-                            StaffId = new Guid("adfec156-fa70-4546-b2ce-6900b5659ed3"),
+                            StaffId = new Guid("8520fcbe-ea9e-427f-be8a-fcb220a8269d"),
                             Role = "Receptionist",
                             UserId = new Guid("ffffffff-ffff-ffff-ffff-ffffffffffff"),
                             VerifiedStatus = "Verified"
@@ -287,10 +287,6 @@ namespace DBH.Auth.Service.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("date_of_birth");
 
-                    b.Property<string>("DepartmentId")
-                        .HasColumnType("text")
-                        .HasColumnName("department_id");
-
                     b.Property<string>("Email")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
@@ -304,6 +300,10 @@ namespace DBH.Auth.Service.Migrations
                     b.Property<string>("Gender")
                         .HasColumnType("text")
                         .HasColumnName("gender");
+
+                    b.Property<string>("OrganizationId")
+                        .HasColumnType("text")
+                        .HasColumnName("organization_id");
 
                     b.Property<string>("Password")
                         .HasMaxLength(255)
@@ -338,7 +338,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "admin@dbh.com",
                             FullName = "Admin User",
-                            Password = "$2a$11$ocTsCaCPgh.8rqgEIPOPCed2b5ZrCnE.g2moUq4dVfrgTN6AJgnRu",
+                            Password = "$2a$11$FNTZE2XDBWXAft918MWrxetlt8iwbi7hl9u.JEB3kfLIaYRZOY.RK",
                             Phone = "1234567890",
                             Status = "Active"
                         },
@@ -348,7 +348,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "doctor@dbh.com",
                             FullName = "Dr. House",
-                            Password = "$2a$11$lHwzf6S3mdiZTZEaOOdmuuIKjE0CtrkhzY0qaIr6Uj2cUju/SNdbK",
+                            Password = "$2a$11$aq0RZY5PdCDe/r9rOxCD6.IpCYmXHYt2ilyBxXjGeRRJxS9ecERjq",
                             Phone = "1234567891",
                             Status = "Active"
                         },
@@ -358,7 +358,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "pharmacist@dbh.com",
                             FullName = "Pharma Joe",
-                            Password = "$2a$11$d73zj94eE3YeHBhlDYZ.FeYfwpRUbKlgHf/d59a9F.SuCe6.zI2a.",
+                            Password = "$2a$11$IMsXglcEkKU6tZxL21GG1eemv8M2QLkFgOzPslXsJ1dH0..F0DL8W",
                             Phone = "1234567892",
                             Status = "Active"
                         },
@@ -368,7 +368,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "nurse@dbh.com",
                             FullName = "Nurse Joy",
-                            Password = "$2a$11$NIxM7qpA5wNMCX04lLZV5uExInp93V3xIBHHws4z5x3sl3nfNSG9O",
+                            Password = "$2a$11$kNu.A6.aIA/.Df8HfvOs5evR/HeDUN5kHyE3Ahu0mtehSwI.ZehP2",
                             Phone = "1234567893",
                             Status = "Active"
                         },
@@ -378,7 +378,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "patient@dbh.com",
                             FullName = "John Doe",
-                            Password = "$2a$11$S3AblAwIUvZq.BIV7zNVrO0/oDzPLSsBlPy1WiNPTRv.wrXNmuSfG",
+                            Password = "$2a$11$L5bsYzPqNmHizTEGjGB23.8ayIYa9HEaa4ZOLK8OLu.yoNj1LFG5K",
                             Phone = "1234567894",
                             Status = "Active"
                         },
@@ -388,7 +388,7 @@ namespace DBH.Auth.Service.Migrations
                             CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "receptionist@dbh.com",
                             FullName = "Pam Beesly",
-                            Password = "$2a$11$lx8vIgcr2qLvRON1LcaHROlFVkhYi1v1uoHdG5wLf1gybfJziXkGe",
+                            Password = "$2a$11$DG21Wo6Pe33FF41e2hB9aezNXjuUsAzOYTzJXAK6xAYxhApgnQd.S",
                             Phone = "1234567895",
                             Status = "Active"
                         });

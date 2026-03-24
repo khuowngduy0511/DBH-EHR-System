@@ -1,0 +1,16 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/doctors/{{doctorId}}"
+method: PUT
+body:
+  type: json
+  content: |-
+    {
+      "specialty": "Neurology",
+      "licenseNumber": "BS-2024-002",
+      "verifiedStatus": "Verified"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+order: 4000

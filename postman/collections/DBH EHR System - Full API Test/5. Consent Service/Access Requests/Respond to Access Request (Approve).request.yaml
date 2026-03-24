@@ -1,0 +1,15 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/access-requests/{{accessRequestId}}/respond"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "approve": true,
+      "responseReason": "Dong y cho bac si xem ho so"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{patientToken}}"
+order: 5000

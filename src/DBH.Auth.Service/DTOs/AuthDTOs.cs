@@ -15,6 +15,10 @@ public class RegisterRequest
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    public string? Gender { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Address { get; set; }
+    public string? OrganizationId { get; set; }
 }
 
 public class LoginRequest
@@ -36,6 +40,10 @@ public class RegisterStaffDoctorRequest
     public string Password { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
+    public string? Gender { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Address { get; set; }
+    public string? OrganizationId { get; set; }
 }
 
 public class UpdateRoleRequest

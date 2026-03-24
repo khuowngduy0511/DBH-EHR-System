@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/notifications/by-user/{{userDid}}/mark-read"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+      "notificationIds": ["{{notificationId}}"]
+    }
+order: 6000
