@@ -39,15 +39,13 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToResponse));
     }
 
-    [Authorize(Roles = "Admin,OrgAdmin,HR,Nurse,Pharmacist,Receptionist,LabTech")]
+    [Authorize]
     [HttpGet("organization/me")]
-    public async Task<IActionResult> GetAllByMyOrganization()
+    public async Task<IActionResult> GetAllByMyOrganization([FromQuery] string? orgId = null)
     {
-        var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
-        // if (string.IsNullOrWhiteSpace(organizationId) && !string.IsNullOrWhiteSpace(orgId))
-        // {
-        //     organizationId = orgId;
-        // }
+        var organizationId = !string.IsNullOrWhiteSpace(orgId)
+            ? orgId
+            : User.FindFirstValue(ClaimTypes.GroupSid);
 
         if (string.IsNullOrWhiteSpace(organizationId))
         {
@@ -58,15 +56,13 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToBasicInfoResponse));
     }
 
-    [Authorize(Roles = "Admin,OrgAdmin,HR,Nurse,Pharmacist,Receptionist,LabTech")]
+    [Authorize]
     [HttpGet("organization/me/{userId:guid}")]
     public async Task<IActionResult> GetDoctorByUserIdInMyOrganization(Guid userId, [FromQuery] string? orgId = null)
     {
-        var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
-        if (string.IsNullOrWhiteSpace(organizationId) && !string.IsNullOrWhiteSpace(orgId))
-        {
-            organizationId = orgId;
-        }
+        var organizationId = !string.IsNullOrWhiteSpace(orgId)
+            ? orgId
+            : User.FindFirstValue(ClaimTypes.GroupSid);
 
         if (string.IsNullOrWhiteSpace(organizationId))
         {
@@ -215,7 +211,10 @@ public class DoctorsController : ControllerBase
             Gender = user.Gender,
             Email = user.Email,
             Phone = user.Phone,
-            OrganizationId = user.OrganizationId
+            DateOfBirth = user.DateOfBirth,
+            Address = user.Address,
+            OrganizationId = user.OrganizationId,
+            Status = user.Status
         };
     }
 }
