@@ -79,6 +79,7 @@ builder.Services.AddDbContext<AppointmentDbContext>(options =>
 builder.Services.AddInfrastructure(builder.Configuration, options =>
 {
     options.UseRabbitMQ = true;
+    options.UseNotificationClient = true;
 });
 
 // ============================================================================
@@ -103,6 +104,18 @@ builder.Services.AddHttpClient("EhrService", client =>
 builder.Services.AddHttpClient("OrganizationService", client =>
 {
     client.BaseAddress = new Uri(serviceUrls["OrganizationService"] ?? "http://organization_service:5002");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient("ConsentService", client =>
+{
+    client.BaseAddress = new Uri(serviceUrls["ConsentService"] ?? "http://consent_service:5004");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    client.BaseAddress = new Uri(serviceUrls["AuthService"] ?? "http://auth_service:5001");
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
