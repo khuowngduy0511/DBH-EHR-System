@@ -95,6 +95,11 @@ builder.Services.AddHttpClient("EhrService", client =>
 builder.Services.AddHyperledgerFabric(builder.Configuration);
 
 // ============================================================================
+// Notification Client
+// ============================================================================
+builder.Services.AddNotificationClient(builder.Configuration);
+
+// ============================================================================
 // JWT Authentication
 // ============================================================================
 
