@@ -199,6 +199,19 @@ public class AppointmentsController : ControllerBase
         var result = await _appointmentService.SearchDoctorsAsync(query);
         return Ok(result);
     }
+
+    /// <summary>
+    /// Lấy danh sách bệnh nhân đã khám của bác sĩ (distinct, sắp xếp theo lần khám gần nhất)
+    /// </summary>
+    [HttpGet("doctors/{doctorId:guid}/patients")]
+    [Authorize(Roles = "Doctor,Admin")]
+    [ProducesResponseType(typeof(PagedResponse<DoctorPatientResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResponse<DoctorPatientResponse>>> GetPatientsByDoctor(
+        Guid doctorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    {
+        var result = await _appointmentService.GetPatientsByDoctorAsync(doctorId, page, pageSize);
+        return Ok(result);
+    }
 }
 
 

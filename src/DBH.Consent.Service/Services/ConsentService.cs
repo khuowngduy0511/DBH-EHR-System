@@ -3,6 +3,7 @@ using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Infrastructure.Notification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -16,19 +17,22 @@ public class ConsentService : IConsentService
     private readonly IConsentBlockchainService? _blockchainService;
     private readonly IEhrBlockchainService? _ehrBlockchainService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly INotificationServiceClient? _notificationClient;
 
     public ConsentService(
         ConsentDbContext context,
         ILogger<ConsentService> logger,
         IHttpClientFactory httpClientFactory,
         IConsentBlockchainService? blockchainService = null,
-        IEhrBlockchainService? ehrBlockchainService = null)
+        IEhrBlockchainService? ehrBlockchainService = null,
+        INotificationServiceClient? notificationClient = null)
     {
         _context = context;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _blockchainService = blockchainService;
         _ehrBlockchainService = ehrBlockchainService;
+        _notificationClient = notificationClient;
     }
 
     // =========================================================================
@@ -172,6 +176,17 @@ public class ConsentService : IConsentService
             "Granted consent {ConsentId} from patient {PatientId} to grantee {GranteeId}",
             consent.ConsentId, consent.PatientId, consent.GranteeId);
 
+        // Notify grantee about new consent
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                consent.GranteeId,
+                "Quyền truy cập được cấp",
+                "Bạn đã được cấp quyền truy cập hồ sơ bệnh án.",
+                "ConsentGranted", "High",
+                consent.ConsentId.ToString(), "Consent");
+        }
+
         return new ApiResponse<ConsentResponse>
         {
             Success = true,
@@ -284,6 +299,17 @@ public class ConsentService : IConsentService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Revoked consent {ConsentId}", consentId);
+
+        // Notify grantee about revocation
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                consent.GranteeId,
+                "Quyền truy cập đã bị thu hồi",
+                $"Quyền truy cập hồ sơ bệnh án đã bị thu hồi. Lý do: {request.RevokeReason}",
+                "ConsentRevoked", "High",
+                consent.ConsentId.ToString(), "Consent");
+        }
 
         return new ApiResponse<ConsentResponse>
         {
@@ -434,7 +460,16 @@ public class ConsentService : IConsentService
             "Created access request {RequestId} from {RequesterId} to patient {PatientId}",
             accessRequest.RequestId, accessRequest.RequesterId, accessRequest.PatientId);
 
-        // TODO: Send notification to patient
+        // Notify patient about access request
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                accessRequest.PatientId,
+                "Yêu cầu truy cập hồ sơ",
+                "Có yêu cầu truy cập hồ sơ bệnh án của bạn. Vui lòng xem xét và phản hồi.",
+                "AccessRequestCreated", "High",
+                accessRequest.RequestId.ToString(), "AccessRequest");
+        }
 
         return new ApiResponse<AccessRequestResponse>
         {
@@ -550,6 +585,23 @@ public class ConsentService : IConsentService
         _logger.LogInformation(
             "Access request {RequestId} {Status} by patient",
             requestId, request.Status);
+
+        // Notify requester about access request response
+        if (_notificationClient != null)
+        {
+            var notifTitle = request.Status == AccessRequestStatus.APPROVED
+                ? "Yêu cầu truy cập được chấp nhận"
+                : "Yêu cầu truy cập bị từ chối";
+            var notifBody = request.Status == AccessRequestStatus.APPROVED
+                ? "Yêu cầu truy cập hồ sơ bệnh án của bạn đã được bệnh nhân chấp nhận."
+                : $"Yêu cầu truy cập của bạn đã bị từ chối.{(response.ResponseReason != null ? $" Lý do: {response.ResponseReason}" : "")}";
+            await _notificationClient.SendAsync(
+                request.RequesterId,
+                notifTitle,
+                notifBody,
+                "AccessRequestResponded", "High",
+                request.RequestId.ToString(), "AccessRequest");
+        }
 
         return new ApiResponse<AccessRequestResponse>
         {

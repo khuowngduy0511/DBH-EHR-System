@@ -9,6 +9,7 @@ using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Ipfs;
+using DBH.Shared.Infrastructure.Notification;
 using MongoDB.Bson;
 
 namespace DBH.EHR.Service.Services;
@@ -26,6 +27,7 @@ public class EhrService : IEhrService
     private readonly IEhrBlockchainService? _blockchainService;
     private readonly IConsentBlockchainService? _consentBlockchainService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly INotificationServiceClient? _notificationClient;
 
     public EhrService(
         IEhrRecordRepository ehrRecordRepo,
@@ -33,7 +35,8 @@ public class EhrService : IEhrService
         ILogger<EhrService> logger,
         IHttpClientFactory httpClientFactory,
         IEhrBlockchainService? blockchainService = null,
-        IConsentBlockchainService? consentBlockchainService = null)
+        IConsentBlockchainService? consentBlockchainService = null,
+        INotificationServiceClient? notificationClient = null)
     {
         _ehrRecordRepo = ehrRecordRepo;
         _ehrDocumentRepo = ehrDocumentRepo;
@@ -41,6 +44,7 @@ public class EhrService : IEhrService
         _httpClientFactory = httpClientFactory;
         _blockchainService = blockchainService;
         _consentBlockchainService = consentBlockchainService;
+        _notificationClient = notificationClient;
     }
 
     // EHR Records 
@@ -200,6 +204,17 @@ public class EhrService : IEhrService
         _logger.LogInformation(
             "Tạo EHR {EhrId} version {VersionId} file {FileId} với MongoDB doc {DocId}",
             savedRecord.EhrId, savedVersion.VersionId, savedFile.FileId, savedDocument.Id);
+
+        // Notify patient about new EHR
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                request.PatientId,
+                "Hồ sơ bệnh án mới",
+                "Hồ sơ bệnh án mới đã được tạo cho bạn.",
+                "EhrCreated", "Normal",
+                savedRecord.EhrId.ToString(), "EHR");
+        }
 
         return new CreateEhrRecordResponseDto
         {
@@ -399,6 +414,17 @@ public class EhrService : IEhrService
 
         _logger.LogInformation("Updated EHR {EhrId} to version {Version}", ehrId, newVersionNumber);
 
+        // Notify patient about EHR update
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                record.PatientId,
+                "Hồ sơ bệnh án được cập nhật",
+                $"Hồ sơ bệnh án đã được cập nhật lên phiên bản {newVersionNumber}.",
+                "EhrUpdated", "Normal",
+                ehrId.ToString(), "EHR");
+        }
+
         // Reload record with updated versions
         var updatedRecord = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         return updatedRecord != null ? MapToEhrRecordResponse(updatedRecord) : null;
@@ -439,6 +465,17 @@ public class EhrService : IEhrService
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
         _logger.LogInformation("Added file {FileId} to EHR {EhrId}", savedFile.FileId, ehrId);
+
+        // Notify patient about new file
+        if (_notificationClient != null)
+        {
+            await _notificationClient.SendAsync(
+                record.PatientId,
+                "File mới trong hồ sơ bệnh án",
+                "Một file mới đã được thêm vào hồ sơ bệnh án của bạn.",
+                "EhrFileAdded", "Low",
+                ehrId.ToString(), "EHR");
+        }
 
         return new EhrFileDto
         {

@@ -4,6 +4,7 @@ using DBH.Shared.Infrastructure.Blockchain.Services;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Messaging;
+using DBH.Shared.Infrastructure.Notification;
 using DBH.Shared.Infrastructure.Storage;
 using MassTransit;
 using Microsoft.Extensions.Caching.Memory;
@@ -47,6 +48,32 @@ public static class InfrastructureServiceExtensions
         {
             services.AddHyperledgerFabric(configuration);
         }
+
+        if (options.UseNotificationClient)
+        {
+            services.AddNotificationClient(configuration);
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Đăng ký NotificationServiceClient — HTTP client gọi Notification Service API
+    /// </summary>
+    public static IServiceCollection AddNotificationClient(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var serviceUrls = configuration.GetSection("ServiceUrls");
+        var notificationUrl = serviceUrls["NotificationService"] ?? "http://notification_service:5005";
+
+        services.AddHttpClient("NotificationService", client =>
+        {
+            client.BaseAddress = new Uri(notificationUrl);
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+
+        services.AddScoped<INotificationServiceClient, NotificationServiceClient>();
 
         return services;
     }
@@ -209,5 +236,6 @@ public class InfrastructureOptions
     public bool UseRedisCache { get; set; } = true;
     public bool UseRabbitMQ { get; set; } = true;
     public bool UseHyperledgerFabric { get; set; } = false;
+    public bool UseNotificationClient { get; set; } = false;
     public Action<IBusRegistrationConfigurator>? ConfigureConsumers { get; set; }
 }

@@ -43,7 +43,57 @@ public enum NotificationType
     /// <summary>
     /// Cảnh báo bảo mật
     /// </summary>
-    SecurityAlert
+    SecurityAlert,
+    
+    /// <summary>
+    /// Tạo lịch hẹn mới
+    /// </summary>
+    AppointmentCreated,
+    
+    /// <summary>
+    /// Bệnh nhân check-in
+    /// </summary>
+    AppointmentCheckedIn,
+    
+    /// <summary>
+    /// Đổi lịch hẹn
+    /// </summary>
+    AppointmentRescheduled,
+    
+    /// <summary>
+    /// Bắt đầu khám bệnh (tạo encounter)
+    /// </summary>
+    EncounterCreated,
+    
+    /// <summary>
+    /// Hoàn thành khám bệnh
+    /// </summary>
+    EncounterCompleted,
+    
+    /// <summary>
+    /// Tạo hồ sơ bệnh án mới
+    /// </summary>
+    EhrCreated,
+    
+    /// <summary>
+    /// Cập nhật hồ sơ bệnh án
+    /// </summary>
+    EhrUpdated,
+    
+    /// <summary>
+    /// Thêm file vào hồ sơ bệnh án
+    /// </summary>
+    EhrFileAdded,
+    
+    /// <summary>
+    /// Yêu cầu truy cập hồ sơ
+    /// </summary>
+    AccessRequestCreated,
+    
+    /// <summary>
+    /// Phản hồi yêu cầu truy cập
+    /// </summary>
+    AccessRequestResponded
 }
 
 /// <summary>

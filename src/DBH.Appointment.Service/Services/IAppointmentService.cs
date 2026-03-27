@@ -30,4 +30,7 @@ public interface IAppointmentService
     
     // Encounters - Complete + Auto-create EHR (Flow 4: Khám bệnh và tạo hồ sơ bệnh án)
     Task<ApiResponse<EncounterResponse>> CompleteEncounterAsync(Guid encounterId, CompleteEncounterRequest request);
+    
+    // Doctor - Patients
+    Task<PagedResponse<DoctorPatientResponse>> GetPatientsByDoctorAsync(Guid doctorId, int page = 1, int pageSize = 10);
 }

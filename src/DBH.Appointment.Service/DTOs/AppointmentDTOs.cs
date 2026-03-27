@@ -230,6 +230,42 @@ public class DoctorSearchResult
     public string? OrgName { get; set; }
 }
 
+/// <summary>
+/// Thông tin bệnh nhân đã khám của bác sĩ — chỉ hiển thị bệnh nhân có consent
+/// </summary>
+public class DoctorPatientResponse
+{
+    /// <summary>Mã bệnh nhân</summary>
+    public Guid PatientId { get; set; }
+
+    /// <summary>Họ tên bệnh nhân</summary>
+    public string? PatientName { get; set; }
+
+    /// <summary>Email bệnh nhân</summary>
+    public string? Email { get; set; }
+
+    /// <summary>Số điện thoại bệnh nhân</summary>
+    public string? Phone { get; set; }
+
+    /// <summary>Ngày sinh</summary>
+    public DateTime? DateOfBirth { get; set; }
+
+    /// <summary>Giới tính</summary>
+    public string? Gender { get; set; }
+
+    /// <summary>Tổng số lượt khám với bác sĩ này</summary>
+    public int TotalEncounters { get; set; }
+
+    /// <summary>Thời điểm khám gần nhất</summary>
+    public DateTime LastVisitAt { get; set; }
+
+    /// <summary>Mã lượt khám gần nhất</summary>
+    public Guid LastEncounterId { get; set; }
+
+    /// <summary>Mã tổ chức / cơ sở y tế của lượt khám gần nhất</summary>
+    public Guid LastOrgId { get; set; }
+}
+
 // =============================================================================
 // Common Response
 // =============================================================================

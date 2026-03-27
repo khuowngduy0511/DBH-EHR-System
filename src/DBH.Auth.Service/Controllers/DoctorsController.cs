@@ -39,13 +39,15 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToResponse));
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin,OrgAdmin,HR,Doctor,Nurse,Pharmacist,Receptionist,LabTech")]
     [HttpGet("organization/me")]
     public async Task<IActionResult> GetAllByMyOrganization([FromQuery] string? orgId = null)
     {
-        var organizationId = !string.IsNullOrWhiteSpace(orgId)
-            ? orgId
-            : User.FindFirstValue(ClaimTypes.GroupSid);
+        var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+        if (string.IsNullOrWhiteSpace(organizationId) && !string.IsNullOrWhiteSpace(orgId))
+        {
+            organizationId = orgId;
+        }
 
         if (string.IsNullOrWhiteSpace(organizationId))
         {
@@ -56,7 +58,7 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToBasicInfoResponse));
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin,OrgAdmin,HR,Doctor,Nurse,Pharmacist,Receptionist,LabTech")]
     [HttpGet("organization/me/{userId:guid}")]
     public async Task<IActionResult> GetDoctorByUserIdInMyOrganization(Guid userId, [FromQuery] string? orgId = null)
     {
