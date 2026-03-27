@@ -314,6 +314,7 @@ public class AuthService : IAuthService
         var credentials = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
         if (credentials != null)
         {
+            
              await _credentialRepository.DeleteAsync(credentials);
              return true;
         }

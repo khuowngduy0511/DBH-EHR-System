@@ -15,6 +15,8 @@ public class DoctorUserInfoDto
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public DateTime? DateOfBirth { get; set; }
+    public string? Address { get; set; }
     public string? AvatarUrl { get; set; }
     public string? OrganizationId { get; set; }
+    public string? Status { get; set; }
 }

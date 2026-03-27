@@ -471,11 +471,6 @@ public class OrganizationService : IOrganizationService
             query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Specialty))
-        {
-            query = query.Where(m => m.Specialty != null && m.Specialty.Contains(request.Specialty));
-        }
-
         var candidates = await query
             .OrderByDescending(m => m.CreatedAt)
             .ToListAsync();
@@ -494,23 +489,22 @@ public class OrganizationService : IOrganizationService
                 var response = MapToResponse(m);
                 if (!string.IsNullOrWhiteSpace(token))
                 {
-                    var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, request.OrgId, m.UserId);
+                    var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, m.OrgId, m.UserId);
                     if (userInfo != null)
                     {
-                        response.FullName = userInfo.FullName;
-                        response.Gender = userInfo.Gender;
-                        response.Email = userInfo.Email;
-                        response.Phone = userInfo.Phone;
-                        response.DateOfBirth = userInfo.DateOfBirth;
-                    }
-                }
-
-                if (request.DateOfBirth.HasValue && response.DateOfBirth.HasValue)
-                {
-                    var searchDate = request.DateOfBirth.Value;
-                    if (response.DateOfBirth.Value.Date != searchDate.Date)
-                    {
-                        return null;
+                        response.User = new MembershipUserResponse
+                        {
+                            UserId = userInfo.UserId,
+                            FullName = userInfo.FullName,
+                            Gender = userInfo.Gender,
+                            Email = userInfo.Email,
+                            Phone = userInfo.Phone,
+                            DateOfBirth = userInfo.DateOfBirth,
+                            Address = userInfo.Address,
+                            AvatarUrl = userInfo.AvatarUrl,
+                            OrganizationId = userInfo.OrganizationId,
+                            Status = userInfo.Status
+                        };
                     }
                 }
 
@@ -623,7 +617,10 @@ public class OrganizationService : IOrganizationService
         return new MembershipResponse
         {
             MembershipId = membership.MembershipId,
-            UserId = membership.UserId,
+            User = new MembershipUserResponse
+            {
+                UserId = membership.UserId
+            },
             OrgId = membership.OrgId,
             OrgName = membership.Organization?.OrgName,
             DepartmentId = membership.DepartmentId,
