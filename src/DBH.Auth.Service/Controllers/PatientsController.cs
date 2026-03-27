@@ -32,7 +32,7 @@ public class PatientsController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var patients = await _patientRepository.GetAllAsync();
-        return Ok(patients.Select(MapToResponse));
+        return Ok(patients.Select(p => MapToResponse(p)));
     }
 
     [HttpGet("{patientId:guid}")]
@@ -44,7 +44,8 @@ public class PatientsController : ControllerBase
             return NotFound("Patient not found.");
         }
 
-        return Ok(MapToResponse(patient));
+        var user = await _userRepository.GetByIdAsync(patient.UserId);
+        return Ok(MapToResponse(patient, user));
     }
 
     [Authorize(Roles = "Admin,Receptionist")]
@@ -136,14 +137,19 @@ public class PatientsController : ControllerBase
         }
     }
 
-    private static PatientResponse MapToResponse(Patient patient)
+    private static PatientResponse MapToResponse(Patient patient, User? user = null)
     {
         return new PatientResponse
         {
             PatientId = patient.PatientId,
             UserId = patient.UserId,
             Dob = patient.Dob,
-            BloodType = patient.BloodType
+            BloodType = patient.BloodType,
+            FullName = user?.FullName,
+            Email = user?.Email,
+            Phone = user?.Phone,
+            DateOfBirth = user?.DateOfBirth,
+            Gender = user?.Gender
         };
     }
 }
