@@ -8,7 +8,7 @@ namespace DBH.Appointment.Service.Controllers;
 
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/[controller]")]
 [Produces("application/json")]
 public class AppointmentsController : ControllerBase
 {
@@ -221,7 +221,7 @@ public class AppointmentsController : ControllerBase
 
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/[controller]")]
 [Produces("application/json")]
 public class EncountersController : ControllerBase
 {
