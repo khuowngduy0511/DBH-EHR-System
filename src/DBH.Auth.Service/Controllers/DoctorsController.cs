@@ -39,7 +39,7 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToResponse));
     }
 
-    [Authorize(Roles = "Admin,OrgAdmin,HR,Doctor,Nurse,Pharmacist,Receptionist,LabTech")]
+    [Authorize]
     [HttpGet("organization/me")]
     public async Task<IActionResult> GetAllByMyOrganization([FromQuery] string? orgId = null)
     {
@@ -58,7 +58,7 @@ public class DoctorsController : ControllerBase
         return Ok(doctors.Select(MapToBasicInfoResponse));
     }
 
-    [Authorize(Roles = "Admin,OrgAdmin,HR,Doctor,Nurse,Pharmacist,Receptionist,LabTech")]
+    [Authorize]
     [HttpGet("organization/me/{userId:guid}")]
     public async Task<IActionResult> GetDoctorByUserIdInMyOrganization(Guid userId, [FromQuery] string? orgId = null)
     {
