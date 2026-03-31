@@ -492,9 +492,11 @@ public class OrganizationService : IOrganizationService
                     var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, m.OrgId, m.UserId);
                     if (userInfo != null)
                     {
+                        var userProfile = await _authUserClient.GetUserProfileDetailAsync(token, userInfo.UserId);
                         response.User = new MembershipUserResponse
                         {
                             UserId = userInfo.UserId,
+                            UserProfile = userProfile,
                             FullName = userInfo.FullName,
                             Gender = userInfo.Gender,
                             Email = userInfo.Email,

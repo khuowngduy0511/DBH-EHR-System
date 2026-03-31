@@ -105,6 +105,8 @@ builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
 // ============================================================================
 
 builder.Services.AddScoped<IEhrService, EhrService>();
+builder.Services.AddScoped<IAuthServiceClient, AuthServiceClient>();
+builder.Services.AddHttpContextAccessor();
 
 // ============================================================================
 // Blockchain Services (Hyperledger Fabric)

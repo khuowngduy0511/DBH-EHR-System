@@ -35,6 +35,8 @@ public class CreateEhrRecordDto
 public class CreateEhrRecordResponseDto
 {
     public Guid EhrId { get; set; }
+    public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
     public Guid? VersionId { get; set; }
     public Guid? FileId { get; set; }
     public int VersionNumber { get; set; }
@@ -50,6 +52,7 @@ public class EhrRecordResponseDto
 {
     public Guid EhrId { get; set; }
     public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
     public Guid? EncounterId { get; set; }
     public Guid? OrgId { get; set; }
     public EhrVersionDto? LatestVersionInfo { get; set; }

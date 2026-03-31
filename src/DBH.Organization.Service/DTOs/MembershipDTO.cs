@@ -102,6 +102,8 @@ public class MembershipUserResponse
 {
     public Guid UserId { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public AuthUserProfileDetailDto? UserProfile { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? FullName { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? Gender { get; set; }

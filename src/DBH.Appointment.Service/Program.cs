@@ -87,6 +87,7 @@ builder.Services.AddInfrastructure(builder.Configuration, options =>
 // ============================================================================
 
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<IAuthServiceClient, AuthServiceClient>();
 builder.Services.AddHttpContextAccessor();
 
 // ============================================================================

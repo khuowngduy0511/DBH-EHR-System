@@ -396,6 +396,23 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
+    {
+        if (patientId.HasValue)
+        {
+            var patient = await _patientRepository.FindAsync(p => p.PatientId == patientId.Value);
+            return patient?.UserId;
+        }
+
+        if (doctorId.HasValue)
+        {
+            var doctor = await _doctorRepository.FindAsync(d => d.DoctorId == doctorId.Value);
+            return doctor?.UserId;
+        }
+
+        return null;
+    }
+
     public async Task<UserKeysDto?> GetUserKeysAsync(Guid userId)
     {
         var privateCredential = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == ProviderType.EncryptedPrivateKey);

@@ -80,9 +80,11 @@ public class AppointmentResponse
 
     /// <summary>Mã bệnh nhân</summary>
     public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
 
     /// <summary>Mã bác sĩ</summary>
     public Guid DoctorId { get; set; }
+    public AuthUserProfileDetailDto? DoctorProfile { get; set; }
 
     /// <summary>Mã tổ chức / cơ sở y tế</summary>
     public Guid OrgId { get; set; }
@@ -164,9 +166,11 @@ public class EncounterResponse
 
     /// <summary>Mã bệnh nhân</summary>
     public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
 
     /// <summary>Mã bác sĩ thực hiện khám</summary>
     public Guid DoctorId { get; set; }
+    public AuthUserProfileDetailDto? DoctorProfile { get; set; }
 
     /// <summary>Mã lịch hẹn liên kết</summary>
     public Guid AppointmentId { get; set; }
@@ -214,6 +218,9 @@ public class DoctorSearchResult
     /// <summary>Mã người dùng (user ID từ Auth Service)</summary>
     public Guid UserId { get; set; }
 
+    /// <summary>Thông tin hồ sơ chi tiết từ Auth Service</summary>
+    public AuthUserProfileDetailDto? UserProfile { get; set; }
+
     /// <summary>Họ tên bác sĩ</summary>
     public string? Name { get; set; }
 
@@ -237,6 +244,7 @@ public class DoctorPatientResponse
 {
     /// <summary>Mã bệnh nhân</summary>
     public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
 
     /// <summary>Họ tên bệnh nhân</summary>
     public string? PatientName { get; set; }

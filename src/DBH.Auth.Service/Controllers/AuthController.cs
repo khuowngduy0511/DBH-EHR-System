@@ -122,6 +122,38 @@ public class AuthController : ControllerBase
         return Ok(profile);
     }
 
+    [Authorize]
+    [HttpGet("users/{userId:guid}")]
+    public async Task<IActionResult> GetUserProfile(Guid userId)
+    {
+        var profile = await _authService.GetMyProfileAsync(userId);
+        if (profile == null) return NotFound();
+        return Ok(profile);
+    }
+
+    [Authorize]
+    [HttpGet("user-id")]
+    public async Task<IActionResult> GetUserId([FromQuery] Guid? patientId, [FromQuery] Guid? doctorId)
+    {
+        if (!patientId.HasValue && !doctorId.HasValue)
+        {
+            return BadRequest("Either patientId or doctorId is required.");
+        }
+
+        if (patientId.HasValue && doctorId.HasValue)
+        {
+            return BadRequest("Provide only one of patientId or doctorId.");
+        }
+
+        var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId);
+        if (!userId.HasValue)
+        {
+            return NotFound();
+        }
+
+        return Ok(new { UserId = userId.Value });
+    }
+
 //     [HttpGet("{userId}/keys")]
 //     public async Task<IActionResult> GetUserKeys(Guid userId)
 //     {

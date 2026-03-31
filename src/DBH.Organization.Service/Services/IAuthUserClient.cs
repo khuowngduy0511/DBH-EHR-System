@@ -5,6 +5,9 @@ namespace DBH.Organization.Service.Services;
 public interface IAuthUserClient
 {
     Task<DoctorUserInfoDto?> GetDoctorByUserIdInMyOrganizationAsync(string bearerToken, Guid orgId, Guid userId);
+    Task<Guid?> GetUserIdByPatientIdAsync(string bearerToken, Guid patientId);
+    Task<Guid?> GetUserIdByDoctorIdAsync(string bearerToken, Guid doctorId);
+    Task<AuthUserProfileDetailDto?> GetUserProfileDetailAsync(string bearerToken, Guid userId);
 }
 
 public class DoctorUserInfoDto

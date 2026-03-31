@@ -27,6 +27,8 @@ public class EhrService : IEhrService
     private readonly IEhrBlockchainService? _blockchainService;
     private readonly IConsentBlockchainService? _consentBlockchainService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IAuthServiceClient _authServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly INotificationServiceClient? _notificationClient;
 
     public EhrService(
@@ -34,6 +36,8 @@ public class EhrService : IEhrService
         IEhrDocumentRepository ehrDocumentRepo,
         ILogger<EhrService> logger,
         IHttpClientFactory httpClientFactory,
+        IAuthServiceClient authServiceClient,
+        IHttpContextAccessor httpContextAccessor,
         IEhrBlockchainService? blockchainService = null,
         IConsentBlockchainService? consentBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
@@ -42,6 +46,8 @@ public class EhrService : IEhrService
         _ehrDocumentRepo = ehrDocumentRepo;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _authServiceClient = authServiceClient;
+        _httpContextAccessor = httpContextAccessor;
         _blockchainService = blockchainService;
         _consentBlockchainService = consentBlockchainService;
         _notificationClient = notificationClient;
@@ -216,9 +222,13 @@ public class EhrService : IEhrService
                 savedRecord.EhrId.ToString(), "EHR");
         }
 
+        var (_, patientProfile) = await GetPatientUserProfileAsync(request.PatientId);
+
         return new CreateEhrRecordResponseDto
         {
             EhrId = savedRecord.EhrId,
+            PatientId = request.PatientId,
+            PatientProfile = patientProfile,
             VersionId = savedVersion.VersionId,
             FileId = savedFile.FileId,
             VersionNumber = 1,
@@ -232,8 +242,11 @@ public class EhrService : IEhrService
     {
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
         if (record == null) return null;
-        
-        return MapToEhrRecordResponse(record);
+
+        var response = MapToEhrRecordResponse(record);
+        var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
+        response.PatientProfile = patientProfile;
+        return response;
     }
 
     /// <inheritdoc />
@@ -248,7 +261,10 @@ public class EhrService : IEhrService
         if (requesterId == record.PatientId)
         {
             _logger.LogInformation("Consent bypass: requester {RequesterId} is owner of EHR {EhrId}", requesterId, ehrId);
-            return (MapToEhrRecordResponse(record), false, null);
+            var response = MapToEhrRecordResponse(record);
+            var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
+            response.PatientProfile = patientProfile;
+            return (response, false, null);
         }
 
         // Gọi Consent Service để kiểm tra quyền truy cập
@@ -261,7 +277,10 @@ public class EhrService : IEhrService
         }
 
         _logger.LogInformation("Consent verified: requester {RequesterId} granted access to EHR {EhrId}", requesterId, ehrId);
-        return (MapToEhrRecordResponse(record), false, null);
+        var consentedResponse = MapToEhrRecordResponse(record);
+        var (_, consentedPatientProfile) = await GetPatientUserProfileAsync(consentedResponse.PatientId);
+        consentedResponse.PatientProfile = consentedPatientProfile;
+        return (consentedResponse, false, null);
     }
 
     public async Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(Guid ehrId, Guid requesterId, bool useReplica = false)
@@ -356,13 +375,17 @@ public class EhrService : IEhrService
     public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false)
     {
         var records = await _ehrRecordRepo.GetByPatientIdAsync(patientId, useReplica);
-        return records.Select(r => MapToEhrRecordResponse(r));
+        var responses = records.Select(r => MapToEhrRecordResponse(r)).ToList();
+        await AttachPatientProfilesAsync(responses);
+        return responses;
     }
 
     public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId, bool useReplica = false)
     {
         var records = await _ehrRecordRepo.GetByOrgIdAsync(orgId, useReplica);
-        return records.Select(r => MapToEhrRecordResponse(r));
+        var responses = records.Select(r => MapToEhrRecordResponse(r)).ToList();
+        await AttachPatientProfilesAsync(responses);
+        return responses;
     }
 
     public async Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId, bool useReplica = false)
@@ -427,7 +450,15 @@ public class EhrService : IEhrService
 
         // Reload record with updated versions
         var updatedRecord = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
-        return updatedRecord != null ? MapToEhrRecordResponse(updatedRecord) : null;
+        if (updatedRecord == null)
+        {
+            return null;
+        }
+
+        var response = MapToEhrRecordResponse(updatedRecord);
+        var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
+        response.PatientProfile = patientProfile;
+        return response;
     }
 
     public async Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false)
@@ -545,6 +576,52 @@ public class EhrService : IEhrService
             _logger.LogError(ex, "Unexpected error verifying consent for EHR {EhrId}", ehrId);
             return (false, null);
         }
+    }
+
+    private string? GetBearerTokenFromContext()
+    {
+        var authorization = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrWhiteSpace(authorization))
+        {
+            return null;
+        }
+
+        const string bearerPrefix = "Bearer ";
+        if (authorization.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return authorization[bearerPrefix.Length..].Trim();
+        }
+
+        return authorization.Trim();
+    }
+
+    private async Task<(Guid? UserId, AuthUserProfileDetailDto? Profile)> GetPatientUserProfileAsync(Guid patientId)
+    {
+        var bearerToken = GetBearerTokenFromContext();
+        if (string.IsNullOrWhiteSpace(bearerToken))
+        {
+            return (null, null);
+        }
+
+        var userId = await _authServiceClient.GetUserIdByPatientIdAsync(patientId, bearerToken);
+        if (!userId.HasValue)
+        {
+            return (null, null);
+        }
+
+        var profile = await _authServiceClient.GetUserProfileDetailAsync(userId.Value, bearerToken);
+        return (userId, profile);
+    }
+
+    private async Task AttachPatientProfilesAsync(List<EhrRecordResponseDto> responses)
+    {
+        var tasks = responses.Select(async response =>
+        {
+            var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
+            response.PatientProfile = patientProfile;
+        });
+
+        await Task.WhenAll(tasks);
     }
 
     private static string ComputeHash(string content)

@@ -20,6 +20,7 @@ public class AppointmentService : IAppointmentService
     private readonly IMessagePublisher? _messagePublisher;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IAuthServiceClient _authServiceClient;
     private readonly INotificationServiceClient? _notificationClient;
 
     public AppointmentService(
@@ -27,6 +28,7 @@ public class AppointmentService : IAppointmentService
         ILogger<AppointmentService> logger,
         IHttpClientFactory httpClientFactory,
         IHttpContextAccessor httpContextAccessor,
+        IAuthServiceClient authServiceClient,
         IMessagePublisher? messagePublisher = null,
         INotificationServiceClient? notificationClient = null)
     {
@@ -34,6 +36,7 @@ public class AppointmentService : IAppointmentService
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _httpContextAccessor = httpContextAccessor;
+        _authServiceClient = authServiceClient;
         _messagePublisher = messagePublisher;
         _notificationClient = notificationClient;
     }
@@ -92,7 +95,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Appointment created successfully",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -114,7 +117,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -144,9 +147,12 @@ public class AppointmentService : IAppointmentService
             .Take(pageSize)
             .ToListAsync();
 
+        var responses = items.Select(MapToResponse).ToList();
+        await AttachAppointmentProfilesAsync(responses);
+
         return new PagedResponse<AppointmentResponse>
         {
-            Data = items.Select(MapToResponse).ToList(),
+            Data = responses,
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
@@ -182,7 +188,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = $"Appointment status updated to {status}",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -229,7 +235,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Appointment rescheduled successfully",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -296,7 +302,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Appointment confirmed successfully",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -349,7 +355,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Appointment rejected",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -400,7 +406,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Appointment cancelled",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -443,7 +449,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Checked in successfully",
-            Data = MapToResponse(appointment)
+            Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
 
@@ -481,6 +487,24 @@ public class AppointmentService : IAppointmentService
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<PagedResponse<DoctorSearchResult>>(json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (result?.Data != null)
+            {
+                var profileTasks = result.Data.Select(async doctor =>
+                {
+                    if (doctor.DoctorId != Guid.Empty)
+                    {
+                        var resolvedUserId = await _authServiceClient.GetUserIdByDoctorIdAsync(doctor.DoctorId);
+                        if (resolvedUserId.HasValue)
+                        {
+                            doctor.UserId = resolvedUserId.Value;
+                        }
+                    }
+
+                    doctor.UserProfile = await _authServiceClient.GetUserProfileDetailAsync(doctor.UserId);
+                });
+                await Task.WhenAll(profileTasks);
+            }
 
             return result ?? new PagedResponse<DoctorSearchResult>
             {
@@ -557,7 +581,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Encounter created successfully",
-            Data = MapToResponse(encounter)
+            Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
 
@@ -576,7 +600,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<EncounterResponse>
         {
             Success = true,
-            Data = MapToResponse(encounter)
+            Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
 
@@ -590,9 +614,12 @@ public class AppointmentService : IAppointmentService
             .Take(pageSize)
             .ToListAsync();
 
+        var responses = items.Select(MapToResponse).ToList();
+        await AttachEncounterProfilesAsync(responses);
+
         return new PagedResponse<EncounterResponse>
         {
-            Data = items.Select(MapToResponse).ToList(),
+            Data = responses,
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
@@ -609,9 +636,12 @@ public class AppointmentService : IAppointmentService
             .Take(pageSize)
             .ToListAsync();
 
+        var responses = items.Select(MapToResponse).ToList();
+        await AttachEncounterProfilesAsync(responses);
+
         return new PagedResponse<EncounterResponse>
         {
-            Data = items.Select(MapToResponse).ToList(),
+            Data = responses,
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
@@ -641,7 +671,7 @@ public class AppointmentService : IAppointmentService
         {
             Success = true,
             Message = "Encounter updated successfully",
-            Data = MapToResponse(encounter)
+            Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
 
@@ -712,7 +742,7 @@ public class AppointmentService : IAppointmentService
             Message = ehrId.HasValue 
                 ? $"Encounter completed and EHR created ({ehrId})" 
                 : "Encounter completed successfully",
-            Data = MapToResponse(encounter)
+            Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
 
@@ -785,6 +815,7 @@ public class AppointmentService : IAppointmentService
             return new DoctorPatientResponse
             {
                 PatientId = g.PatientId,
+                PatientProfile = info?.Profile,
                 PatientName = info?.FullName,
                 Email = info?.Email,
                 Phone = info?.Phone,
@@ -871,39 +902,36 @@ public class AppointmentService : IAppointmentService
 
         try
         {
-            var client = _httpClientFactory.CreateClient("AuthService");
-
-            // Forward JWT token
-            var token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
-            if (!string.IsNullOrEmpty(token))
-                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", token);
-
-            // Gọi API cho từng patient (parallel)
+            // Resolve patientId -> userId, then fetch profile by userId.
             var tasks = patientIds.Select(async patientId =>
             {
                 try
                 {
-                    var response = await client.GetAsync($"api/v1/patients/{patientId}");
-                    if (response.IsSuccessStatusCode)
+                    var userId = await _authServiceClient.GetUserIdByPatientIdAsync(patientId);
+                    if (!userId.HasValue)
                     {
-                        var json = await response.Content.ReadAsStringAsync();
-                        using var doc = JsonDocument.Parse(json);
-                        var root = doc.RootElement;
+                        return;
+                    }
 
-                        var info = new PatientInfo
-                        {
-                            FullName = root.TryGetProperty("fullName", out var name) ? name.GetString() : null,
-                            Email = root.TryGetProperty("email", out var email) ? email.GetString() : null,
-                            Phone = root.TryGetProperty("phone", out var phone) ? phone.GetString() : null,
-                            DateOfBirth = root.TryGetProperty("dateOfBirth", out var dob) && dob.ValueKind != JsonValueKind.Null 
-                                ? dob.GetDateTime() : null,
-                            Gender = root.TryGetProperty("gender", out var gender) ? gender.GetString() : null
-                        };
+                    var profile = await _authServiceClient.GetUserProfileDetailAsync(userId.Value);
+                    if (profile == null)
+                    {
+                        return;
+                    }
 
-                        lock (result)
-                        {
-                            result[patientId] = info;
-                        }
+                    var info = new PatientInfo
+                    {
+                        Profile = profile,
+                        FullName = profile.FullName,
+                        Email = profile.Email,
+                        Phone = profile.Phone,
+                        DateOfBirth = profile.DateOfBirth,
+                        Gender = profile.Gender
+                    };
+
+                    lock (result)
+                    {
+                        result[patientId] = info;
                     }
                 }
                 catch (Exception ex)
@@ -927,6 +955,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     private class PatientInfo
     {
+        public AuthUserProfileDetailDto? Profile { get; set; }
         public string? FullName { get; set; }
         public string? Email { get; set; }
         public string? Phone { get; set; }
@@ -1080,5 +1109,67 @@ public class AppointmentService : IAppointmentService
             Notes = encounter.Notes,
             CreatedAt = encounter.CreatedAt
         };
+    }
+
+    private async Task<AppointmentResponse> MapToResponseWithProfilesAsync(Models.Entities.Appointment appt)
+    {
+        var response = MapToResponse(appt);
+        await AttachAppointmentProfileAsync(response);
+        return response;
+    }
+
+    private async Task<EncounterResponse> MapToResponseWithProfilesAsync(Encounter encounter)
+    {
+        var response = MapToResponse(encounter);
+        await AttachEncounterProfileAsync(response);
+        return response;
+    }
+
+    private async Task AttachAppointmentProfilesAsync(List<AppointmentResponse> responses)
+    {
+        var tasks = responses.Select(AttachAppointmentProfileAsync);
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task AttachEncounterProfilesAsync(List<EncounterResponse> responses)
+    {
+        var tasks = responses.Select(AttachEncounterProfileAsync);
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task AttachAppointmentProfileAsync(AppointmentResponse response)
+    {
+        var patientUserIdTask = _authServiceClient.GetUserIdByPatientIdAsync(response.PatientId);
+        var doctorUserIdTask = _authServiceClient.GetUserIdByDoctorIdAsync(response.DoctorId);
+
+        await Task.WhenAll(patientUserIdTask, doctorUserIdTask);
+
+        if (patientUserIdTask.Result.HasValue)
+        {
+            response.PatientProfile = await _authServiceClient.GetUserProfileDetailAsync(patientUserIdTask.Result.Value);
+        }
+
+        if (doctorUserIdTask.Result.HasValue)
+        {
+            response.DoctorProfile = await _authServiceClient.GetUserProfileDetailAsync(doctorUserIdTask.Result.Value);
+        }
+    }
+
+    private async Task AttachEncounterProfileAsync(EncounterResponse response)
+    {
+        var patientUserIdTask = _authServiceClient.GetUserIdByPatientIdAsync(response.PatientId);
+        var doctorUserIdTask = _authServiceClient.GetUserIdByDoctorIdAsync(response.DoctorId);
+
+        await Task.WhenAll(patientUserIdTask, doctorUserIdTask);
+
+        if (patientUserIdTask.Result.HasValue)
+        {
+            response.PatientProfile = await _authServiceClient.GetUserProfileDetailAsync(patientUserIdTask.Result.Value);
+        }
+
+        if (doctorUserIdTask.Result.HasValue)
+        {
+            response.DoctorProfile = await _authServiceClient.GetUserProfileDetailAsync(doctorUserIdTask.Result.Value);
+        }
     }
 }
