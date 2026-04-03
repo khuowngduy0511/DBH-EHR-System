@@ -7,6 +7,12 @@ networks:
   ehr:
     name: fabric_ehr
 
+volumes:
+  ca-hospital1-data:
+  ca-hospital2-data:
+  ca-clinic-data:
+  ca-orderer-data:
+
 services:
   ca_hospital1:
     image: hyperledger/fabric-ca:latest
@@ -23,7 +29,7 @@ services:
       - "17054:17054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ../organizations/fabric-ca/hospital1:/etc/hyperledger/fabric-ca-server
+      - ca-hospital1-data:/etc/hyperledger/fabric-ca-server
     container_name: ca_hospital1
     networks:
       - ehr
@@ -43,7 +49,7 @@ services:
       - "18054:18054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ../organizations/fabric-ca/hospital2:/etc/hyperledger/fabric-ca-server
+      - ca-hospital2-data:/etc/hyperledger/fabric-ca-server
     container_name: ca_hospital2
     networks:
       - ehr
@@ -63,7 +69,7 @@ services:
       - "20054:20054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ../organizations/fabric-ca/clinic:/etc/hyperledger/fabric-ca-server
+      - ca-clinic-data:/etc/hyperledger/fabric-ca-server
     container_name: ca_clinic
     networks:
       - ehr
@@ -83,7 +89,7 @@ services:
       - "19054:19054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ../organizations/fabric-ca/ordererOrg:/etc/hyperledger/fabric-ca-server
+      - ca-orderer-data:/etc/hyperledger/fabric-ca-server
     container_name: ca_orderer
     networks:
       - ehr
