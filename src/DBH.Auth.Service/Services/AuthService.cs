@@ -100,7 +100,9 @@ public class AuthService : IAuthService
             Email = request.Email,
             Phone = request.Phone,
             Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth,
+            DateOfBirth = request.DateOfBirth.HasValue
+                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
+                : null,
             Address = request.Address,
             OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
@@ -193,7 +195,9 @@ public class AuthService : IAuthService
             Email = request.Email,
             Phone = request.Phone,
             Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth,
+            DateOfBirth = request.DateOfBirth.HasValue
+                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
+                : null,
             Address = request.Address,
             OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
