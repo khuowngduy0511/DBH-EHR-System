@@ -9,6 +9,7 @@ using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Ipfs;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Notification;
 using MongoDB.Bson;
 
@@ -26,6 +27,7 @@ public class EhrService : IEhrService
     private readonly ILogger<EhrService> _logger;
     private readonly IEhrBlockchainService? _blockchainService;
     private readonly IConsentBlockchainService? _consentBlockchainService;
+    private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAuthServiceClient _authServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -38,6 +40,7 @@ public class EhrService : IEhrService
         IHttpClientFactory httpClientFactory,
         IAuthServiceClient authServiceClient,
         IHttpContextAccessor httpContextAccessor,
+        IBlockchainSyncService blockchainSyncService,
         IEhrBlockchainService? blockchainService = null,
         IConsentBlockchainService? consentBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
@@ -48,6 +51,7 @@ public class EhrService : IEhrService
         _httpClientFactory = httpClientFactory;
         _authServiceClient = authServiceClient;
         _httpContextAccessor = httpContextAccessor;
+        _blockchainSyncService = blockchainSyncService;
         _blockchainService = blockchainService;
         _consentBlockchainService = consentBlockchainService;
         _notificationClient = notificationClient;
@@ -191,15 +195,13 @@ public class EhrService : IEhrService
                     EncryptedAesKey = encryptedAesKey
                 };
 
-                var txResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
-                if (txResult.Success)
-                {
-                    _logger.LogInformation("EHR hash committed to blockchain: {TxHash}", txResult.TxHash);
-                }
-                else
-                {
-                    _logger.LogWarning("Blockchain hash commit failed: {Error}", txResult.ErrorMessage);
-                }
+                _blockchainSyncService.EnqueueEhrHash(
+                    ehrHashRecord,
+                    onFailure: error =>
+                    {
+                        _logger.LogWarning("Queued blockchain hash commit failed for EHR {EhrId}: {Error}", savedRecord.EhrId, error);
+                        return Task.CompletedTask;
+                    });
             }
             catch (Exception ex)
             {

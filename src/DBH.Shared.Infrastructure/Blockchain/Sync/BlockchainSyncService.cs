@@ -35,6 +35,13 @@ public interface IBlockchainSyncService
         Func<BlockchainTransactionResult, Task>? onSuccess = null,
         Func<string, Task>? onFailure = null);
 
+    /// <summary>Enqueue Fabric CA enrollment job</summary>
+    void EnqueueFabricCaEnrollment(
+        string enrollmentId,
+        string username,
+        string role,
+        Func<string, Task>? onFailure = null);
+
     /// <summary>Kiểm tra queue size</summary>
     int PendingCount { get; }
 }
@@ -159,5 +166,31 @@ public class BlockchainSyncService : IBlockchainSyncService
 
         _logger.LogInformation("Enqueued audit sync: AuditId={AuditId}, Action={Action}",
             entry.AuditId, entry.Action);
+    }
+
+    public void EnqueueFabricCaEnrollment(
+        string enrollmentId,
+        string username,
+        string role,
+        Func<string, Task>? onFailure = null)
+    {
+        var payload = new FabricCaEnrollPayload
+        {
+            EnrollmentId = enrollmentId,
+            Username = username,
+            Role = role
+        };
+
+        _queue.Enqueue(new BlockchainSyncJob
+        {
+            JobType = BlockchainSyncJobType.FabricCaEnrollment,
+            EntityId = enrollmentId,
+            PayloadJson = JsonSerializer.Serialize(payload),
+            OnFailureCallback = onFailure
+        });
+
+        _logger.LogInformation(
+            "Enqueued Fabric CA enrollment: EnrollmentId={EnrollmentId}, Role={Role}",
+            enrollmentId, role);
     }
 }

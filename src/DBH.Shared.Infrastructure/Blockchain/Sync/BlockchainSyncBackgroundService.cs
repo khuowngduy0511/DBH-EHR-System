@@ -3,15 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace DBH.Shared.Infrastructure.Blockchain.Sync;
 
 /// <summary>
-/// Background service xử lý blockchain transactions async
-/// Khi service ghi data vào DB, đồng thời đẩy vào queue
-/// Background worker lấy từ queue và submit lên blockchain
-/// Nếu fail → retry, nếu success → update tx_hash trong DB
+/// Background worker xử lý các job blockchain đã được đẩy vào queue.
 /// </summary>
 public class BlockchainSyncBackgroundService : BackgroundService
 {
@@ -37,25 +34,21 @@ public class BlockchainSyncBackgroundService : BackgroundService
         _syncQueue = syncQueue;
     }
 
+    /// <summary>
+    /// Lắng nghe queue blockchain và xử lý từng job theo thứ tự.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_options.Enabled)
-        {
-            _logger.LogInformation("Blockchain sync is disabled. Background service will not process transactions.");
-            return;
-        }
-
         _logger.LogInformation("Blockchain sync background service started.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var job = await _syncQueue.DequeueAsync(stoppingToken);
-
-                if (job != null)
+                var dequeued = await _syncQueue.DequeueAsync(stoppingToken);
+                if (dequeued?.Job != null)
                 {
-                    await ProcessJobAsync(job, stoppingToken);
+                    await ProcessJobAsync(dequeued, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -74,8 +67,12 @@ public class BlockchainSyncBackgroundService : BackgroundService
             _totalProcessed, _totalSuccess, _totalFailed);
     }
 
-    private async Task ProcessJobAsync(BlockchainSyncJob job, CancellationToken ct)
+    /// <summary>
+    /// Thực thi một blockchain job đã lấy từ queue.
+    /// </summary>
+    private async Task ProcessJobAsync(BlockchainSyncDequeuedItem dequeued, CancellationToken ct)
     {
+        var job = dequeued.Job;
         Interlocked.Increment(ref _totalProcessed);
 
         _logger.LogInformation(
@@ -85,47 +82,39 @@ public class BlockchainSyncBackgroundService : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var gateway = scope.ServiceProvider.GetRequiredService<IFabricGateway>();
 
-            BlockchainTransactionResult result;
+            BlockchainTransactionResult? result;
 
             switch (job.JobType)
             {
                 case BlockchainSyncJobType.EhrHash:
-                    var ehrService = scope.ServiceProvider.GetRequiredService<IEhrBlockchainService>();
-                    var ehrRecord = System.Text.Json.JsonSerializer.Deserialize<EhrHashRecord>(job.PayloadJson);
-                    result = ehrRecord != null
-                        ? await ehrService.CommitEhrHashAsync(ehrRecord)
-                        : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+                    result = await HandleEhrHashAsync(scope.ServiceProvider, job.EntityId, job.PayloadJson, dequeued, ct);
                     break;
 
                 case BlockchainSyncJobType.ConsentGrant:
-                    var consentService = scope.ServiceProvider.GetRequiredService<IConsentBlockchainService>();
-                    var consentRecord = System.Text.Json.JsonSerializer.Deserialize<ConsentRecord>(job.PayloadJson);
-                    result = consentRecord != null
-                        ? await consentService.GrantConsentAsync(consentRecord)
-                        : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+                    result = await HandleConsentGrantAsync(scope.ServiceProvider, job.EntityId, job.PayloadJson, dequeued, ct);
                     break;
 
                 case BlockchainSyncJobType.ConsentRevoke:
-                    var consentSvc = scope.ServiceProvider.GetRequiredService<IConsentBlockchainService>();
-                    var revokeData = System.Text.Json.JsonSerializer.Deserialize<ConsentRevokePayload>(job.PayloadJson);
-                    result = revokeData != null
-                        ? await consentSvc.RevokeConsentAsync(revokeData.ConsentId, revokeData.RevokedAt, revokeData.Reason)
-                        : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+                    result = await HandleConsentRevokeAsync(scope.ServiceProvider, job.EntityId, job.PayloadJson, dequeued, ct);
                     break;
 
                 case BlockchainSyncJobType.AuditLog:
-                    var auditService = scope.ServiceProvider.GetRequiredService<IAuditBlockchainService>();
-                    var auditEntry = System.Text.Json.JsonSerializer.Deserialize<AuditEntry>(job.PayloadJson);
-                    result = auditEntry != null
-                        ? await auditService.CommitAuditEntryAsync(auditEntry)
-                        : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+                    result = await HandleAuditLogAsync(scope.ServiceProvider, job.EntityId, job.PayloadJson, dequeued, ct);
+                    break;
+
+                case BlockchainSyncJobType.FabricCaEnrollment:
+                    result = await HandleFabricCaEnrollmentAsync(scope.ServiceProvider, job.PayloadJson, dequeued, ct);
                     break;
 
                 default:
                     _logger.LogWarning("Unknown job type: {JobType}", job.JobType);
                     return;
+            }
+
+            if (result == null)
+            {
+                return;
             }
 
             if (result.Success)
@@ -141,10 +130,12 @@ public class BlockchainSyncBackgroundService : BackgroundService
                 {
                     await job.OnSuccessCallback(result);
                 }
+
+                await _syncQueue.AckAsync(dequeued, ct);
             }
             else
             {
-                await HandleFailureAsync(job, result.ErrorMessage, ct);
+                await HandleFailureAsync(dequeued, result.ErrorMessage, ct);
             }
         }
         catch (Exception ex)
@@ -153,13 +144,164 @@ public class BlockchainSyncBackgroundService : BackgroundService
                 "Exception processing blockchain sync job: Type={Type}, EntityId={EntityId}",
                 job.JobType, job.EntityId);
 
-            await HandleFailureAsync(job, ex.Message, ct);
+            await HandleFailureAsync(dequeued, ex.Message, ct);
         }
     }
 
-    private async Task HandleFailureAsync(BlockchainSyncJob job, string? errorMessage, CancellationToken ct)
+    /// <summary>
+    /// Gửi hash EHR lên blockchain để đồng bộ trạng thái hồ sơ bệnh án.
+    /// </summary>
+    private async Task<BlockchainTransactionResult?> HandleEhrHashAsync(
+        IServiceProvider serviceProvider,
+        string entityId,
+        string payloadJson,
+        BlockchainSyncDequeuedItem dequeued,
+        CancellationToken ct)
     {
-        job.Attempts++;
+        if (!_options.Enabled)
+        {
+            _logger.LogWarning("Skipping EHR sync job because HyperledgerFabric is disabled: {EntityId}", entityId);
+            await _syncQueue.AckAsync(dequeued, ct);
+            return null;
+        }
+
+        var ehrService = serviceProvider.GetRequiredService<IEhrBlockchainService>();
+        var ehrRecord = JsonSerializer.Deserialize<EhrHashRecord>(payloadJson);
+
+        return ehrRecord != null
+            ? await ehrService.CommitEhrHashAsync(ehrRecord)
+            : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+    }
+
+    /// <summary>
+    /// Ghi quyền đồng ý (consent grant) lên blockchain để lưu lịch sử cấp quyền.
+    /// </summary>
+    private async Task<BlockchainTransactionResult?> HandleConsentGrantAsync(
+        IServiceProvider serviceProvider,
+        string entityId,
+        string payloadJson,
+        BlockchainSyncDequeuedItem dequeued,
+        CancellationToken ct)
+    {
+        if (!_options.Enabled)
+        {
+            _logger.LogWarning("Skipping consent grant job because HyperledgerFabric is disabled: {EntityId}", entityId);
+            await _syncQueue.AckAsync(dequeued, ct);
+            return null;
+        }
+
+        var consentService = serviceProvider.GetRequiredService<IConsentBlockchainService>();
+        var consentRecord = JsonSerializer.Deserialize<ConsentRecord>(payloadJson);
+
+        return consentRecord != null
+            ? await consentService.GrantConsentAsync(consentRecord)
+            : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+    }
+
+    /// <summary>
+    /// Ghi thao tác thu hồi consent lên blockchain để audit được lịch sử thay đổi.
+    /// </summary>
+    private async Task<BlockchainTransactionResult?> HandleConsentRevokeAsync(
+        IServiceProvider serviceProvider,
+        string entityId,
+        string payloadJson,
+        BlockchainSyncDequeuedItem dequeued,
+        CancellationToken ct)
+    {
+        if (!_options.Enabled)
+        {
+            _logger.LogWarning("Skipping consent revoke job because HyperledgerFabric is disabled: {EntityId}", entityId);
+            await _syncQueue.AckAsync(dequeued, ct);
+            return null;
+        }
+
+        var consentService = serviceProvider.GetRequiredService<IConsentBlockchainService>();
+        var revokeData = JsonSerializer.Deserialize<ConsentRevokePayload>(payloadJson);
+
+        return revokeData != null
+            ? await consentService.RevokeConsentAsync(revokeData.ConsentId, revokeData.RevokedAt, revokeData.Reason)
+            : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+    }
+
+    /// <summary>
+    /// Lưu audit log lên blockchain để đảm bảo dữ liệu kiểm toán không bị chỉnh sửa.
+    /// </summary>
+    private async Task<BlockchainTransactionResult?> HandleAuditLogAsync(
+        IServiceProvider serviceProvider,
+        string entityId,
+        string payloadJson,
+        BlockchainSyncDequeuedItem dequeued,
+        CancellationToken ct)
+    {
+        if (!_options.Enabled)
+        {
+            _logger.LogWarning("Skipping audit sync job because HyperledgerFabric is disabled: {EntityId}", entityId);
+            await _syncQueue.AckAsync(dequeued, ct);
+            return null;
+        }
+
+        var auditService = serviceProvider.GetRequiredService<IAuditBlockchainService>();
+        var auditEntry = JsonSerializer.Deserialize<AuditEntry>(payloadJson);
+
+        return auditEntry != null
+            ? await auditService.CommitAuditEntryAsync(auditEntry)
+            : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+    }
+
+    /// <summary>
+    /// Đăng ký user với Fabric CA để phục vụ việc cấp danh tính cho blockchain network.
+    /// </summary>
+    private async Task<BlockchainTransactionResult> HandleFabricCaEnrollmentAsync(
+        IServiceProvider serviceProvider,
+        string payloadJson,
+        BlockchainSyncDequeuedItem dequeued,
+        CancellationToken ct)
+    {
+        var fabricCa = serviceProvider.GetService<IFabricCaService>();
+        var enrollmentPayload = JsonSerializer.Deserialize<FabricCaEnrollPayload>(payloadJson);
+
+        if (fabricCa == null)
+        {
+            return new BlockchainTransactionResult
+            {
+                Success = false,
+                ErrorMessage = "IFabricCaService is not registered in this service"
+            };
+        }
+
+        if (enrollmentPayload == null)
+        {
+            return new BlockchainTransactionResult
+            {
+                Success = false,
+                ErrorMessage = "Invalid payload"
+            };
+        }
+
+        var enrollResult = await fabricCa.EnrollUserAsync(
+            enrollmentPayload.EnrollmentId,
+            enrollmentPayload.Username,
+            enrollmentPayload.Role);
+
+        return enrollResult.Success
+            ? new BlockchainTransactionResult
+            {
+                Success = true,
+                TxHash = string.Empty,
+                BlockNumber = 0,
+                Timestamp = DateTime.UtcNow
+            }
+            : new BlockchainTransactionResult
+            {
+                Success = false,
+                ErrorMessage = enrollResult.ErrorMessage ?? "Fabric CA enrollment failed"
+            };
+    }
+
+    private async Task HandleFailureAsync(BlockchainSyncDequeuedItem dequeued, string? errorMessage, CancellationToken ct)
+    {
+        var job = dequeued.Job;
+        job.Attempts = dequeued.RetryCount + 1;
         job.LastError = errorMessage;
 
         if (job.Attempts < _options.MaxRetries)
@@ -170,7 +312,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
                 delay, job.JobType, job.EntityId, errorMessage);
 
             await Task.Delay(delay, ct);
-            _syncQueue.Enqueue(job);
+            await _syncQueue.RequeueAsync(dequeued, job, ct);
         }
         else
         {
@@ -184,77 +326,8 @@ public class BlockchainSyncBackgroundService : BackgroundService
             {
                 await job.OnFailureCallback(errorMessage ?? "Unknown error");
             }
+
+            await _syncQueue.MoveToDeadLetterAsync(dequeued, job, errorMessage, ct);
         }
     }
-}
-
-// ============================================================================
-// Sync Queue
-// ============================================================================
-
-/// <summary>
-/// Thread-safe queue cho blockchain sync jobs
-/// </summary>
-public class BlockchainSyncQueue
-{
-    private readonly ConcurrentQueue<BlockchainSyncJob> _queue = new();
-    private readonly SemaphoreSlim _signal = new(0);
-
-    public void Enqueue(BlockchainSyncJob job)
-    {
-        _queue.Enqueue(job);
-        _signal.Release();
-    }
-
-    public async Task<BlockchainSyncJob?> DequeueAsync(CancellationToken ct)
-    {
-        await _signal.WaitAsync(ct);
-        _queue.TryDequeue(out var job);
-        return job;
-    }
-
-    public int Count => _queue.Count;
-}
-
-// ============================================================================
-// Sync Job Models
-// ============================================================================
-
-public enum BlockchainSyncJobType
-{
-    EhrHash,
-    ConsentGrant,
-    ConsentRevoke,
-    AuditLog
-}
-
-public class BlockchainSyncJob
-{
-    public string JobId { get; init; } = Guid.NewGuid().ToString();
-    public BlockchainSyncJobType JobType { get; init; }
-    public string EntityId { get; init; } = string.Empty;
-    public string PayloadJson { get; init; } = string.Empty;
-    public int Attempts { get; set; }
-    public string? LastError { get; set; }
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// Callback khi transaction thành công - để update tx_hash vào DB
-    /// </summary>
-    public Func<BlockchainTransactionResult, Task>? OnSuccessCallback { get; init; }
-
-    /// <summary>
-    /// Callback khi transaction thất bại vĩnh viễn
-    /// </summary>
-    public Func<string, Task>? OnFailureCallback { get; init; }
-}
-
-/// <summary>
-/// Payload cho consent revoke job
-/// </summary>
-public class ConsentRevokePayload
-{
-    public string ConsentId { get; set; } = string.Empty;
-    public string RevokedAt { get; set; } = string.Empty;
-    public string? Reason { get; set; }
 }
