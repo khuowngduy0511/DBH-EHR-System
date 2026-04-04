@@ -82,9 +82,16 @@ public class AppointmentService : IAppointmentService
         await ScheduleReminderAsync(appointment);
 
         // Notify doctor about new appointment
-        await NotifyAsync(appointment.DoctorId,
+        await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn mới",
             $"Bạn có lịch hẹn mới vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}",
+            "AppointmentCreated", "Normal",
+            appointment.AppointmentId.ToString(), "Appointment");
+
+        // Notify patient about appointment created
+        await NotifyPatientAsync(appointment.PatientId,
+            "Đặt lịch hẹn thành công",
+            $"Bạn đã đặt lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}.",
             "AppointmentCreated", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -214,12 +221,12 @@ public class AppointmentService : IAppointmentService
         _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDate);
 
         // Notify both parties about reschedule
-        await NotifyAsync(appointment.PatientId,
+        await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được đổi",
             $"Lịch hẹn đã được đổi sang {newDate:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "High",
             appointment.AppointmentId.ToString(), "Appointment");
-        await NotifyAsync(appointment.DoctorId,
+        await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã được đổi",
             $"Lịch hẹn đã được đổi sang {newDate:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "Normal",
@@ -286,7 +293,7 @@ public class AppointmentService : IAppointmentService
             AppointmentId = appointment.AppointmentId
         });
 
-        await NotifyAsync(appointment.PatientId,
+        await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được xác nhận",
             $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã được bác sĩ xác nhận.",
             "AppointmentReminder", "High",
@@ -339,7 +346,7 @@ public class AppointmentService : IAppointmentService
             AppointmentId = appointment.AppointmentId
         });
 
-        await NotifyAsync(appointment.PatientId,
+        await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn bị từ chối",
             $"Lịch hẹn của bạn đã bị từ chối. Lý do: {reason}",
             "AppointmentReminder", "High",
@@ -385,12 +392,12 @@ public class AppointmentService : IAppointmentService
         });
 
         // Notify both patient and doctor
-        await NotifyAsync(appointment.PatientId,
+        await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã bị hủy",
             $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "High",
             appointment.AppointmentId.ToString(), "Appointment");
-        await NotifyAsync(appointment.DoctorId,
+        await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã bị hủy",
             $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "Normal",
@@ -433,7 +440,7 @@ public class AppointmentService : IAppointmentService
         });
 
         // Notify doctor that patient checked in
-        await NotifyAsync(appointment.DoctorId,
+        await NotifyDoctorAsync(appointment.DoctorId,
             "Bệnh nhân đã check-in",
             "Bệnh nhân đã đến và check-in cho lịch hẹn.",
             "AppointmentCheckedIn", "High",
@@ -547,7 +554,7 @@ public class AppointmentService : IAppointmentService
         });
 
         // Notify patient that encounter started
-        await NotifyAsync(encounter.PatientId,
+        await NotifyPatientAsync(encounter.PatientId,
             "Bắt đầu khám bệnh",
             "Buổi khám bệnh của bạn đã bắt đầu.",
             "EncounterCreated", "Normal",
@@ -700,7 +707,7 @@ public class AppointmentService : IAppointmentService
         var body = ehrId.HasValue
             ? "Buổi khám bệnh đã hoàn tất. Hồ sơ bệnh án đã được tạo."
             : "Buổi khám bệnh đã hoàn tất.";
-        await NotifyAsync(encounter.PatientId,
+        await NotifyPatientAsync(encounter.PatientId,
             "Khám bệnh hoàn tất",
             body,
             "EncounterCompleted", "Normal",
@@ -1010,13 +1017,22 @@ public class AppointmentService : IAppointmentService
         }
     }
 
-    private async Task NotifyAsync(Guid recipientUserId, string title, string body,
+    private async Task NotifyPatientAsync(Guid patientId, string title, string body,
         string type, string priority, string? referenceId, string? referenceType)
     {
-        if (_notificationClient != null)
-        {
-            await _notificationClient.SendAsync(recipientUserId, title, body, type, priority, referenceId, referenceType);
-        }
+        if (_notificationClient == null) return;
+        var userId = await _authServiceClient.GetUserIdByPatientIdAsync(patientId);
+        var recipientId = userId ?? patientId; // fallback to patientId if resolve fails
+        await _notificationClient.SendAsync(recipientId, title, body, type, priority, referenceId, referenceType);
+    }
+
+    private async Task NotifyDoctorAsync(Guid doctorId, string title, string body,
+        string type, string priority, string? referenceId, string? referenceType)
+    {
+        if (_notificationClient == null) return;
+        var userId = await _authServiceClient.GetUserIdByDoctorIdAsync(doctorId);
+        var recipientId = userId ?? doctorId; // fallback if resolve fails
+        await _notificationClient.SendAsync(recipientId, title, body, type, priority, referenceId, referenceType);
     }
 
     private async Task ScheduleReminderAsync(Models.Entities.Appointment appointment)
