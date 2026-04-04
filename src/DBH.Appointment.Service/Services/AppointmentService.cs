@@ -47,7 +47,11 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<AppointmentResponse>> CreateAppointmentAsync(CreateAppointmentRequest request)
     {
-        if (request.ScheduledAt < DateTime.UtcNow)
+        var scheduledAtUtc = request.ScheduledAt.Kind == DateTimeKind.Utc
+            ? request.ScheduledAt
+            : request.ScheduledAt.ToUniversalTime();
+
+        if (scheduledAtUtc < DateTime.UtcNow)
         {
             return new ApiResponse<AppointmentResponse>
             {
@@ -56,12 +60,75 @@ public class AppointmentService : IAppointmentService
             };
         }
 
+        var patientUserId = await _authServiceClient.GetUserIdByPatientIdAsync(request.PatientId);
+        if (!patientUserId.HasValue)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Patient not found"
+            };
+        }
+
+        var doctorValidation = await ValidateDoctorAndOrganizationAsync(request.DoctorId, request.OrgId);
+        if (!doctorValidation.Success)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = doctorValidation.Message
+            };
+        }
+
+        var doctorConflictExists = await _context.Appointments.AnyAsync(a =>
+            a.DoctorId == request.DoctorId &&
+            a.ScheduledAt == scheduledAtUtc &&
+            a.Status != AppointmentStatus.CANCELLED);
+
+        if (doctorConflictExists)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Bác sĩ đã có lịch hẹn vào thời gian này. Vui lòng chọn khung giờ khác."
+            };
+        }
+
+        var patientConflictExists = await _context.Appointments.AnyAsync(a =>
+            a.PatientId == request.PatientId &&
+            a.ScheduledAt == scheduledAtUtc &&
+            a.Status != AppointmentStatus.CANCELLED);
+
+        if (patientConflictExists)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Bệnh nhân đã có lịch hẹn vào thời gian này. Vui lòng chọn khung giờ khác."
+            };
+        }
+
+        // var patientDoctorOrgConflictExists = await _context.Appointments.AnyAsync(a =>
+        //     a.PatientId == request.PatientId &&
+        //     a.OrgId == request.OrgId &&
+        //     a.ScheduledAt == scheduledAtUtc &&
+        //     a.Status != AppointmentStatus.CANCELLED);
+
+        // if (patientDoctorOrgConflictExists)
+        // {
+        //     return new ApiResponse<AppointmentResponse>
+        //     {
+        //         Success = false,
+        //         Message = "Bệnh nhân đã có lịch hẹn tại cơ sở y tế này vào thời gian này."
+        //     };
+        // }
+
         var appointment = new Models.Entities.Appointment
         {
             PatientId = request.PatientId,
             DoctorId = request.DoctorId,
             OrgId = request.OrgId,
-            ScheduledAt = request.ScheduledAt.ToUniversalTime(),
+            ScheduledAt = scheduledAtUtc,
             Status = AppointmentStatus.PENDING
         };
 
@@ -204,7 +271,11 @@ public class AppointmentService : IAppointmentService
             };
         }
 
-        if (newDate < DateTime.UtcNow)
+        var newDateUtc = newDate.Kind == DateTimeKind.Utc
+            ? newDate
+            : newDate.ToUniversalTime();
+
+        if (newDateUtc < DateTime.UtcNow)
         {
             return new ApiResponse<AppointmentResponse>
             {
@@ -213,21 +284,70 @@ public class AppointmentService : IAppointmentService
             };
         }
 
-        appointment.ScheduledAt = newDate.ToUniversalTime();
+        var doctorConflictExists = await _context.Appointments.AnyAsync(a =>
+            a.AppointmentId != appointmentId &&
+            a.DoctorId == appointment.DoctorId &&
+            a.OrgId == appointment.OrgId &&
+            a.ScheduledAt == newDateUtc &&
+            a.Status != AppointmentStatus.CANCELLED);
+
+        if (doctorConflictExists)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Bác sĩ đã có lịch hẹn vào khung giờ này. Vui lòng chọn khung giờ khác."
+            };
+        }
+
+        var patientConflictExists = await _context.Appointments.AnyAsync(a =>
+            a.AppointmentId != appointmentId &&
+            a.PatientId == appointment.PatientId &&
+            a.OrgId == appointment.OrgId &&
+            a.ScheduledAt == newDateUtc &&
+            a.Status != AppointmentStatus.CANCELLED);
+
+        if (patientConflictExists)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Bệnh nhân đã có lịch hẹn vào khung giờ này. Vui lòng chọn khung giờ khác."
+            };
+        }
+
+        var patientDoctorOrgConflictExists = await _context.Appointments.AnyAsync(a =>
+            a.AppointmentId != appointmentId &&
+            a.PatientId == appointment.PatientId &&
+            a.DoctorId == appointment.DoctorId &&
+            a.OrgId == appointment.OrgId &&
+            a.ScheduledAt == newDateUtc &&
+            a.Status != AppointmentStatus.CANCELLED);
+
+        if (patientDoctorOrgConflictExists)
+        {
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = "Bệnh nhân đã có lịch hẹn với bác sĩ này tại cơ sở y tế này vào khung giờ này."
+            };
+        }
+
+        appointment.ScheduledAt = newDateUtc;
         appointment.Status = AppointmentStatus.RESCHEDULED;
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDate);
+        _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDateUtc);
 
         // Notify both parties about reschedule
         await NotifyAsync(appointment.PatientId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDate:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "High",
             appointment.AppointmentId.ToString(), "Appointment");
         await NotifyAsync(appointment.DoctorId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDate:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -1045,6 +1165,119 @@ public class AppointmentService : IAppointmentService
         if (_notificationClient != null)
         {
             await _notificationClient.SendAsync(recipientUserId, title, body, type, priority, referenceId, referenceType);
+        }
+    }
+
+    private async Task<ApiResponse<bool>> ValidateDoctorAndOrganizationAsync(Guid doctorId, Guid orgId)
+    {
+        var doctorUserId = await _authServiceClient.GetUserIdByDoctorIdAsync(doctorId);
+        if (!doctorUserId.HasValue)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Doctor not found"
+            };
+        }
+
+        var organizationExists = await OrganizationExistsAsync(orgId);
+        if (!organizationExists)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Organization not found"
+            };
+        }
+
+        var doctorInOrganization = await IsDoctorInOrganizationAsync(doctorUserId.Value, orgId);
+        if (!doctorInOrganization)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Doctor does not belong to this organization"
+            };
+        }
+
+        return new ApiResponse<bool>
+        {
+            Success = true,
+            Data = true
+        };
+    }
+
+    private async Task<bool> OrganizationExistsAsync(Guid orgId)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("OrganizationService");
+            var token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", token);
+            }
+
+            var response = await client.GetAsync($"api/v1/organizations/{orgId}");
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to validate organization {OrgId}", orgId);
+            return false;
+        }
+    }
+
+    private async Task<bool> IsDoctorInOrganizationAsync(Guid doctorUserId, Guid orgId)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("OrganizationService");
+            var token = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", token);
+            }
+
+            var response = await client.GetAsync($"api/v1/memberships/by-user/{doctorUserId}?page=1&pageSize=100");
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("data", out var dataElement) || dataElement.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var membership in dataElement.EnumerateArray())
+            {
+                if (!membership.TryGetProperty("orgId", out var orgIdElement) || orgIdElement.GetGuid() != orgId)
+                {
+                    continue;
+                }
+
+                if (!membership.TryGetProperty("status", out var statusElement))
+                {
+                    continue;
+                }
+
+                var status = statusElement.GetString();
+                if (string.Equals(status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to validate doctor membership for doctor user {DoctorUserId} in organization {OrgId}", doctorUserId, orgId);
+            return false;
         }
     }
 
