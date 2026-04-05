@@ -4,6 +4,9 @@ version: "2.1"
 volumes:
   pgdata:
   walletstore:
+  fabric-crypto:
+    external: true
+    name: ${FABRIC_CRYPTO_VOLUME:-fabric-crypto}
 
 networks:
   mynetwork.com:
@@ -47,7 +50,7 @@ services:
     volumes:
       - ${EXPLORER_CONFIG_FILE_PATH}:/opt/explorer/app/platform/fabric/config.json
       - ${EXPLORER_PROFILE_DIR_PATH}:/opt/explorer/app/platform/fabric/connection-profile
-      - ${FABRIC_CRYPTO_PATH}:/tmp/crypto
+      - fabric-crypto:/tmp/crypto:ro
       - walletstore:/opt/explorer/wallet
     ports:
       - ${PORT:-8080}:${PORT:-8080}

@@ -132,6 +132,8 @@ services:
         condition: service_healthy
       mongo1:
         condition: service_started
+      # ipfs:
+      #   condition: service_started
     networks:
       - dbh_network
     healthcheck:
@@ -367,6 +369,28 @@ services:
           ]
         })
       "
+    networks:
+      - dbh_network
+
+  # ============================================================================
+  # IPFS
+  # ============================================================================
+
+  ipfs:
+    image: ipfs/kubo:release
+    container_name: dbh_ipfs
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "5001:5001"
+      - "8080:8080"
+    environment:
+      - IPFS_PROFILE=server
+      - IPFS_PATH=/data/ipfs
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_
     networks:
       - dbh_network
 
