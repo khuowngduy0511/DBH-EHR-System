@@ -124,6 +124,9 @@ services:
       - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
       - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
       - MongoDB__DatabaseName=dbh_fhir
+      - IpfsConfig__ApiUrl=http://ipfs:5001/api/v0
+      - IpfsConfig__GatewayUrl=http://ipfs:8080/ipfs
+      - IpfsConfig__DownloadPath=/tmp/ipfs_downloads
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__ConsentService=http://consent_service:5004
       - ServiceUrls__NotificationService=http://notification_service:5006
@@ -132,8 +135,8 @@ services:
         condition: service_healthy
       mongo1:
         condition: service_started
-      # ipfs:
-      #   condition: service_started
+      ipfs:
+        condition: service_started
     networks:
       - dbh_network
     healthcheck:
@@ -390,7 +393,7 @@ services:
       - IPFS_PATH=/data/ipfs
     volumes:
       - ipfs_data:/data/ipfs
-      - ipfs_
+      - ipfs_staging:/export
     networks:
       - dbh_network
 
@@ -444,6 +447,8 @@ volumes:
   pg_primary_data:
   mongo1_data:
   mongo2_data:
+  ipfs_data:
+  ipfs_staging:
   rabbitmq_data:
   redis_data:
 
