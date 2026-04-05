@@ -468,6 +468,7 @@ function networkDown() {
   COMPOSE_COUCH_FILES="-f compose/${COMPOSE_FILE_COUCH}"
   COMPOSE_CA_FILES="-f compose/${COMPOSE_FILE_CA}"
   COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES} ${COMPOSE_CA_FILES}"
+  CRYPTO_VOLUME="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
 
   if [ "${CONTAINER_CLI}" == "docker" ]; then
     DOCKER_SOCK=$DOCKER_SOCK ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} down --volumes --remove-orphans
@@ -476,6 +477,8 @@ function networkDown() {
   else
     fatalln "Container CLI ${CONTAINER_CLI} not supported"
   fi
+
+  ${CONTAINER_CLI} volume rm -f "${CRYPTO_VOLUME}" 2>/dev/null || true
 
   # Don't remove the generated artifacts -- note, the ledgers are always removed
   if [ "$MODE" != "restart" ]; then
