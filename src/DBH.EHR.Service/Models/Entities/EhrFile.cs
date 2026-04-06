@@ -33,6 +33,19 @@ public class EhrFile
     [MaxLength(255)]
     public string? FileHash { get; set; }
 
+    /// <summary>
+    /// CID pointing to encrypted file on IPFS
+    /// </summary>
+    [Column("ipfs_cid")]
+    [MaxLength(255)]
+    public string? IpfsCid { get; set; }
+
+    /// <summary>
+    /// Fallback: encrypted file data stored directly when IPFS is unavailable
+    /// </summary>
+    [Column("encrypted_fallback_data")]
+    public string? EncryptedFallbackData { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

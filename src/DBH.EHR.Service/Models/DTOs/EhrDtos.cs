@@ -40,7 +40,7 @@ public class CreateEhrRecordResponseDto
     public Guid? VersionId { get; set; }
     public Guid? FileId { get; set; }
     public int VersionNumber { get; set; }
-    public string? OffchainDocId { get; set; }
+    public string? IpfsCid { get; set; }
     public string? DataHash { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -91,26 +91,13 @@ public class UpdateEhrRecordDto
 }
 
 /// <summary>
-/// Request thêm file vào EHR
-/// </summary>
-public class AddEhrFileDto
-{
-    [Required]
-    [MaxLength(1000)]
-    public string FileUrl { get; set; } = string.Empty;
-
-    [MaxLength(255)]
-    public string? FileHash { get; set; }
-}
-
-/// <summary>
-/// Chi tiết version EHR (bao gồm data snapshot)
+/// Chi tiết version EHR (bao gồm IPFS CID)
 /// </summary>
 public class EhrVersionDetailDto
 {
     public Guid VersionId { get; set; }
     public Guid EhrId { get; set; }
     public int VersionNumber { get; set; }
-    public JsonElement? Data { get; set; }
+    public string? IpfsCid { get; set; }
     public DateTime CreatedAt { get; set; }
 }

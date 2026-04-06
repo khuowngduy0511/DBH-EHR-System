@@ -33,7 +33,7 @@ public interface IEhrService
     
     Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false);
     
-    Task<EhrFileDto?> AddFileAsync(Guid ehrId, AddEhrFileDto request);
+    Task<EhrFileDto?> AddFileAsync(Guid ehrId, Stream fileStream, string fileName);
     
     Task<bool> DeleteFileAsync(Guid ehrId, Guid fileId);
 }
