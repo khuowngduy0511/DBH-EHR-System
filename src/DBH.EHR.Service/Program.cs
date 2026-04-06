@@ -54,31 +54,13 @@ builder.Services.AddSwaggerGen(options =>
 // Database Configuration (EHR Service own databases)
 // ============================================================================
 
-// PostgreSQL Primary (Read-Write)
+// PostgreSQL
 var primaryConnectionString = builder.Configuration.GetConnectionString("EhrDb")
     ?? builder.Configuration.GetConnectionString("PostgresPrimary");
 
 builder.Services.AddDbContext<EhrPrimaryDbContext>(options =>
 {
     options.UseNpgsql(primaryConnectionString, npgsqlOptions =>
-    {
-        npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorCodesToAdd: null);
-        npgsqlOptions.CommandTimeout(60);
-    });
-});
-
-// PostgreSQL Replica (Read-Only) - Falls back to primary if not configured
-var replicaConnectionString = builder.Configuration.GetConnectionString("PostgresReplica");
-var effectiveReplicaConnectionString = string.IsNullOrEmpty(replicaConnectionString)
-    ? primaryConnectionString
-    : replicaConnectionString;
-
-builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
-{
-    options.UseNpgsql(effectiveReplicaConnectionString, npgsqlOptions =>
     {
         npgsqlOptions.EnableRetryOnFailure(
             maxRetryCount: 3,

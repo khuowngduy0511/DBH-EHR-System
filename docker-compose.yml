@@ -82,13 +82,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__EhrDb: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
-      ConnectionStrings__PostgresReplica: "Host=pg_replica;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
     ports:
       - "5050:5050"
     depends_on:
       pg_primary:
-        condition: service_healthy
-      pg_replica:
         condition: service_healthy
     networks:
       - dbh_network
