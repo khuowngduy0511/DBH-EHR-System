@@ -216,9 +216,9 @@ public class EhrService : IEhrService
         };
     }
 
-    public async Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId, bool useReplica = false)
+    public async Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId)
     {
-        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null) return null;
 
         var response = MapToEhrRecordResponse(record);
@@ -229,9 +229,9 @@ public class EhrService : IEhrService
 
     /// <inheritdoc />
     public async Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> GetEhrRecordWithConsentCheckAsync(
-        Guid ehrId, Guid requesterId, bool useReplica = false)
+        Guid ehrId, Guid requesterId)
     {
-        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
             return (null, false, null);
 
@@ -261,9 +261,9 @@ public class EhrService : IEhrService
         return (consentedResponse, false, null);
     }
 
-    public async Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(Guid ehrId, Guid requesterId, bool useReplica = false)
+    public async Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(Guid ehrId, Guid requesterId)
     {
-        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId, useReplica);
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
             return (null, false, "EHR Record not found");
 
@@ -352,25 +352,25 @@ public class EhrService : IEhrService
         }
     }
 
-    public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, bool useReplica = false)
+    public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId)
     {
-        var records = await _ehrRecordRepo.GetByPatientIdAsync(patientId, useReplica);
+        var records = await _ehrRecordRepo.GetByPatientIdAsync(patientId);
         var responses = records.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);
         return responses;
     }
 
-    public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId, bool useReplica = false)
+    public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId)
     {
-        var records = await _ehrRecordRepo.GetByOrgIdAsync(orgId, useReplica);
+        var records = await _ehrRecordRepo.GetByOrgIdAsync(orgId);
         var responses = records.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);
         return responses;
     }
 
-    public async Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId, bool useReplica = false)
+    public async Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId)
     {
-        var versions = await _ehrRecordRepo.GetVersionsAsync(ehrId, useReplica);
+        var versions = await _ehrRecordRepo.GetVersionsAsync(ehrId);
         return versions.Select(v => new EhrVersionDto
         {
             VersionId = v.VersionId,
@@ -379,9 +379,9 @@ public class EhrService : IEhrService
         });
     }
 
-    public async Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId, bool useReplica = false)
+    public async Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId)
     {
-        var files = await _ehrRecordRepo.GetFilesAsync(ehrId, useReplica);
+        var files = await _ehrRecordRepo.GetFilesAsync(ehrId);
         return files.Select(f => new EhrFileDto
         {
             FileId = f.FileId,
@@ -526,9 +526,9 @@ public class EhrService : IEhrService
         return response;
     }
 
-    public async Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false)
+    public async Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId)
     {
-        var version = await _ehrRecordRepo.GetVersionByIdAsync(ehrId, versionId, useReplica);
+        var version = await _ehrRecordRepo.GetVersionByIdAsync(ehrId, versionId);
         if (version == null) return null;
 
         return new EhrVersionDetailDto
