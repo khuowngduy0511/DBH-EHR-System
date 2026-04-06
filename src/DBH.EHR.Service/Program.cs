@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using DBH.EHR.Service.DbContext;
-using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;
 using DBH.Shared.Infrastructure;
@@ -55,7 +54,7 @@ builder.Services.AddSwaggerGen(options =>
 // Database Configuration (EHR Service own databases)
 // ============================================================================
 
-// PostgreSQL Primary (Read-Write)
+// PostgreSQL
 var primaryConnectionString = builder.Configuration.GetConnectionString("EhrDb")
     ?? builder.Configuration.GetConnectionString("PostgresPrimary");
 
@@ -71,34 +70,11 @@ builder.Services.AddDbContext<EhrPrimaryDbContext>(options =>
     });
 });
 
-// PostgreSQL Replica (Read-Only) - Falls back to primary if not configured
-var replicaConnectionString = builder.Configuration.GetConnectionString("PostgresReplica");
-var effectiveReplicaConnectionString = string.IsNullOrEmpty(replicaConnectionString)
-    ? primaryConnectionString
-    : replicaConnectionString;
-
-builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
-{
-    options.UseNpgsql(effectiveReplicaConnectionString, npgsqlOptions =>
-    {
-        npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorCodesToAdd: null);
-        npgsqlOptions.CommandTimeout(60);
-    });
-});
-
-// MongoDB FHIR Context
-builder.Services.Configure<MongoDbConfiguration>(builder.Configuration.GetSection("MongoDB"));
-builder.Services.AddSingleton<MongoDbContext>();
-
 // ============================================================================
 // Repositories
 // ============================================================================
 
 builder.Services.AddScoped<IEhrRecordRepository, EhrRecordRepository>();
-builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
 
 // ============================================================================
 // Services

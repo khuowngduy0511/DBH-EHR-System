@@ -23,10 +23,24 @@ public class EhrVersion
     public int VersionNumber { get; set; } = 1;
 
     /// <summary>
-    /// Version data as JSONB (snapshot of EHR data at this version)
+    /// CID pointing to encrypted data on IPFS
     /// </summary>
-    [Column("data", TypeName = "jsonb")]
-    public string? Data { get; set; }
+    [Column("ipfs_cid")]
+    [MaxLength(255)]
+    public string? IpfsCid { get; set; }
+
+    /// <summary>
+    /// Fallback: encrypted data stored directly when IPFS is unavailable
+    /// </summary>
+    [Column("encrypted_fallback_data")]
+    public string? EncryptedFallbackData { get; set; }
+
+    /// <summary>
+    /// SHA-256 hash of the original content for integrity verification
+    /// </summary>
+    [Column("data_hash")]
+    [MaxLength(255)]
+    public string? DataHash { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

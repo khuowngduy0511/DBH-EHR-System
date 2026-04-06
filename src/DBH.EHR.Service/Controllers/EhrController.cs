@@ -24,7 +24,7 @@ public class EhrController : ControllerBase
     // EHR Records
 
     /// <summary>
-    /// Tạo EHR mới - Ghi PG Primary + Mongo Primary
+    /// Tạo EHR mới - Ghi PG Primary + IPFS
     /// </summary>
     [HttpPost("records")]
     [Authorize(Roles = "Doctor,Admin")]
@@ -72,14 +72,13 @@ public class EhrController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(
         Guid ehrId, 
-        [FromQuery] bool useReplica = false,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         // Nếu có requester ID → kiểm tra consent trước khi trả data
         if (requesterId.HasValue)
         {
             var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(
-                ehrId, requesterId.Value, useReplica);
+                ehrId, requesterId.Value);
             
             if (consentDenied)
                 return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
@@ -91,7 +90,7 @@ public class EhrController : ControllerBase
         }
 
         // Không có requester ID → trả trực tiếp (internal service call)
-        var result = await _ehrService.GetEhrRecordAsync(ehrId, useReplica);
+        var result = await _ehrService.GetEhrRecordAsync(ehrId);
         
         if (result == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
@@ -109,14 +108,13 @@ public class EhrController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> GetEhrDocument(
         Guid ehrId,
-        [FromQuery] bool useReplica = false,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         if (!requesterId.HasValue)
             return BadRequest(new { Message = "X-Requester-Id header is required to download EHR document" });
 
         var (decryptedData, consentDenied, denyMessage) = await _ehrService.GetEhrDocumentAsync(
-            ehrId, requesterId.Value, useReplica);
+            ehrId, requesterId.Value);
         
         if (consentDenied)
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
@@ -133,10 +131,9 @@ public class EhrController : ControllerBase
     [HttpGet("records/patient/{patientId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetPatientEhrRecords(
-        Guid patientId, 
-        [FromQuery] bool useReplica = false)
+        Guid patientId)
     {
-        var records = await _ehrService.GetPatientEhrRecordsAsync(patientId, useReplica);
+        var records = await _ehrService.GetPatientEhrRecordsAsync(patientId);
         return Ok(records);
     }
 
@@ -146,10 +143,9 @@ public class EhrController : ControllerBase
     [HttpGet("records/org/{orgId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetOrgEhrRecords(
-        Guid orgId, 
-        [FromQuery] bool useReplica = false)
+        Guid orgId)
     {
-        var records = await _ehrService.GetOrgEhrRecordsAsync(orgId, useReplica);
+        var records = await _ehrService.GetOrgEhrRecordsAsync(orgId);
         return Ok(records);
     }
 
@@ -161,10 +157,9 @@ public class EhrController : ControllerBase
     [HttpGet("records/{ehrId:guid}/versions")]
     [ProducesResponseType(typeof(IEnumerable<EhrVersionDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrVersionDto>>> GetEhrVersions(
-        Guid ehrId, 
-        [FromQuery] bool useReplica = false)
+        Guid ehrId)
     {
-        var versions = await _ehrService.GetEhrVersionsAsync(ehrId, useReplica);
+        var versions = await _ehrService.GetEhrVersionsAsync(ehrId);
         return Ok(versions);
     }
 
@@ -175,10 +170,9 @@ public class EhrController : ControllerBase
     [ProducesResponseType(typeof(EhrVersionDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<EhrVersionDetailDto>> GetEhrVersionById(
-        Guid ehrId, Guid versionId,
-        [FromQuery] bool useReplica = false)
+        Guid ehrId, Guid versionId)
     {
-        var version = await _ehrService.GetVersionByIdAsync(ehrId, versionId, useReplica);
+        var version = await _ehrService.GetVersionByIdAsync(ehrId, versionId);
         if (version == null)
             return NotFound(new { Message = $"Version {versionId} of EHR {ehrId} không tìm thấy" });
 
@@ -193,10 +187,9 @@ public class EhrController : ControllerBase
     [HttpGet("records/{ehrId:guid}/files")]
     [ProducesResponseType(typeof(IEnumerable<EhrFileDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrFileDto>>> GetEhrFiles(
-        Guid ehrId,
-        [FromQuery] bool useReplica = false)
+        Guid ehrId)
     {
-        var files = await _ehrService.GetEhrFilesAsync(ehrId, useReplica);
+        var files = await _ehrService.GetEhrFilesAsync(ehrId);
         return Ok(files);
     }
 
@@ -205,14 +198,16 @@ public class EhrController : ControllerBase
     /// </summary>
     [HttpPost("records/{ehrId:guid}/files")]
     [Authorize(Roles = "Doctor,Admin")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(EhrFileDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, [FromBody] AddEhrFileDto request)
+    public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, IFormFile file)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        if (file == null || file.Length == 0)
+            return BadRequest(new { Message = "File is required" });
 
-        var result = await _ehrService.AddFileAsync(ehrId, request);
+        using var stream = file.OpenReadStream();
+        var result = await _ehrService.AddFileAsync(ehrId, stream, file.FileName);
         if (result == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 

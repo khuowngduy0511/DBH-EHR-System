@@ -6,31 +6,28 @@ namespace DBH.EHR.Service.Repositories.Postgres;
 
 public class EhrRecordRepository : IEhrRecordRepository
 {
-    private readonly EhrPrimaryDbContext _primaryDb;
-    private readonly EhrReplicaDbContext _replicaDb;
+    private readonly EhrPrimaryDbContext _db;
     private readonly ILogger<EhrRecordRepository> _logger;
 
     public EhrRecordRepository(
-        EhrPrimaryDbContext primaryDb,
-        EhrReplicaDbContext replicaDb,
+        EhrPrimaryDbContext db,
         ILogger<EhrRecordRepository> logger)
     {
-        _primaryDb = primaryDb;
-        _replicaDb = replicaDb;
+        _db = db;
         _logger = logger;
     }
 
-    // Ghi (chỉ Primary)
+    // Ghi
 
     public async Task<EhrRecord> CreateAsync(EhrRecord record)
     {
         record.CreatedAt = DateTime.UtcNow;
         
-        _primaryDb.EhrRecords.Add(record);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrRecords.Add(record);
+        await _db.SaveChangesAsync();
         
         _logger.LogInformation(
-            "Tạo EhrRecord {EhrId} cho bệnh nhân {PatientId} trên PRIMARY",
+            "Tạo EhrRecord {EhrId} cho bệnh nhân {PatientId}",
             record.EhrId, record.PatientId);
         
         return record;
@@ -40,11 +37,11 @@ public class EhrRecordRepository : IEhrRecordRepository
     {
         version.CreatedAt = DateTime.UtcNow;
         
-        _primaryDb.EhrVersions.Add(version);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrVersions.Add(version);
+        await _db.SaveChangesAsync();
         
         _logger.LogInformation(
-            "Tạo EhrVersion {VersionId} (v{VersionNumber}) cho EHR {EhrId} trên PRIMARY",
+            "Tạo EhrVersion {VersionId} (v{VersionNumber}) cho EHR {EhrId}",
             version.VersionId, version.VersionNumber, version.EhrId);
         
         return version;
@@ -54,11 +51,11 @@ public class EhrRecordRepository : IEhrRecordRepository
     {
         file.CreatedAt = DateTime.UtcNow;
         
-        _primaryDb.EhrFiles.Add(file);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrFiles.Add(file);
+        await _db.SaveChangesAsync();
         
         _logger.LogInformation(
-            "Tạo EhrFile {FileId} cho EHR {EhrId} trên PRIMARY",
+            "Tạo EhrFile {FileId} cho EHR {EhrId}",
             file.FileId, file.EhrId);
         
         return file;
@@ -66,176 +63,93 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrRecord> UpdateAsync(EhrRecord record)
     {
-        _primaryDb.EhrRecords.Update(record);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrRecords.Update(record);
+        await _db.SaveChangesAsync();
         
-        _logger.LogInformation("Cập nhật EhrRecord {EhrId} trên PRIMARY", record.EhrId);
+        _logger.LogInformation("Cập nhật EhrRecord {EhrId}", record.EhrId);
         return record;
     }
 
     public async Task<EhrVersion> UpdateVersionAsync(EhrVersion version)
     {
-        _primaryDb.EhrVersions.Update(version);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrVersions.Update(version);
+        await _db.SaveChangesAsync();
         
-        _logger.LogInformation("Cập nhật EhrVersion {VersionId} trên PRIMARY", version.VersionId);
+        _logger.LogInformation("Cập nhật EhrVersion {VersionId}", version.VersionId);
         return version;
     }
 
-    // Đọc (Primary hoặc Replica)
+    // Đọc
 
-    public async Task<EhrRecord?> GetByIdAsync(Guid ehrId, bool useReplica = false)
+    public async Task<EhrRecord?> GetByIdAsync(Guid ehrId)
     {
-        var node = useReplica ? "REPLICA" : "PRIMARY";
-        _logger.LogDebug("Đọc EhrRecord {EhrId} từ {Node}", ehrId, node);
-        
-        if (useReplica)
-        {
-            return await _replicaDb.EhrRecords
-                .AsNoTracking()
-                .FirstOrDefaultAsync(e => e.EhrId == ehrId);
-        }
-        
-        return await _primaryDb.EhrRecords.FirstOrDefaultAsync(e => e.EhrId == ehrId);
+        return await _db.EhrRecords.FirstOrDefaultAsync(e => e.EhrId == ehrId);
     }
 
-    public async Task<EhrRecord?> GetByIdWithVersionsAsync(Guid ehrId, bool useReplica = false)
+    public async Task<EhrRecord?> GetByIdWithVersionsAsync(Guid ehrId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrRecords
-                .AsNoTracking()
-                .Include(e => e.Versions.OrderByDescending(v => v.VersionNumber))
-                .Include(e => e.Files)
-                .FirstOrDefaultAsync(e => e.EhrId == ehrId);
-        }
-        
-        return await _primaryDb.EhrRecords
+        return await _db.EhrRecords
             .Include(e => e.Versions.OrderByDescending(v => v.VersionNumber))
             .Include(e => e.Files)
             .FirstOrDefaultAsync(e => e.EhrId == ehrId);
     }
 
-    public async Task<IEnumerable<EhrRecord>> GetByPatientIdAsync(Guid patientId, bool useReplica = false)
+    public async Task<IEnumerable<EhrRecord>> GetByPatientIdAsync(Guid patientId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrRecords
-                .AsNoTracking()
-                .Where(e => e.PatientId == patientId)
-                .OrderByDescending(e => e.CreatedAt)
-                .ToListAsync();
-        }
-        
-        return await _primaryDb.EhrRecords
+        return await _db.EhrRecords
             .Where(e => e.PatientId == patientId)
             .OrderByDescending(e => e.CreatedAt)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<EhrRecord>> GetByOrgIdAsync(Guid orgId, bool useReplica = false)
+    public async Task<IEnumerable<EhrRecord>> GetByOrgIdAsync(Guid orgId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrRecords
-                .AsNoTracking()
-                .Where(e => e.OrgId == orgId)
-                .OrderByDescending(e => e.CreatedAt)
-                .ToListAsync();
-        }
-        
-        return await _primaryDb.EhrRecords
+        return await _db.EhrRecords
             .Where(e => e.OrgId == orgId)
             .OrderByDescending(e => e.CreatedAt)
             .ToListAsync();
     }
 
-    public async Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId, bool useReplica = false)
+    public async Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrVersions
-                .AsNoTracking()
-                .Where(v => v.EhrId == ehrId)
-                .OrderByDescending(v => v.VersionNumber)
-                .FirstOrDefaultAsync();
-        }
-        
-        return await _primaryDb.EhrVersions
+        return await _db.EhrVersions
             .Where(v => v.EhrId == ehrId)
             .OrderByDescending(v => v.VersionNumber)
             .FirstOrDefaultAsync();
     }
 
-    public async Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId, bool useReplica = false)
+    public async Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrVersions
-                .AsNoTracking()
-                .Where(v => v.EhrId == ehrId)
-                .OrderByDescending(v => v.VersionNumber)
-                .ToListAsync();
-        }
-        
-        return await _primaryDb.EhrVersions
+        return await _db.EhrVersions
             .Where(v => v.EhrId == ehrId)
             .OrderByDescending(v => v.VersionNumber)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId, bool useReplica = false)
+    public async Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrFiles
-                .AsNoTracking()
-                .Where(f => f.EhrId == ehrId)
-                .OrderByDescending(f => f.CreatedAt)
-                .ToListAsync();
-        }
-        
-        return await _primaryDb.EhrFiles
+        return await _db.EhrFiles
             .Where(f => f.EhrId == ehrId)
             .OrderByDescending(f => f.CreatedAt)
             .ToListAsync();
     }
 
-    // Kiểm tra replication
-
-    public async Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false)
+    public async Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrVersions
-                .AsNoTracking()
-                .FirstOrDefaultAsync(v => v.EhrId == ehrId && v.VersionId == versionId);
-        }
-        return await _primaryDb.EhrVersions
+        return await _db.EhrVersions
             .FirstOrDefaultAsync(v => v.EhrId == ehrId && v.VersionId == versionId);
     }
 
-    public async Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId, bool useReplica = false)
+    public async Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId)
     {
-        if (useReplica)
-        {
-            return await _replicaDb.EhrFiles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(f => f.EhrId == ehrId && f.FileId == fileId);
-        }
-        return await _primaryDb.EhrFiles
+        return await _db.EhrFiles
             .FirstOrDefaultAsync(f => f.EhrId == ehrId && f.FileId == fileId);
     }
 
     public async Task DeleteFileAsync(EhrFile file)
     {
-        _primaryDb.EhrFiles.Remove(file);
-        await _primaryDb.SaveChangesAsync();
+        _db.EhrFiles.Remove(file);
+        await _db.SaveChangesAsync();
         _logger.LogInformation("Deleted EhrFile {FileId} from EHR {EhrId}", file.FileId, file.EhrId);
-    }
-
-    public async Task<bool> ExistsOnReplicaAsync(Guid ehrId)
-    {
-        return await _replicaDb.EhrRecords.AsNoTracking().AnyAsync(e => e.EhrId == ehrId);
     }
 }

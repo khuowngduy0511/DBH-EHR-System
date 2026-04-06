@@ -11,18 +11,15 @@ public interface IEhrRecordRepository
     Task<EhrRecord> UpdateAsync(EhrRecord record);
     Task<EhrVersion> UpdateVersionAsync(EhrVersion version);
     
-    // Đọc (Primary hoặc Replica)
-    Task<EhrRecord?> GetByIdAsync(Guid ehrId, bool useReplica = false);
-    Task<EhrRecord?> GetByIdWithVersionsAsync(Guid ehrId, bool useReplica = false);
-    Task<IEnumerable<EhrRecord>> GetByPatientIdAsync(Guid patientId, bool useReplica = false);
-    Task<IEnumerable<EhrRecord>> GetByOrgIdAsync(Guid orgId, bool useReplica = false);
-    Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId, bool useReplica = false);
-    Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId, bool useReplica = false);
-    Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId, bool useReplica = false);
-    Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId, bool useReplica = false);
-    Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId, bool useReplica = false);
+    // Đọc
+    Task<EhrRecord?> GetByIdAsync(Guid ehrId);
+    Task<EhrRecord?> GetByIdWithVersionsAsync(Guid ehrId);
+    Task<IEnumerable<EhrRecord>> GetByPatientIdAsync(Guid patientId);
+    Task<IEnumerable<EhrRecord>> GetByOrgIdAsync(Guid orgId);
+    Task<EhrVersion?> GetLatestVersionAsync(Guid ehrId);
+    Task<IEnumerable<EhrVersion>> GetVersionsAsync(Guid ehrId);
+    Task<IEnumerable<EhrFile>> GetFilesAsync(Guid ehrId);
+    Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
+    Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId);
     Task DeleteFileAsync(EhrFile file);
-    
-    // Kiểm tra replication 
-    Task<bool> ExistsOnReplicaAsync(Guid ehrId);
 }
