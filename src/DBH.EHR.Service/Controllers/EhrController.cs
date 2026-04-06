@@ -24,7 +24,7 @@ public class EhrController : ControllerBase
     // EHR Records
 
     /// <summary>
-    /// Tạo EHR mới - Ghi PG Primary + Mongo Primary
+    /// Tạo EHR mới - Ghi PG Primary + IPFS
     /// </summary>
     [HttpPost("records")]
     [Authorize(Roles = "Doctor,Admin")]
@@ -205,14 +205,16 @@ public class EhrController : ControllerBase
     /// </summary>
     [HttpPost("records/{ehrId:guid}/files")]
     [Authorize(Roles = "Doctor,Admin")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(EhrFileDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, [FromBody] AddEhrFileDto request)
+    public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, IFormFile file)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        if (file == null || file.Length == 0)
+            return BadRequest(new { Message = "File is required" });
 
-        var result = await _ehrService.AddFileAsync(ehrId, request);
+        using var stream = file.OpenReadStream();
+        var result = await _ehrService.AddFileAsync(ehrId, stream, file.FileName);
         if (result == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 
