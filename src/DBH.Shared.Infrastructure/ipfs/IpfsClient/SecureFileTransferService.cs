@@ -59,7 +59,7 @@ public sealed class SecureFileTransferService : IDisposable
         var file = await _ipfs.RetrieveFileAsync(cid);
 
         var targetEncryptedPath = ResolveEncryptedSavePath(cid, file.ContentType, encryptedOutPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(targetEncryptedPath)!);
+        EnsureParentDirectoryExists(targetEncryptedPath);
         await File.WriteAllBytesAsync(targetEncryptedPath, file.Data);
 
         if (!FileEncryptionService.DecryptFile(targetEncryptedPath, password))
@@ -88,6 +88,10 @@ public sealed class SecureFileTransferService : IDisposable
         {
             config.ApiUrl = configEl.GetProperty("ApiUrl").GetString() ?? config.ApiUrl;
             config.GatewayUrl = configEl.GetProperty("GatewayUrl").GetString() ?? config.GatewayUrl;
+            if (configEl.TryGetProperty("DownloadPath", out var downloadPathEl))
+            {
+                config.DownloadPath = downloadPathEl.GetString() ?? string.Empty;
+            }
             if (configEl.TryGetProperty("FilePath", out var pathEl))
             {
                 config.DownloadPath = pathEl.GetString() ?? string.Empty;
@@ -112,7 +116,16 @@ public sealed class SecureFileTransferService : IDisposable
             return Path.Combine(_config.DownloadPath, fileName);
         }
 
-        return Path.Combine(Directory.GetCurrentDirectory(), fileName);
+        return Path.Combine(Path.GetTempPath(), "dbh-ipfs-downloads", fileName);
+    }
+
+    private static void EnsureParentDirectoryExists(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
     }
 
     private static string GetEncryptedPath(string filePath)

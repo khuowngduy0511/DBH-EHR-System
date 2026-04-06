@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using DBH.EHR.Service.DbContext;
-using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;
 using DBH.Shared.Infrastructure;
@@ -89,16 +88,11 @@ builder.Services.AddDbContext<EhrReplicaDbContext>(options =>
     });
 });
 
-// MongoDB FHIR Context
-builder.Services.Configure<MongoDbConfiguration>(builder.Configuration.GetSection("MongoDB"));
-builder.Services.AddSingleton<MongoDbContext>();
-
 // ============================================================================
 // Repositories
 // ============================================================================
 
 builder.Services.AddScoped<IEhrRecordRepository, EhrRecordRepository>();
-builder.Services.AddScoped<IEhrDocumentRepository, EhrDocumentRepository>();
 
 // ============================================================================
 // Services

@@ -8,6 +8,7 @@
     using Microsoft.IdentityModel.Tokens;
     using Microsoft.OpenApi.Models;
     using DBH.Shared.Contracts.Blockchain;
+    using DBH.Shared.Infrastructure;
     using DBH.Shared.Infrastructure.Blockchain;
 
     var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +76,7 @@
     // Fabric CA enrollment (singleton because it caches admin crypto material)
     builder.Services.Configure<FabricCaOptions>(builder.Configuration.GetSection(FabricCaOptions.SectionName));
     builder.Services.AddSingleton<IFabricCaService, FabricCaService>();
+    builder.Services.AddHyperledgerFabric(builder.Configuration);
 
     // JWT Authentication Configuration
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");

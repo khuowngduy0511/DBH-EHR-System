@@ -196,10 +196,16 @@ public static class InfrastructureServiceExtensions
         IConfiguration configuration)
     {
         var fabricSection = configuration.GetSection(FabricOptions.SectionName);
+        var rabbitSection = configuration.GetSection(RabbitMQOptions.SectionName);
         var fabricOptions = new FabricOptions();
         fabricSection.Bind(fabricOptions);
 
         services.Configure<FabricOptions>(options => fabricSection.Bind(options));
+        services.Configure<RabbitMQOptions>(options => rabbitSection.Bind(options));
+
+        services.AddSingleton<BlockchainSyncQueue>();
+        services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
+        services.AddHostedService<BlockchainSyncBackgroundService>();
 
         if (fabricOptions.Enabled)
         {
@@ -210,17 +216,6 @@ public static class InfrastructureServiceExtensions
             services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();
             services.AddScoped<IConsentBlockchainService, ConsentBlockchainService>();
             services.AddScoped<IAuditBlockchainService, AuditBlockchainService>();
-
-            // Background sync queue and service
-            services.AddSingleton<BlockchainSyncQueue>();
-            services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
-            services.AddHostedService<BlockchainSyncBackgroundService>();
-        }
-        else
-        {
-            // Register sync service even when disabled (it will skip silently)
-            services.AddSingleton<BlockchainSyncQueue>();
-            services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
         }
 
         return services;

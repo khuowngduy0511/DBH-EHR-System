@@ -2,6 +2,7 @@ using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Notification;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ public class ConsentService : IConsentService
     private readonly ILogger<ConsentService> _logger;
     private readonly IConsentBlockchainService? _blockchainService;
     private readonly IEhrBlockchainService? _ehrBlockchainService;
+    private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly INotificationServiceClient? _notificationClient;
 
@@ -23,6 +25,7 @@ public class ConsentService : IConsentService
         ConsentDbContext context,
         ILogger<ConsentService> logger,
         IHttpClientFactory httpClientFactory,
+        IBlockchainSyncService blockchainSyncService,
         IConsentBlockchainService? blockchainService = null,
         IEhrBlockchainService? ehrBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
@@ -30,6 +33,7 @@ public class ConsentService : IConsentService
         _context = context;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _blockchainSyncService = blockchainSyncService;
         _blockchainService = blockchainService;
         _ehrBlockchainService = ehrBlockchainService;
         _notificationClient = notificationClient;
@@ -129,19 +133,16 @@ public class ConsentService : IConsentService
                 EncryptedAesKey = wrappedKeyForGrantee
             };
 
-            var txResult = await _blockchainService.GrantConsentAsync(consentRecord);
-            if (!txResult.Success)
-            {
-                _logger.LogWarning("Blockchain consent failed: {Error}", txResult.ErrorMessage);
-                // Continue with local-only mode
-                blockchainConsentId = $"consent:{Guid.NewGuid():N}";
-                txHash = string.Empty;
-            }
-            else
-            {
-                blockchainConsentId = consentRecord.ConsentId;
-                txHash = txResult.TxHash;
-            }
+            _blockchainSyncService.EnqueueConsentGrant(
+                consentRecord,
+                onFailure: error =>
+                {
+                    _logger.LogWarning("Queued blockchain consent grant failed for {ConsentId}: {Error}", consentRecord.ConsentId, error);
+                    return Task.CompletedTask;
+                });
+
+            blockchainConsentId = consentRecord.ConsentId;
+            txHash = string.Empty;
         }
         else
         {
@@ -271,20 +272,17 @@ public class ConsentService : IConsentService
 
         if (_blockchainService != null)
         {
-            var txResult = await _blockchainService.RevokeConsentAsync(
+            _blockchainSyncService.EnqueueConsentRevoke(
                 consent.BlockchainConsentId,
                 DateTime.UtcNow.ToString("o"),
-                request.RevokeReason);
+                request.RevokeReason,
+                onFailure: error =>
+                {
+                    _logger.LogWarning("Queued blockchain consent revoke failed for {ConsentId}: {Error}", consent.BlockchainConsentId, error);
+                    return Task.CompletedTask;
+                });
 
-            if (!txResult.Success)
-            {
-                _logger.LogWarning("Blockchain revoke failed: {Error}", txResult.ErrorMessage);
-                txHash = string.Empty;
-            }
-            else
-            {
-                txHash = txResult.TxHash;
-            }
+            txHash = string.Empty;
         }
         else
         {

@@ -21,4 +21,12 @@ Use the Bash helper script in this folder instead of typing long Docker commands
 ## When to use reset
 
 Run `reset` after regenerating organizations/MSP crypto or rebuilding the network.
-It refreshes copied crypto, clears stale Explorer wallet/database volumes, and starts clean.
+It refreshes the connection profile key path from the crypto Docker volume,
+clears stale Explorer wallet/database volumes, and starts clean.
+
+## Crypto volume
+
+Explorer reads network crypto from a Docker volume, not from a copied local `organizations` folder.
+
+- Volume name is controlled by `FABRIC_CRYPTO_VOLUME` in `.env`.
+- Default is `fabric-crypto`.

@@ -131,7 +131,7 @@ public static class IpfsClientService
         var response = await ipfs.RetrieveFileAsync(cid);
 
         var resolvedPath = ResolveOutputPath(cid, response.ContentType, outPath, config.DownloadPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(resolvedPath)!);
+        EnsureParentDirectoryExists(resolvedPath);
         await File.WriteAllBytesAsync(resolvedPath, response.Data);
 
         return resolvedPath;
@@ -148,6 +148,10 @@ public static class IpfsClientService
         {
             config.ApiUrl = configEl.GetProperty("ApiUrl").GetString() ?? config.ApiUrl;
             config.GatewayUrl = configEl.GetProperty("GatewayUrl").GetString() ?? config.GatewayUrl;
+            if (configEl.TryGetProperty("DownloadPath", out var downloadPathEl))
+            {
+                config.DownloadPath = downloadPathEl.GetString() ?? string.Empty;
+            }
             if (configEl.TryGetProperty("FilePath", out var pathEl))
             {
                 config.DownloadPath = pathEl.GetString() ?? string.Empty;
@@ -172,6 +176,15 @@ public static class IpfsClientService
             return Path.Combine(downloadPath, fileName);
         }
 
-        return Path.Combine(Directory.GetCurrentDirectory(), fileName);
+        return Path.Combine(Path.GetTempPath(), "dbh-ipfs-downloads", fileName);
+    }
+
+    private static void EnsureParentDirectoryExists(string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
     }
 }

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using BCrypt.Net;
 using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Contracts.Blockchain;
 
 namespace DBH.Auth.Service.Services;
@@ -23,7 +24,7 @@ public class AuthService : IAuthService
     private readonly IGenericRepository<Staff> _staffRepository;
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthService> _logger;
-    private readonly IFabricCaService _fabricCa;
+    private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IOrganizationServiceClient _organizationServiceClient;
 
     public AuthService(
@@ -37,7 +38,7 @@ public class AuthService : IAuthService
         IGenericRepository<Staff> staffRepository,
         ILogger<AuthService> logger,
         ITokenService tokenService,
-        IFabricCaService fabricCa,
+        IBlockchainSyncService blockchainSyncService,
         IOrganizationServiceClient organizationServiceClient)
     {
         _userRepository = userRepository;
@@ -50,7 +51,7 @@ public class AuthService : IAuthService
         _staffRepository = staffRepository;
         _tokenService = tokenService;
         _logger = logger;
-        _fabricCa = fabricCa;
+        _blockchainSyncService = blockchainSyncService;
         _organizationServiceClient = organizationServiceClient;
     }
 
@@ -145,23 +146,19 @@ public class AuthService : IAuthService
             CreatedAt = DateTime.UtcNow,
         });
 
-        // Enroll a Fabric CA blockchain identity for this user.
-        // Non-blocking: a failure here does not fail registration.
-        _ = Task.Run(async () =>
-        {
-            var roleName = patientRole?.RoleName.ToString() ?? "Patient";
-            var enrollResult = await _fabricCa.EnrollUserAsync(
-                enrollmentId: user.UserId.ToString(),
-                username: user.FullName ?? user.Email ?? user.UserId.ToString(),
-                role: roleName);
-
-            if (!enrollResult.Success)
+        // Enqueue Fabric CA enrollment for async processing via RabbitMQ.
+        var roleName = patientRole?.RoleName.ToString() ?? "Patient";
+        _blockchainSyncService.EnqueueFabricCaEnrollment(
+            enrollmentId: user.UserId.ToString(),
+            username: user.FullName ?? user.Email ?? user.UserId.ToString(),
+            role: roleName,
+            onFailure: error =>
             {
                 _logger.LogWarning(
-                    "Blockchain enrollment skipped for user {UserId}: {Error}",
-                    user.UserId, enrollResult.ErrorMessage);
-            }
-        });
+                    "Blockchain enrollment failed for user {UserId}: {Error}",
+                    user.UserId, error);
+                return Task.CompletedTask;
+            });
 
         var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
 

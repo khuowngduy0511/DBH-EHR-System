@@ -31,12 +31,6 @@ public class EhrRecord
     [Column("org_id")]
     public Guid? OrgId { get; set; }
 
-    /// <summary>
-    /// EHR data stored as JSONB (FHIR-compliant JSON, encrypted reference, etc.)
-    /// </summary>
-    [Column("data", TypeName = "jsonb")]
-    public string? Data { get; set; }
-
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

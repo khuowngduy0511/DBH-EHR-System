@@ -122,15 +122,16 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
       - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
-      - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
-      - MongoDB__DatabaseName=dbh_fhir
+      - IpfsConfig__ApiUrl=http://ipfs:5001/api/v0
+      - IpfsConfig__GatewayUrl=http://ipfs:8080/ipfs
+      - IpfsConfig__DownloadPath=/tmp/ipfs_downloads
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__ConsentService=http://consent_service:5004
       - ServiceUrls__NotificationService=http://notification_service:5006
     depends_on:
       pg_primary:
         condition: service_healthy
-      mongo1:
+      ipfs:
         condition: service_started
     networks:
       - dbh_network
@@ -163,7 +164,6 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5004
       - ConnectionStrings__ConsentDb=Host=pg_primary;Port=5432;Database=dbh_consent;Username=admin;Password=dbh_123
-      - MongoDB__ConnectionString=mongodb://mongo1:27017,mongo2:27017/?replicaSet=rs0
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__EhrService=http://ehr_service:5003
       - ServiceUrls__NotificationService=http://notification_service:5006
@@ -329,44 +329,25 @@ services:
       timeout: 5s
       retries: 5
 
-  mongo1:
-    image: mongo:7.0
-    container_name: dbh_mongo1
-    ports:
-      - "27017:27017"
-    command: mongod --replSet rs0 --bind_ip_all
-    volumes:
-      - mongo1_data:/data/db
-    networks:
-      - dbh_network
+  # ============================================================================
+  # IPFS
+  # ============================================================================
 
-  mongo2:
-    image: mongo:7.0
-    container_name: dbh_mongo2
+  ipfs:
+    image: ipfs/kubo:release
+    container_name: dbh_ipfs
+    restart: unless-stopped
     ports:
-      - "27018:27017"
-    command: mongod --replSet rs0 --bind_ip_all
+      - "4001:4001"
+      - "4001:4001/udp"
+      - "5001:5001"
+      - "8080:8080"
+    environment:
+      - IPFS_PROFILE=server
+      - IPFS_PATH=/data/ipfs
     volumes:
-      - mongo2_data:/data/db
-    networks:
-      - dbh_network
-
-  mongo_init:
-    image: mongo:7.0
-    container_name: dbh_mongo_init
-    depends_on:
-      - mongo1
-      - mongo2
-    command: >
-      mongosh --host mongo1:27017 --eval "
-        rs.initiate({
-          _id: 'rs0',
-          members: [
-            { _id: 0, host: 'mongo1:27017', priority: 2 },
-            { _id: 1, host: 'mongo2:27017', priority: 1 }
-          ]
-        })
-      "
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/export
     networks:
       - dbh_network
 
@@ -418,8 +399,8 @@ services:
 
 volumes:
   pg_primary_data:
-  mongo1_data:
-  mongo2_data:
+  ipfs_data:
+  ipfs_staging:
   rabbitmq_data:
   redis_data:
 

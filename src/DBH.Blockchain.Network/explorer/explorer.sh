@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 run_setup() {
-  echo "[explorer] Syncing crypto copy and connection profile..."
+  echo "[explorer] Validating crypto volume and refreshing connection profile key path..."
   bash ./setup.sh
 }
 
@@ -16,8 +16,8 @@ usage() {
 Usage: ./explorer.sh [action]
 
 Actions:
-  start   Sync crypto/profile and start explorer stack (default)
-  reset   Sync crypto/profile, recreate stack, clear wallet/db volumes
+  start   Validate crypto volume/profile and start explorer stack (default)
+  reset   Validate crypto volume/profile, recreate stack, clear wallet/db volumes
   status  Show docker compose status
   logs    Tail explorer service logs
   down    Stop explorer stack

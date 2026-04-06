@@ -324,3 +324,29 @@ function createOrderer() {
 
   cp "${PWD}/organizations/ordererOrganizations/ehr.com/msp/config.yaml" "${PWD}/organizations/ordererOrganizations/ehr.com/users/Admin@ehr.com/msp/config.yaml"
 }
+
+function syncOrganizationsToCryptoVolume() {
+  : ${CONTAINER_CLI:="docker"}
+  CRYPTO_VOLUME="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
+
+  if [ ! -d "${PWD}/organizations/peerOrganizations" ] || [ ! -d "${PWD}/organizations/ordererOrganizations" ]; then
+    fatalln "organizations/peerOrganizations or organizations/ordererOrganizations not found for volume sync"
+  fi
+
+  infoln "Syncing organizations crypto into Docker volume '${CRYPTO_VOLUME}'"
+  ${CONTAINER_CLI} volume create "${CRYPTO_VOLUME}" >/dev/null
+
+  set -x
+  ${CONTAINER_CLI} run --rm \
+    -v "${PWD}:/workspace" \
+    -v "${CRYPTO_VOLUME}:/crypto" \
+    busybox sh -c 'rm -rf /crypto/peerOrganizations /crypto/ordererOrganizations && mkdir -p /crypto && cp -r /workspace/organizations/peerOrganizations /crypto/ && cp -r /workspace/organizations/ordererOrganizations /crypto/'
+  res=$?
+  { set +x; } 2>/dev/null
+
+  if [ $res -ne 0 ]; then
+    fatalln "Failed to sync organizations crypto into Docker volume ${CRYPTO_VOLUME}"
+  fi
+
+  infoln "Crypto volume sync complete: ${CRYPTO_VOLUME}"
+}

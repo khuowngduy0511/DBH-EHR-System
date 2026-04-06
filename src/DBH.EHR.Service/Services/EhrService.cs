@@ -1,31 +1,29 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using DBH.EHR.Service.Models.Documents;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Models.Entities;
-using DBH.EHR.Service.Repositories.Mongo;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Ipfs;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Notification;
-using MongoDB.Bson;
 
 namespace DBH.EHR.Service.Services;
 
 /// <summary>
-///  Ghi Primary + Mongo Primary, đọc từ Replica
+///  Ghi Primary + IPFS, đọc từ Replica
 ///  Tích hợp: Blockchain hash commit + Consent verification
 ///  ERD-aligned: ehr_records(ehr_id, patient_id, encounter_id, org_id, data, created_at)
 /// </summary>
 public class EhrService : IEhrService
 {
     private readonly IEhrRecordRepository _ehrRecordRepo;
-    private readonly IEhrDocumentRepository _ehrDocumentRepo;
     private readonly ILogger<EhrService> _logger;
     private readonly IEhrBlockchainService? _blockchainService;
     private readonly IConsentBlockchainService? _consentBlockchainService;
+    private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAuthServiceClient _authServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
@@ -33,21 +31,21 @@ public class EhrService : IEhrService
 
     public EhrService(
         IEhrRecordRepository ehrRecordRepo,
-        IEhrDocumentRepository ehrDocumentRepo,
         ILogger<EhrService> logger,
         IHttpClientFactory httpClientFactory,
         IAuthServiceClient authServiceClient,
         IHttpContextAccessor httpContextAccessor,
+        IBlockchainSyncService blockchainSyncService,
         IEhrBlockchainService? blockchainService = null,
         IConsentBlockchainService? consentBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
     {
         _ehrRecordRepo = ehrRecordRepo;
-        _ehrDocumentRepo = ehrDocumentRepo;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _authServiceClient = authServiceClient;
         _httpContextAccessor = httpContextAccessor;
+        _blockchainSyncService = blockchainSyncService;
         _blockchainService = blockchainService;
         _consentBlockchainService = consentBlockchainService;
         _notificationClient = notificationClient;
@@ -64,53 +62,33 @@ public class EhrService : IEhrService
         var documentJson = request.Data.GetRawText();
         var dataHash = ComputeHash(documentJson);
 
-        // Tạo EHR record trong PG Primary (ERD: ehr_records)
+        // Tạo EHR record trong PG Primary (ERD: ehr_records) — metadata only
         var ehrRecord = new EhrRecord
         {
             PatientId = request.PatientId,
             EncounterId = request.EncounterId,
-            OrgId = request.OrgId,
-            Data = documentJson
+            OrgId = request.OrgId
         };
         
         var savedRecord = await _ehrRecordRepo.CreateAsync(ehrRecord);
         
-        // Tạo version đầu tiên (ERD: ehr_versions)
-        var version = new EhrVersion
-        {
-            EhrId = savedRecord.EhrId,
-            VersionNumber = 1,
-            Data = documentJson
-        };
-        
-        var savedVersion = await _ehrRecordRepo.CreateVersionAsync(version);
-        
-        // Tạo EHR file (ERD: ehr_files)
-        var file = new EhrFile
-        {
-            EhrId = savedRecord.EhrId,
-            FileHash = dataHash
-        };
-        
-        var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
-        
-        // Lưu document vào Mongo Primary 
         // Generate AES-256 Blue Key and encrypt data
-        using var aes = System.Security.Cryptography.Aes.Create();
+        using var aes = Aes.Create();
         aes.KeySize = 256;
         aes.GenerateKey();
         var blueKeyBytes = aes.Key;
 
         var encryptedDataStr = SymmetricEncryptionService.EncryptString(documentJson, blueKeyBytes);
         
-        // Upload to IPFS
-        string ipfsCid = string.Empty;
+        // Upload encrypted data to IPFS
+        string? ipfsCid = null;
+        string? encryptedFallbackData = null;
         try 
         {
             var tempFile = Path.GetTempFileName();
             await File.WriteAllTextAsync(tempFile, encryptedDataStr);
             var uploadRes = await IpfsClientService.UploadAsync(tempFile);
-            if (uploadRes != null)
+            if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
             {
                 ipfsCid = uploadRes.Hash;
             }
@@ -119,18 +97,36 @@ public class EhrService : IEhrService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS");
-            ipfsCid = "";
         }
 
-        BsonDocument encryptedDataBson;
-        if (string.IsNullOrEmpty(ipfsCid) || ipfsCid == "IPFS_UPLOAD_FAILED")
+        // Fallback: store encrypted data in Postgres if IPFS failed
+        if (string.IsNullOrEmpty(ipfsCid))
         {
-            encryptedDataBson = new BsonDocument("encryptedText", encryptedDataStr);
+            encryptedFallbackData = encryptedDataStr;
+            _logger.LogWarning("IPFS upload failed, using encrypted fallback for EHR {EhrId}", savedRecord.EhrId);
         }
-        else
+
+        // Tạo version đầu tiên (ERD: ehr_versions) with IPFS CID or fallback
+        var version = new EhrVersion
         {
-            encryptedDataBson = new BsonDocument("ipfsCid", ipfsCid);
-        }
+            EhrId = savedRecord.EhrId,
+            VersionNumber = 1,
+            IpfsCid = ipfsCid,
+            EncryptedFallbackData = encryptedFallbackData,
+            DataHash = dataHash
+        };
+        
+        var savedVersion = await _ehrRecordRepo.CreateVersionAsync(version);
+        
+        // Tạo EHR file (ERD: ehr_files)
+        var file = new EhrFile
+        {
+            EhrId = savedRecord.EhrId,
+            FileHash = dataHash,
+            IpfsCid = ipfsCid
+        };
+        
+        var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
         
         // Wrap AES blue key with Patient's Public Key
         string encryptedAesKey = string.Empty;
@@ -157,22 +153,6 @@ public class EhrService : IEhrService
              _logger.LogError(ex, "Error calling Auth Service for patient keys");
         }
 
-        var ehrDocument = new EhrDocument
-        {
-            EhrId = savedRecord.EhrId,
-            VersionId = savedVersion.VersionId,
-            FileId = savedFile.FileId,
-            PatientId = request.PatientId,
-            Data = encryptedDataBson,
-            DataHash = dataHash,
-            VersionNumber = 1
-        };
-        
-        var savedDocument = await _ehrDocumentRepo.CreateAsync(ehrDocument);
-        
-        // Cập nhật file_url 
-        savedFile.FileUrl = $"mongodb://ehr_documents/{savedDocument.Id}";
-
         // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
         if (_blockchainService != null)
         {
@@ -191,15 +171,13 @@ public class EhrService : IEhrService
                     EncryptedAesKey = encryptedAesKey
                 };
 
-                var txResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
-                if (txResult.Success)
-                {
-                    _logger.LogInformation("EHR hash committed to blockchain: {TxHash}", txResult.TxHash);
-                }
-                else
-                {
-                    _logger.LogWarning("Blockchain hash commit failed: {Error}", txResult.ErrorMessage);
-                }
+                _blockchainSyncService.EnqueueEhrHash(
+                    ehrHashRecord,
+                    onFailure: error =>
+                    {
+                        _logger.LogWarning("Queued blockchain hash commit failed for EHR {EhrId}: {Error}", savedRecord.EhrId, error);
+                        return Task.CompletedTask;
+                    });
             }
             catch (Exception ex)
             {
@@ -208,8 +186,8 @@ public class EhrService : IEhrService
         }
         
         _logger.LogInformation(
-            "Tạo EHR {EhrId} version {VersionId} file {FileId} với MongoDB doc {DocId}",
-            savedRecord.EhrId, savedVersion.VersionId, savedFile.FileId, savedDocument.Id);
+            "Tạo EHR {EhrId} version {VersionId} file {FileId}, IPFS CID: {IpfsCid}",
+            savedRecord.EhrId, savedVersion.VersionId, savedFile.FileId, ipfsCid ?? "fallback");
 
         // Notify patient about new EHR
         if (_notificationClient != null)
@@ -232,7 +210,7 @@ public class EhrService : IEhrService
             VersionId = savedVersion.VersionId,
             FileId = savedFile.FileId,
             VersionNumber = 1,
-            OffchainDocId = savedDocument.Id,
+            IpfsCid = ipfsCid,
             DataHash = dataHash,
             CreatedAt = savedRecord.CreatedAt
         };
@@ -289,32 +267,34 @@ public class EhrService : IEhrService
         if (record == null)
             return (null, false, "EHR Record not found");
 
-        var ehrDoc = await _ehrDocumentRepo.GetByEhrIdAsync(ehrId, useReplica);
-        if (ehrDoc == null)
-             return (null, false, "MongoDB Document not found");
+        // Get latest version from Postgres
+        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        if (latestVersion == null)
+            return (null, false, "No versions found for EHR");
 
-        if (!ehrDoc.Data.Contains("encryptedText") && !ehrDoc.Data.Contains("ipfsCid"))
-             return (ehrDoc.Data.ToJson(), false, null); // Legacy plain-text support
-
-        string encryptedText = string.Empty;
-        if (ehrDoc.Data.Contains("ipfsCid"))
+        // Retrieve encrypted text from IPFS or fallback
+        string encryptedText;
+        if (!string.IsNullOrEmpty(latestVersion.IpfsCid))
         {
-            var cid = ehrDoc.Data["ipfsCid"].AsString;
             try
             {
-                var downloadedPath = await IpfsClientService.RetrieveAsync(cid);
+                var downloadedPath = await IpfsClientService.RetrieveAsync(latestVersion.IpfsCid);
                 encryptedText = await File.ReadAllTextAsync(downloadedPath);
                 if (File.Exists(downloadedPath)) File.Delete(downloadedPath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", cid);
+                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", latestVersion.IpfsCid);
                 return (null, false, "Failed to retrieve document from IPFS");
             }
         }
+        else if (!string.IsNullOrEmpty(latestVersion.EncryptedFallbackData))
+        {
+            encryptedText = latestVersion.EncryptedFallbackData;
+        }
         else
         {
-            encryptedText = ehrDoc.Data["encryptedText"].AsString;
+            return (null, false, "No encrypted data available for this EHR version");
         }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
@@ -419,9 +399,39 @@ public class EhrService : IEhrService
         var documentJson = request.Data.GetRawText();
         var dataHash = ComputeHash(documentJson);
 
-        // Update the record's data
-        record.Data = documentJson;
-        await _ehrRecordRepo.UpdateAsync(record);
+        // Generate new AES-256 key and encrypt
+        using var aes = Aes.Create();
+        aes.KeySize = 256;
+        aes.GenerateKey();
+        var blueKeyBytes = aes.Key;
+
+        var encryptedDataStr = SymmetricEncryptionService.EncryptString(documentJson, blueKeyBytes);
+
+        // Upload encrypted data to IPFS
+        string? ipfsCid = null;
+        string? encryptedFallbackData = null;
+        try
+        {
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, encryptedDataStr);
+            var uploadRes = await IpfsClientService.UploadAsync(tempFile);
+            if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
+            {
+                ipfsCid = uploadRes.Hash;
+            }
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload encrypted EHR update to IPFS for EHR {EhrId}", ehrId);
+        }
+
+        // Fallback if IPFS failed
+        if (string.IsNullOrEmpty(ipfsCid))
+        {
+            encryptedFallbackData = encryptedDataStr;
+            _logger.LogWarning("IPFS upload failed on update, using encrypted fallback for EHR {EhrId}", ehrId);
+        }
 
         // Create new version
         var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
@@ -431,11 +441,66 @@ public class EhrService : IEhrService
         {
             EhrId = ehrId,
             VersionNumber = newVersionNumber,
-            Data = documentJson
+            IpfsCid = ipfsCid,
+            EncryptedFallbackData = encryptedFallbackData,
+            DataHash = dataHash
         };
         await _ehrRecordRepo.CreateVersionAsync(version);
 
-        _logger.LogInformation("Updated EHR {EhrId} to version {Version}", ehrId, newVersionNumber);
+        // Wrap AES key with Patient's Public Key and commit to Blockchain
+        string encryptedAesKey = string.Empty;
+        try
+        {
+            var authClient = _httpClientFactory.CreateClient("AuthService");
+            var keyRes = await authClient.GetAsync($"/api/v1/auth/{record.PatientId}/keys");
+            if (keyRes.IsSuccessStatusCode)
+            {
+                var keysJson = await keyRes.Content.ReadAsStringAsync();
+                var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                {
+                    encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Auth Service for patient keys during EHR update");
+        }
+
+        // Blockchain: Commit updated hash
+        if (_blockchainService != null)
+        {
+            try
+            {
+                var ehrHashRecord = new EhrHashRecord
+                {
+                    EhrId = ehrId.ToString(),
+                    PatientDid = $"did:fabric:patient:{record.PatientId}",
+                    CreatedByDid = $"did:fabric:org:{record.OrgId}",
+                    OrganizationId = record.OrgId.ToString(),
+                    Version = newVersionNumber,
+                    ContentHash = $"sha256:{dataHash}",
+                    FileHash = $"sha256:{dataHash}",
+                    Timestamp = DateTime.UtcNow.ToString("o"),
+                    EncryptedAesKey = encryptedAesKey
+                };
+
+                _blockchainSyncService.EnqueueEhrHash(
+                    ehrHashRecord,
+                    onFailure: error =>
+                    {
+                        _logger.LogWarning("Queued blockchain hash commit failed for EHR {EhrId} v{Version}: {Error}", ehrId, newVersionNumber, error);
+                        return Task.CompletedTask;
+                    });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId} v{Version}", ehrId, newVersionNumber);
+            }
+        }
+
+        _logger.LogInformation("Updated EHR {EhrId} to version {Version}, IPFS CID: {IpfsCid}", ehrId, newVersionNumber, ipfsCid ?? "fallback");
 
         // Notify patient about EHR update
         if (_notificationClient != null)
@@ -466,36 +531,76 @@ public class EhrService : IEhrService
         var version = await _ehrRecordRepo.GetVersionByIdAsync(ehrId, versionId, useReplica);
         if (version == null) return null;
 
-        JsonElement? dataElement = null;
-        if (!string.IsNullOrEmpty(version.Data))
-        {
-            dataElement = JsonSerializer.Deserialize<JsonElement>(version.Data);
-        }
-
         return new EhrVersionDetailDto
         {
             VersionId = version.VersionId,
             EhrId = version.EhrId,
             VersionNumber = version.VersionNumber,
-            Data = dataElement,
+            IpfsCid = version.IpfsCid,
             CreatedAt = version.CreatedAt
         };
     }
 
-    public async Task<EhrFileDto?> AddFileAsync(Guid ehrId, AddEhrFileDto request)
+    public async Task<EhrFileDto?> AddFileAsync(Guid ehrId, Stream fileStream, string fileName)
     {
         var record = await _ehrRecordRepo.GetByIdAsync(ehrId);
         if (record == null) return null;
 
+        // Compute file hash from stream
+        using var sha256 = SHA256.Create();
+        var hashBytes = await sha256.ComputeHashAsync(fileStream);
+        var fileHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        fileStream.Position = 0;
+
+        // Encrypt file with AES
+        using var aes = Aes.Create();
+        aes.KeySize = 256;
+        aes.GenerateKey();
+        var blueKeyBytes = aes.Key;
+
+        using var memoryStream = new MemoryStream();
+        await fileStream.CopyToAsync(memoryStream);
+        var fileBytes = memoryStream.ToArray();
+        var encryptedDataStr = SymmetricEncryptionService.EncryptString(
+            Convert.ToBase64String(fileBytes), blueKeyBytes);
+
+        // Upload to IPFS
+        string? ipfsCid = null;
+        string? encryptedFallbackData = null;
+        try
+        {
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, encryptedDataStr);
+            var uploadRes = await IpfsClientService.UploadAsync(tempFile);
+            if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
+            {
+                ipfsCid = uploadRes.Hash;
+            }
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload encrypted file to IPFS for EHR {EhrId}", ehrId);
+        }
+
+        // Fallback if IPFS failed
+        if (string.IsNullOrEmpty(ipfsCid))
+        {
+            encryptedFallbackData = encryptedDataStr;
+            _logger.LogWarning("IPFS upload failed for file, using encrypted fallback for EHR {EhrId}", ehrId);
+        }
+
         var file = new EhrFile
         {
             EhrId = ehrId,
-            FileUrl = request.FileUrl,
-            FileHash = request.FileHash
+            FileUrl = fileName,
+            FileHash = fileHash,
+            IpfsCid = ipfsCid,
+            EncryptedFallbackData = encryptedFallbackData
         };
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
-        _logger.LogInformation("Added file {FileId} to EHR {EhrId}", savedFile.FileId, ehrId);
+        _logger.LogInformation("Added file {FileId} to EHR {EhrId}, IPFS CID: {IpfsCid}", savedFile.FileId, ehrId, ipfsCid ?? "fallback");
 
         // Notify patient about new file
         if (_notificationClient != null)

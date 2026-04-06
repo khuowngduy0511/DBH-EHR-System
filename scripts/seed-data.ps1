@@ -1,6 +1,6 @@
 # =============================================================================
 # DBH-EHR Seed Data Script (Idempotent - safe to re-run)
-# Run after: docker compose up + MongoDB RS init
+# Run after: docker compose up
 # =============================================================================
 
 $BASE  = "http://localhost:5000"
