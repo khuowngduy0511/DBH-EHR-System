@@ -78,6 +78,9 @@ public class OrganizationResponse
     public OrganizationStatus Status { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? FabricMspId { get; set; }
+    public string? FabricChannelPeers { get; set; }
+    public string? FabricCaUrl { get; set; }
     public int DepartmentCount { get; set; }
     public int MemberCount { get; set; }
 }

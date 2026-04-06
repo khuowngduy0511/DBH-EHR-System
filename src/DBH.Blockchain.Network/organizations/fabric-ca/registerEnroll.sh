@@ -340,7 +340,7 @@ function syncOrganizationsToCryptoVolume() {
   ${CONTAINER_CLI} run --rm \
     -v "${PWD}:/workspace" \
     -v "${CRYPTO_VOLUME}:/crypto" \
-    busybox sh -c 'rm -rf /crypto/peerOrganizations /crypto/ordererOrganizations && mkdir -p /crypto && cp -r /workspace/organizations/peerOrganizations /crypto/ && cp -r /workspace/organizations/ordererOrganizations /crypto/'
+    busybox sh -c 'rm -rf /crypto/peerOrganizations /crypto/ordererOrganizations /crypto/fabric-ca && mkdir -p /crypto && cp -r /workspace/organizations/peerOrganizations /crypto/ && cp -r /workspace/organizations/ordererOrganizations /crypto/ && cp -r /workspace/organizations/fabric-ca /crypto/'
   res=$?
   { set +x; } 2>/dev/null
 
