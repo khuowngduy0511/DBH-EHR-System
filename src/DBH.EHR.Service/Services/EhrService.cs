@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Net.Http.Headers;
+using System.Security.Claims;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Models.Entities;
 using DBH.EHR.Service.Repositories.Postgres;
@@ -91,19 +93,20 @@ public class EhrService : IEhrService
             if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
             {
                 ipfsCid = uploadRes.Hash;
+                _logger.LogInformation("Successfully uploaded encrypted EHR to IPFS. EhrId={EhrId}, CID={Cid}, Size={Size}", savedRecord.EhrId, ipfsCid, uploadRes.Size);
             }
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS");
+            _logger.LogError(ex, "Failed to upload encrypted EHR to IPFS for EhrId={EhrId}. Will use encrypted fallback storage.", savedRecord.EhrId);
         }
 
         // Fallback: store encrypted data in Postgres if IPFS failed
         if (string.IsNullOrEmpty(ipfsCid))
         {
             encryptedFallbackData = encryptedDataStr;
-            _logger.LogWarning("IPFS upload failed, using encrypted fallback for EHR {EhrId}", savedRecord.EhrId);
+            _logger.LogWarning("IPFS upload failed for EHR {EhrId}, using encrypted fallback storage in PostgreSQL", savedRecord.EhrId);
         }
 
         // Tạo version đầu tiên (ERD: ehr_versions) with IPFS CID or fallback
@@ -133,24 +136,38 @@ public class EhrService : IEhrService
         try 
         {
             var authClient = _httpClientFactory.CreateClient("AuthService");
-            var keyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
-            if (keyRes.IsSuccessStatusCode)
+            var bearerToken = GetBearerTokenFromContext();
+            var patientUserId = await ResolvePatientUserIdAsync(authClient, request.PatientId, bearerToken);
+            if (patientUserId.HasValue)
             {
-                var keysJson = await keyRes.Content.ReadAsStringAsync();
-                var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{patientUserId.Value}/keys", bearerToken);
+                if (keyRes.IsSuccessStatusCode)
                 {
-                    encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                    var keysJson = await keyRes.Content.ReadAsStringAsync();
+                    var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                    {
+                        encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                        _logger.LogInformation("Successfully wrapped AES key for patient {PatientId}", request.PatientId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Patient {PatientId} has no public key available for encryption", request.PatientId);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Auth Service returned status {StatusCode} when fetching keys for userId {UserId}", keyRes.StatusCode, patientUserId.Value);
                 }
             }
             else 
             {
-                _logger.LogWarning("Failed to retrieve Patient Keys from Auth Service for encryption.");
+                _logger.LogWarning("Failed to resolve Patient UserId from PatientId {PatientId} for key encryption", request.PatientId);
             }
         }
         catch (Exception ex)
         {
-             _logger.LogError(ex, "Error calling Auth Service for patient keys");
+             _logger.LogError(ex, "Error wrapping AES key with patient public key for EHR {EhrId}", savedRecord.EhrId);
         }
 
         // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
@@ -235,8 +252,13 @@ public class EhrService : IEhrService
         if (record == null)
             return (null, false, null);
 
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken) ?? record.PatientId;
+        var normalizedRequesterId = await ResolveRequesterUserIdAsync(authClient, requesterId, bearerToken) ?? requesterId;
+
         // Bypass consent check nếu requester là chính bệnh nhân
-        if (requesterId == record.PatientId)
+        if (requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId)
         {
             _logger.LogInformation("Consent bypass: requester {RequesterId} is owner of EHR {EhrId}", requesterId, ehrId);
             var response = MapToEhrRecordResponse(record);
@@ -246,7 +268,7 @@ public class EhrService : IEhrService
         }
 
         // Gọi Consent Service để kiểm tra quyền truy cập
-        var consentResult = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
+        var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId);
         if (!consentResult.HasAccess)
         {
             _logger.LogWarning("Consent denied: requester {RequesterId} has no consent for EHR {EhrId} of patient {PatientId}",
@@ -266,6 +288,11 @@ public class EhrService : IEhrService
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
             return (null, false, "EHR Record not found");
+
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken) ?? record.PatientId;
+        var normalizedRequesterId = await ResolveRequesterUserIdAsync(authClient, requesterId, bearerToken) ?? requesterId;
 
         // Get latest version from Postgres
         var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
@@ -297,8 +324,7 @@ public class EhrService : IEhrService
             return (null, false, "No encrypted data available for this EHR version");
         }
 
-        var authClient = _httpClientFactory.CreateClient("AuthService");
-        var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{requesterId}/keys");
+        var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{normalizedRequesterId}/keys");
         if (!requesterKeyRes.IsSuccessStatusCode)
            return (null, false, "Cannot fetch requester keys from Auth Service");
            
@@ -311,31 +337,52 @@ public class EhrService : IEhrService
 
         byte[]? blueKeyBytes = null;
 
-        if (requesterId == record.PatientId)
+         if (requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId)
         {
-             if (_blockchainService != null) {
-                  var ehrHashRecordList = await _blockchainService.GetEhrHistoryAsync(ehrId.ToString());
-                  var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
-                  if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))
-                  {
-                       blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrHash.EncryptedAesKey, privateKey);
-                  }
-             }
+           var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
+           if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
+           {
+               blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, privateKey);
+           }
         }
         else 
         {
-             var consentResult = await VerifyConsentAsync(record.PatientId, requesterId, ehrId);
+               var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId);
              if (!consentResult.HasAccess || string.IsNullOrEmpty(consentResult.ConsentId))
              {
                   return (null, true, "Requester does not have consent to read this EHR.");
              }
 
              if (_consentBlockchainService != null) {
-                  var consentRecord = await _consentBlockchainService.GetConsentAsync(consentResult.ConsentId);
+                   var blockchainConsentId = await ResolveBlockchainConsentIdAsync(consentResult.ConsentId) ?? consentResult.ConsentId;
+                   var consentRecord = await _consentBlockchainService.GetConsentAsync(blockchainConsentId);
                   if (consentRecord != null && !string.IsNullOrEmpty(consentRecord.EncryptedAesKey))
                   {
                        blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(consentRecord.EncryptedAesKey, privateKey);
                   }
+                   else
+                   {
+                       _logger.LogWarning("Unable to load encrypted consent key from blockchain for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentResult.ConsentId, blockchainConsentId);
+
+                       // Fallback: derive AES key via patient's wrapped key on EHR hash ledger,
+                       // after consent has already been verified.
+                       var patientKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedPatientId}/keys", bearerToken);
+                       if (patientKeyRes.IsSuccessStatusCode && _blockchainService != null)
+                       {
+                           var patientKeyJson = await patientKeyRes.Content.ReadAsStringAsync();
+                           var patientKeys = JsonSerializer.Deserialize<AuthUserKeysDto>(patientKeyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                           if (patientKeys != null && !string.IsNullOrEmpty(patientKeys.EncryptedPrivateKey))
+                           {
+                               var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
+                               var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
+                               if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
+                               {
+                                   blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, patientPrivateKey);
+                               }
+                           }
+                       }
+                   }
              }
         }
 
@@ -349,6 +396,178 @@ public class EhrService : IEhrService
         catch (Exception ex) {
             _logger.LogError(ex, "Failed to decrypt document payload for EHR {EhrId}", ehrId);
             return (null, false, "Decryption failed due to invalid key or corrupted payload.");
+        }
+    }
+
+    public async Task<(string? DecryptedData, bool Forbidden, string? Message)> GetEhrDocumentForCurrentUserAsync(Guid ehrId)
+    {
+        var userId = GetCurrentUserIdFromContext();
+        if (!userId.HasValue)
+        {
+            return (null, true, "Cannot resolve current user id from token");
+        }
+
+        var (decryptedData, consentDenied, denyMessage) = await GetEhrDocumentAsync(ehrId, userId.Value);
+        return (decryptedData, consentDenied, denyMessage);
+    }
+
+    public async Task<string?> DownloadIpfsRawAsync(string ipfsCid)
+    {
+        if (string.IsNullOrWhiteSpace(ipfsCid))
+        {
+            return null;
+        }
+
+        try
+        {
+            var downloadedPath = await IpfsClientService.RetrieveAsync(ipfsCid);
+            var encryptedText = await File.ReadAllTextAsync(downloadedPath);
+            if (File.Exists(downloadedPath))
+            {
+                File.Delete(downloadedPath);
+            }
+
+            return encryptedText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to download raw encrypted payload from IPFS. Cid={Cid}", ipfsCid);
+            return null;
+        }
+    }
+
+    public async Task<IpfsRawDownloadResponseDto?> DownloadLatestIpfsRawByEhrIdAsync(Guid ehrId)
+    {
+        var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
+        if (record == null)
+        {
+            return null;
+        }
+
+        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        if (latestVersion == null || string.IsNullOrWhiteSpace(latestVersion.IpfsCid))
+        {
+            return null;
+        }
+
+        var encryptedData = await DownloadIpfsRawAsync(latestVersion.IpfsCid);
+        if (string.IsNullOrWhiteSpace(encryptedData))
+        {
+            return null;
+        }
+
+        return new IpfsRawDownloadResponseDto
+        {
+            IpfsCid = latestVersion.IpfsCid,
+            EncryptedData = encryptedData
+        };
+    }
+
+    public async Task<EncryptIpfsPayloadResponseDto?> EncryptToIpfsForCurrentUserAsync(EncryptIpfsPayloadRequestDto request)
+    {
+        var currentUserId = GetCurrentUserIdFromContext();
+        if (!currentUserId.HasValue || string.IsNullOrWhiteSpace(request.Data))
+        {
+            return null;
+        }
+
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        if (!keyRes.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var keysJson = await keyRes.Content.ReadAsStringAsync();
+        var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (keys == null || string.IsNullOrWhiteSpace(keys.PublicKey))
+        {
+            return null;
+        }
+
+        using var aes = Aes.Create();
+        aes.KeySize = 256;
+        aes.GenerateKey();
+        var blueKeyBytes = aes.Key;
+
+        var encryptedDataStr = SymmetricEncryptionService.EncryptString(request.Data, blueKeyBytes);
+        var wrappedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+
+        string? ipfsCid = null;
+        try
+        {
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, encryptedDataStr);
+            var uploadRes = await IpfsClientService.UploadAsync(tempFile);
+            if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
+            {
+                ipfsCid = uploadRes.Hash;
+            }
+
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload encrypted payload to IPFS for current user {UserId}", currentUserId.Value);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(ipfsCid))
+        {
+            return null;
+        }
+
+        return new EncryptIpfsPayloadResponseDto
+        {
+            IpfsCid = ipfsCid,
+            WrappedAesKey = wrappedAesKey,
+            DataHash = ComputeHash(request.Data)
+        };
+    }
+
+    public async Task<string?> DecryptIpfsForCurrentUserAsync(DecryptIpfsPayloadRequestDto request)
+    {
+        var currentUserId = GetCurrentUserIdFromContext();
+        if (!currentUserId.HasValue
+            || string.IsNullOrWhiteSpace(request.IpfsCid)
+            || string.IsNullOrWhiteSpace(request.WrappedAesKey))
+        {
+            return null;
+        }
+
+        var encryptedText = await DownloadIpfsRawAsync(request.IpfsCid);
+        if (string.IsNullOrWhiteSpace(encryptedText))
+        {
+            return null;
+        }
+
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        if (!keyRes.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var keysJson = await keyRes.Content.ReadAsStringAsync();
+        var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (keys == null || string.IsNullOrWhiteSpace(keys.EncryptedPrivateKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
+            var blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(request.WrappedAesKey, privateKey);
+            return SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to decrypt IPFS payload for current user {UserId}", currentUserId.Value);
+            return null;
         }
     }
 
@@ -399,6 +618,10 @@ public class EhrService : IEhrService
         var documentJson = request.Data.GetRawText();
         var dataHash = ComputeHash(documentJson);
 
+        // Calculate new version number early
+        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+        var newVersionNumber = (latestVersion?.VersionNumber ?? 0) + 1;
+
         // Generate new AES-256 key and encrypt
         using var aes = Aes.Create();
         aes.KeySize = 256;
@@ -418,25 +641,23 @@ public class EhrService : IEhrService
             if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
             {
                 ipfsCid = uploadRes.Hash;
+                _logger.LogInformation("Successfully uploaded encrypted EHR update to IPFS. EhrId={EhrId}, Version={Version}, CID={Cid}, Size={Size}", ehrId, newVersionNumber, ipfsCid, uploadRes.Size);
             }
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to upload encrypted EHR update to IPFS for EHR {EhrId}", ehrId);
+            _logger.LogError(ex, "Failed to upload encrypted EHR update to IPFS for EhrId={EhrId}, Version={Version}. Will use encrypted fallback storage.", ehrId, newVersionNumber);
         }
 
         // Fallback if IPFS failed
         if (string.IsNullOrEmpty(ipfsCid))
         {
             encryptedFallbackData = encryptedDataStr;
-            _logger.LogWarning("IPFS upload failed on update, using encrypted fallback for EHR {EhrId}", ehrId);
+            _logger.LogWarning("IPFS upload failed on update for EHR {EhrId} version {Version}, using encrypted fallback storage in PostgreSQL", ehrId, newVersionNumber);
         }
 
         // Create new version
-        var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
-        var newVersionNumber = (latestVersion?.VersionNumber ?? 0) + 1;
-
         var version = new EhrVersion
         {
             EhrId = ehrId,
@@ -452,20 +673,38 @@ public class EhrService : IEhrService
         try
         {
             var authClient = _httpClientFactory.CreateClient("AuthService");
-            var keyRes = await authClient.GetAsync($"/api/v1/auth/{record.PatientId}/keys");
-            if (keyRes.IsSuccessStatusCode)
+            var bearerToken = GetBearerTokenFromContext();
+            var patientUserId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken);
+            if (patientUserId.HasValue)
             {
-                var keysJson = await keyRes.Content.ReadAsStringAsync();
-                var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{patientUserId.Value}/keys", bearerToken);
+                if (keyRes.IsSuccessStatusCode)
                 {
-                    encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                    var keysJson = await keyRes.Content.ReadAsStringAsync();
+                    var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                    {
+                        encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                        _logger.LogInformation("Successfully wrapped AES key for patient {PatientId} in EHR update", record.PatientId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Patient {PatientId} has no public key available for encryption on update", record.PatientId);
+                    }
                 }
+                else
+                {
+                    _logger.LogWarning("Auth Service returned status {StatusCode} when fetching keys for userId {UserId} during update", keyRes.StatusCode, patientUserId.Value);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Failed to resolve patient user ID for key wrapping. PatientId={PatientId}", record.PatientId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Auth Service for patient keys during EHR update");
+            _logger.LogError(ex, "Error calling Auth Service for patient keys during EHR update for EHR {EhrId}", ehrId);
         }
 
         // Blockchain: Commit updated hash
@@ -575,19 +814,20 @@ public class EhrService : IEhrService
             if (uploadRes != null && !string.IsNullOrEmpty(uploadRes.Hash))
             {
                 ipfsCid = uploadRes.Hash;
+                _logger.LogInformation("Successfully uploaded encrypted file to IPFS. EhrId={EhrId}, CID={Cid}, Size={Size}, FileHash={FileHash}", ehrId, ipfsCid, uploadRes.Size, fileHash);
             }
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to upload encrypted file to IPFS for EHR {EhrId}", ehrId);
+            _logger.LogError(ex, "Failed to upload encrypted file to IPFS for EhrId={EhrId}. Will use encrypted fallback storage.", ehrId);
         }
 
         // Fallback if IPFS failed
         if (string.IsNullOrEmpty(ipfsCid))
         {
             encryptedFallbackData = encryptedDataStr;
-            _logger.LogWarning("IPFS upload failed for file, using encrypted fallback for EHR {EhrId}", ehrId);
+            _logger.LogWarning("IPFS upload failed for EHR {EhrId}, using encrypted fallback storage in PostgreSQL. FileHash={FileHash}", ehrId, fileHash);
         }
 
         var file = new EhrFile
@@ -650,12 +890,21 @@ public class EhrService : IEhrService
                 EhrId = ehrId
             };
             
-            var content = new StringContent(
-                JsonSerializer.Serialize(verifyRequest),
-                Encoding.UTF8,
-                "application/json");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "api/v1/consents/verify")
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(verifyRequest),
+                    Encoding.UTF8,
+                    "application/json")
+            };
+
+            var bearerToken = GetBearerTokenFromContext();
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+            {
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            }
             
-            var response = await client.PostAsync("api/v1/consents/verify", content);
+            var response = await client.SendAsync(requestMessage);
             
             if (!response.IsSuccessStatusCode)
             {
@@ -683,6 +932,90 @@ public class EhrService : IEhrService
         }
     }
 
+    private async Task<string?> ResolveBlockchainConsentIdAsync(string consentId)
+    {
+        if (!Guid.TryParse(consentId, out var parsedConsentId))
+        {
+            return null;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("ConsentService");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, $"api/v1/consents/{parsedConsentId}");
+
+            var bearerToken = GetBearerTokenFromContext();
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+            {
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            }
+
+            var response = await client.SendAsync(requestMessage);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("data", out var dataElement))
+            {
+                return null;
+            }
+
+            if (dataElement.TryGetProperty("blockchainConsentId", out var camelId)
+                && camelId.ValueKind == JsonValueKind.String)
+            {
+                return camelId.GetString();
+            }
+
+            if (dataElement.TryGetProperty("BlockchainConsentId", out var pascalId)
+                && pascalId.ValueKind == JsonValueKind.String)
+            {
+                return pascalId.GetString();
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve blockchain consent id for ConsentId={ConsentId}", consentId);
+            return null;
+        }
+    }
+
+    private async Task<string?> GetLatestEhrEncryptedAesKeyWithRetryAsync(Guid ehrId, int maxAttempts = 8, int delayMs = 400)
+    {
+        if (_blockchainService == null)
+        {
+            return null;
+        }
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                var ehrHashRecordList = await _blockchainService.GetEhrHistoryAsync(ehrId.ToString());
+                var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
+                if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))
+                {
+                    return latestEhrHash.EncryptedAesKey;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Attempt {Attempt}/{MaxAttempts}: cannot read EHR hash history for EhrId={EhrId}", attempt, maxAttempts, ehrId);
+            }
+
+            if (attempt < maxAttempts)
+            {
+                await Task.Delay(delayMs);
+            }
+        }
+
+        return null;
+    }
+
     private string? GetBearerTokenFromContext()
     {
         var authorization = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
@@ -698,6 +1031,26 @@ public class EhrService : IEhrService
         }
 
         return authorization.Trim();
+    }
+
+    private Guid? GetCurrentUserIdFromContext()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user == null)
+        {
+            return null;
+        }
+
+        var rawId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("sub")?.Value
+            ?? user.FindFirst("nameid")?.Value;
+
+        if (Guid.TryParse(rawId, out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
     }
 
     private async Task<(Guid? UserId, AuthUserProfileDetailDto? Profile)> GetPatientUserProfileAsync(Guid patientId)
@@ -727,6 +1080,92 @@ public class EhrService : IEhrService
         });
 
         await Task.WhenAll(tasks);
+    }
+
+    private async Task<HttpResponseMessage> SendAuthGetAsync(HttpClient authClient, string requestUri, string? bearerToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        }
+
+        return await authClient.SendAsync(request);
+    }
+
+    private async Task<Guid?> ResolvePatientUserIdAsync(HttpClient authClient, Guid patientId, string? bearerToken)
+    {
+        var response = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?patientId={patientId}", bearerToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+
+        if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+            && camelUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+        {
+            return parsedCamel;
+        }
+
+        if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+            && pascalUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+        {
+            return parsedPascal;
+        }
+
+        return null;
+    }
+
+    private async Task<Guid?> ResolveRequesterUserIdAsync(HttpClient authClient, Guid requesterId, string? bearerToken)
+    {
+        var asDoctor = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?doctorId={requesterId}", bearerToken);
+        if (asDoctor.IsSuccessStatusCode)
+        {
+            var body = await asDoctor.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+                && camelUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+            {
+                return parsedCamel;
+            }
+
+            if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                && pascalUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+            {
+                return parsedPascal;
+            }
+        }
+
+        var asPatient = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?patientId={requesterId}", bearerToken);
+        if (!asPatient.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var patientBody = await asPatient.Content.ReadAsStringAsync();
+        using var patientDoc = JsonDocument.Parse(patientBody);
+        if (patientDoc.RootElement.TryGetProperty("userId", out var patientCamelUserId)
+            && patientCamelUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(patientCamelUserId.GetString(), out var patientParsedCamel))
+        {
+            return patientParsedCamel;
+        }
+
+        if (patientDoc.RootElement.TryGetProperty("UserId", out var patientPascalUserId)
+            && patientPascalUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(patientPascalUserId.GetString(), out var patientParsedPascal))
+        {
+            return patientParsedPascal;
+        }
+
+        return null;
     }
 
     private static string ComputeHash(string content)

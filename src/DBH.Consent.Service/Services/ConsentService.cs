@@ -7,6 +7,7 @@ using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Notification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace DBH.Consent.Service.Services;
@@ -19,12 +20,14 @@ public class ConsentService : IConsentService
     private readonly IEhrBlockchainService? _ehrBlockchainService;
     private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly INotificationServiceClient? _notificationClient;
 
     public ConsentService(
         ConsentDbContext context,
         ILogger<ConsentService> logger,
         IHttpClientFactory httpClientFactory,
+        IHttpContextAccessor httpContextAccessor,
         IBlockchainSyncService blockchainSyncService,
         IConsentBlockchainService? blockchainService = null,
         IEhrBlockchainService? ehrBlockchainService = null,
@@ -33,6 +36,7 @@ public class ConsentService : IConsentService
         _context = context;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _blockchainSyncService = blockchainSyncService;
         _blockchainService = blockchainService;
         _ehrBlockchainService = ehrBlockchainService;
@@ -45,10 +49,15 @@ public class ConsentService : IConsentService
 
     public async Task<ApiResponse<ConsentResponse>> GrantConsentAsync(GrantConsentRequest request)
     {
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolveUserIdAsync(authClient, request.PatientId, isPatientProfile: true, bearerToken) ?? request.PatientId;
+        var normalizedGranteeId = await ResolveUserIdAsync(authClient, request.GranteeId, isPatientProfile: false, bearerToken) ?? request.GranteeId;
+
         // Check if active consent already exists
         var existingConsent = await _context.Consents.FirstOrDefaultAsync(c =>
-            c.PatientId == request.PatientId &&
-            c.GranteeId == request.GranteeId &&
+            c.PatientId == normalizedPatientId &&
+            c.GranteeId == normalizedGranteeId &&
             c.EhrId == request.EhrId &&
             c.Status == ConsentStatus.ACTIVE);
 
@@ -67,13 +76,12 @@ public class ConsentService : IConsentService
         {
             try
             {
-                var authClient = _httpClientFactory.CreateClient("AuthService");
                 var ehrClient = _httpClientFactory.CreateClient("EhrService"); // Cần lấy record để lấy EncryptedAesKey của patient
 
                 // 1. Lấy patient private key (cần unwrap bằng MasterKey - rủi ro thiết kế nếu flow bắt patient gửi private key raw lên đây, hoặc AuthService có endpoint giải mã)
                 // Theo kiến trúc: Auth Service cung cấp EncryptedPrivateKey -> ConsentService có cấu hình MasterKey để decrypt
-                var patientKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
-                var granteeKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.GranteeId}/keys");
+                var patientKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedPatientId}/keys", bearerToken);
+                var granteeKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedGranteeId}/keys", bearerToken);
 
                 if (patientKeyRes.IsSuccessStatusCode && granteeKeyRes.IsSuccessStatusCode)
                 {
@@ -153,9 +161,9 @@ public class ConsentService : IConsentService
         var consent = new Models.Entities.Consent
         {
             BlockchainConsentId = blockchainConsentId,
-            PatientId = request.PatientId,
+            PatientId = normalizedPatientId,
             PatientDid = request.PatientDid,
-            GranteeId = request.GranteeId,
+            GranteeId = normalizedGranteeId,
             GranteeDid = request.GranteeDid,
             GranteeType = request.GranteeType,
             EhrId = request.EhrId,
@@ -319,9 +327,24 @@ public class ConsentService : IConsentService
 
     public async Task<VerifyConsentResponse> VerifyConsentAsync(VerifyConsentRequest request)
     {
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolveUserIdAsync(authClient, request.PatientId, isPatientProfile: true, bearerToken);
+        var normalizedGranteeId = await ResolveUserIdAsync(authClient, request.GranteeId, isPatientProfile: false, bearerToken);
+
+        var patientCandidates = new[] { request.PatientId, normalizedPatientId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        var granteeCandidates = new[] { request.GranteeId, normalizedGranteeId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
         var query = _context.Consents.Where(c =>
-            c.PatientId == request.PatientId &&
-            c.GranteeId == request.GranteeId &&
+            patientCandidates.Contains(c.PatientId) &&
+            granteeCandidates.Contains(c.GranteeId) &&
             c.Status == ConsentStatus.ACTIVE &&
             (c.ExpiresAt == null || c.ExpiresAt > DateTime.UtcNow));
 
@@ -719,6 +742,63 @@ public class ConsentService : IConsentService
             CreatedAt = request.CreatedAt,
             ExpiresAt = request.ExpiresAt
         };
+    }
+
+    private string? GetBearerTokenFromContext()
+    {
+        var authorization = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrWhiteSpace(authorization))
+        {
+            return null;
+        }
+
+        const string bearerPrefix = "Bearer ";
+        if (authorization.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return authorization[bearerPrefix.Length..].Trim();
+        }
+
+        return authorization.Trim();
+    }
+
+    private async Task<HttpResponseMessage> SendAuthGetAsync(HttpClient authClient, string requestUri, string? bearerToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        if (!string.IsNullOrWhiteSpace(bearerToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        }
+
+        return await authClient.SendAsync(request);
+    }
+
+    private async Task<Guid?> ResolveUserIdAsync(HttpClient authClient, Guid profileOrUserId, bool isPatientProfile, string? bearerToken)
+    {
+        var queryKey = isPatientProfile ? "patientId" : "doctorId";
+        var response = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?{queryKey}={profileOrUserId}", bearerToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+
+        if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+            && camelUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+        {
+            return parsedCamel;
+        }
+
+        if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+            && pascalUserId.ValueKind == JsonValueKind.String
+            && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+        {
+            return parsedPascal;
+        }
+
+        return null;
     }
 }
 

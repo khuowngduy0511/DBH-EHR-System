@@ -37,6 +37,8 @@ services:
         - action: rebuild
           path: ./src/DBH.Gateway
         - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
           path: ./src/DBH.Gateway/Dockerfile
 
   # ============================================================================

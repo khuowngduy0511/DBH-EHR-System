@@ -73,6 +73,7 @@ builder.Services.AddDbContext<ConsentDbContext>(options =>
 // ============================================================================
 
 builder.Services.AddScoped<IConsentService, ConsentService>();
+builder.Services.AddHttpContextAccessor();
 
 // ============================================================================
 // HTTP Clients for inter-service calls

@@ -416,6 +416,12 @@ public class AuthService : IAuthService
 
     public async Task<UserKeysDto?> GetUserKeysAsync(Guid userId)
     {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null || string.IsNullOrWhiteSpace(user.PublicKey))
+        {
+            return null;
+        }
+
         var privateCredential = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == ProviderType.EncryptedPrivateKey);
         if (privateCredential == null || string.IsNullOrEmpty(privateCredential.CredentialValue))
         {
@@ -425,6 +431,7 @@ public class AuthService : IAuthService
         return new UserKeysDto
         {
             UserId = userId,
+            PublicKey = user.PublicKey,
             EncryptedPrivateKey = privateCredential.CredentialValue
         };
     }

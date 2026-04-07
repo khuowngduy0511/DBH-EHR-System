@@ -158,6 +158,26 @@ public static class IpfsClientService
             }
         }
 
+        // Allow container/runtime overrides (e.g., docker-compose IpfsConfig__ApiUrl)
+        // to take precedence over appsettings and localhost defaults.
+        var apiUrlEnv = Environment.GetEnvironmentVariable("IpfsConfig__ApiUrl");
+        if (!string.IsNullOrWhiteSpace(apiUrlEnv))
+        {
+            config.ApiUrl = apiUrlEnv;
+        }
+
+        var gatewayUrlEnv = Environment.GetEnvironmentVariable("IpfsConfig__GatewayUrl");
+        if (!string.IsNullOrWhiteSpace(gatewayUrlEnv))
+        {
+            config.GatewayUrl = gatewayUrlEnv;
+        }
+
+        var downloadPathEnv = Environment.GetEnvironmentVariable("IpfsConfig__DownloadPath");
+        if (!string.IsNullOrWhiteSpace(downloadPathEnv))
+        {
+            config.DownloadPath = downloadPathEnv;
+        }
+
         return config;
     }
 

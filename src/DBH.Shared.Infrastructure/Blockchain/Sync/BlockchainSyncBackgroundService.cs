@@ -81,7 +81,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
 
         try
         {
-            using var scope = _scopeFactory.CreateScope();
+            await using var scope = _scopeFactory.CreateAsyncScope();
 
             BlockchainTransactionResult? result;
 
