@@ -64,19 +64,19 @@ public class AuthService : IAuthService
         if (user == null)
         {
             _logger.LogWarning("User not found: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "Invalid email or password." };
+            return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không chính xác." };
         }
 
         if (string.IsNullOrEmpty(user.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
             _logger.LogWarning("Invalid password for user: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "Invalid email or password." };
+            return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không chính xác." };
         }
 
         if (user.Status != Models.Enums.UserStatus.Active)
         {
             _logger.LogWarning("User account is not active: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "User account delete" };
+            return new AuthResponse { Success = false, Message = "Tài khoản đã bị vô hiệu hóa." };
         }
         
         return await GenerateAuthResponseAsync(user);
@@ -87,7 +87,7 @@ public class AuthService : IAuthService
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             _logger.LogWarning("User with this email already exists: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "User with this email already exists." };
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
 
         // Generate RSA/ECC Key Pair
@@ -100,12 +100,6 @@ public class AuthService : IAuthService
             FullName = request.FullName,
             Email = request.Email,
             Phone = request.Phone,
-            Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth.HasValue
-                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
-                : null,
-            Address = request.Address,
-            OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
@@ -160,14 +154,10 @@ public class AuthService : IAuthService
                 return Task.CompletedTask;
             });
 
-        var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
-
         return new AuthResponse
         {
             Success = true,
-            Message = string.IsNullOrEmpty(organizationWarning)
-                ? "User registered successfully."
-                : $"User registered successfully. {organizationWarning}",
+            Message = "Đăng ký tài khoản thành công.",
             UserId = user.UserId,
         };
     }
@@ -176,12 +166,12 @@ public class AuthService : IAuthService
     {
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
-            return new AuthResponse { Success = false, Message = "User with this email already exists." };
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
 
         if (!Enum.TryParse<RoleName>(request.Role, true, out var roleName))
         {
-            return new AuthResponse { Success = false, Message = "Invalid role specified." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
         }
 
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
@@ -239,7 +229,7 @@ public class AuthService : IAuthService
         {
             Success = true,
             Message = string.IsNullOrEmpty(organizationWarning)
-                ? "Admin/User registered successfully with the specified role."
+                ? "Đăng ký tài khoản nhân sự thành công."
                 : $"Admin/User registered successfully with the specified role. {organizationWarning}",
             UserId = user.UserId,
         };
@@ -249,17 +239,17 @@ public class AuthService : IAuthService
     {
         var user = await _userRepository.GetByIdAsync(request.UserId);
         if (user == null)
-            return new AuthResponse { Success = false, Message = "User not found." };
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
 
         if (!Enum.TryParse<RoleName>(request.NewRole, true, out var newRoleEnum))
         {
-            return new AuthResponse { Success = false, Message = "Invalid role specified." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
         }
 
         var newRoleEntity = await _roleRepository.FindAsync(r => r.RoleName == newRoleEnum);
         if (newRoleEntity == null)
         {
-            return new AuthResponse { Success = false, Message = "Role does not exist in the system." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không tồn tại trong hệ thống." };
         }
 
         var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == user.UserId);
@@ -267,7 +257,7 @@ public class AuthService : IAuthService
         {
             if (existingUserRole.RoleId == newRoleEntity.RoleId)
             {
-                return new AuthResponse { Success = true, Message = "User already has the specified role." };
+                return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
             }
             await _userRoleRepository.DeleteAsync(existingUserRole);
             await _userRoleRepository.AddAsync(new UserRole
@@ -287,7 +277,7 @@ public class AuthService : IAuthService
 
         await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
 
-        return new AuthResponse { Success = true, Message = "User role updated successfully." };
+        return new AuthResponse { Success = true, Message = "Cập nhật quyền thành công." };
     }
 
     public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
@@ -298,12 +288,12 @@ public class AuthService : IAuthService
 
         if (savedRefreshToken == null)
         {
-            return new AuthResponse { Success = false, Message = "Invalid refresh token." };
+            return new AuthResponse { Success = false, Message = "Mã xác thực lại (Refresh Token) không hợp lệ." };
         }
         
         var userId = savedRefreshToken.UserId;
         var user = await _userRepository.GetByIdAsync(userId); 
-        if (user == null) return new AuthResponse { Success = false, Message = "User not found." };
+        if (user == null) return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
         
         user = await _userRepository.GetByEmailWithRolesAsync(user.Email!);
         
@@ -397,6 +387,63 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
+    {
+        var user = await _userRepository.GetByIdWithProfileAsync(userId);
+        if (user == null)
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+
+        bool isUpdated = false;
+
+        if (!string.IsNullOrWhiteSpace(request.FullName) && user.FullName != request.FullName)
+        {
+            user.FullName = request.FullName;
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone) && user.Phone != request.Phone)
+        {
+            user.Phone = request.Phone;
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Gender) && user.Gender != request.Gender)
+        {
+            user.Gender = request.Gender;
+            isUpdated = true;
+        }
+
+        if (request.DateOfBirth.HasValue && user.DateOfBirth != request.DateOfBirth.Value)
+        {
+            user.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Address) && user.Address != request.Address)
+        {
+            user.Address = request.Address;
+            isUpdated = true;
+        }
+
+        if (isUpdated)
+        {
+            await _userRepository.UpdateAsync(user);
+
+            // Cập nhật thêm vào Profile Patient nếu User có role Patient
+            if (user.PatientProfile != null && request.DateOfBirth.HasValue)
+            {
+                var patientDob = DateOnly.FromDateTime(request.DateOfBirth.Value);
+                if (user.PatientProfile.Dob != patientDob)
+                {
+                    user.PatientProfile.Dob = patientDob;
+                    await _patientRepository.UpdateAsync(user.PatientProfile);
+                }
+            }
+        }
+
+        return new AuthResponse { Success = true, Message = "Cập nhật hồ sơ cá nhân thành công." };
+    }
+
     public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
     {
         if (patientId.HasValue)
@@ -459,7 +506,7 @@ public class AuthService : IAuthService
             Token = accessToken,
             RefreshToken = refreshToken,
             UserId = user.UserId,
-            Message = "Authentication successful."
+            Message = "Đăng nhập thành công."
         };
     }
 
@@ -575,3 +622,4 @@ public class AuthService : IAuthService
         return null;
     }
 }
+
