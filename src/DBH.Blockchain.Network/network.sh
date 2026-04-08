@@ -268,6 +268,28 @@ function networkUp() {
   fi
 }
 
+function startExplorer() {
+  local explorerScript="${ROOTDIR}/explorer/explorer.sh"
+
+  if [ ! -f "$explorerScript" ]; then
+    warnln "Explorer script not found at ${explorerScript}. Skipping Explorer startup."
+    return 0
+  fi
+
+  infoln "Starting Hyperledger Explorer..."
+  (
+    cd "${ROOTDIR}/explorer"
+    bash ./explorer.sh start
+  )
+
+  if [ $? -ne 0 ]; then
+    warnln "Explorer failed to start. Network is up; run explorer/explorer.sh start manually to retry."
+    return 0
+  fi
+
+  successln "Explorer started successfully"
+}
+
 # Create the channel, join peers, update anchor peers
 function createChannel() {
   bringUpNetwork="false"
@@ -608,6 +630,7 @@ if [ "$MODE" == "up" ]; then
   networkUp
   createChannel
   deployCC
+  startExplorer
 elif [ "$MODE" == "createChannel" ]; then
   if [ "$CHANNEL_MODE" == "multi" ]; then
     infoln "Creating 3 channels: '${CHANNEL_CONSENT}', '${CHANNEL_AUDIT}', '${CHANNEL_EHR_HASH}'."
