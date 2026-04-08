@@ -70,10 +70,31 @@ public class ConsentService : IConsentService
                 var authClient = _httpClientFactory.CreateClient("AuthService");
                 var ehrClient = _httpClientFactory.CreateClient("EhrService"); // Cần lấy record để lấy EncryptedAesKey của patient
 
-                // 1. Lấy patient private key (cần unwrap bằng MasterKey - rủi ro thiết kế nếu flow bắt patient gửi private key raw lên đây, hoặc AuthService có endpoint giải mã)
+                // 1. Resolve PatientId and GranteeId to UserId
+                // PatientId/GranteeId are profile IDs, but Auth /keys requires UserId
+                var patientUserIdRes = await authClient.GetAsync($"api/v1/auth/user-id?patientId={request.PatientId}");
+                var patientUserId = request.PatientId;
+                if (patientUserIdRes.IsSuccessStatusCode)
+                {
+                    var pidJson = await patientUserIdRes.Content.ReadAsStringAsync();
+                    using var pidDoc = JsonDocument.Parse(pidJson);
+                    if (pidDoc.RootElement.TryGetProperty("userId", out var pidEl))
+                        patientUserId = pidEl.GetGuid();
+                }
+
+                var granteeUserId = request.GranteeId;
+                var granteeUserIdRes = await authClient.GetAsync($"api/v1/auth/user-id?doctorId={request.GranteeId}");
+                if (granteeUserIdRes.IsSuccessStatusCode)
+                {
+                    var gidJson = await granteeUserIdRes.Content.ReadAsStringAsync();
+                    using var gidDoc = JsonDocument.Parse(gidJson);
+                    if (gidDoc.RootElement.TryGetProperty("userId", out var gidEl))
+                        granteeUserId = gidEl.GetGuid();
+                }
+
                 // Theo kiến trúc: Auth Service cung cấp EncryptedPrivateKey -> ConsentService có cấu hình MasterKey để decrypt
-                var patientKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
-                var granteeKeyRes = await authClient.GetAsync($"/api/v1/auth/{request.GranteeId}/keys");
+                var patientKeyRes = await authClient.GetAsync($"/api/v1/auth/{patientUserId}/keys");
+                var granteeKeyRes = await authClient.GetAsync($"/api/v1/auth/{granteeUserId}/keys");
 
                 if (patientKeyRes.IsSuccessStatusCode && granteeKeyRes.IsSuccessStatusCode)
                 {
