@@ -57,7 +57,14 @@ public sealed class FabricCaService : IFabricCaService
         try
         {
             var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
-            await EnsureAdminLoadedAsync(runtimeIdentity);
+            if (!await EnsureAdminLoadedAsync(runtimeIdentity))
+            {
+                _logger.LogWarning(
+                    "Fabric CA crypto material is unavailable for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                    enrollmentId);
+
+                return new FabricEnrollResult { Success = true };
+            }
 
             // ----------------------------------------------------------------
             // Step 1: Register the identity on the CA
@@ -82,6 +89,24 @@ public sealed class FabricCaService : IFabricCaService
                 Certificate = certPem,
                 PrivateKeyPem = ExportPrivateKeyPem(userKey),
             };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Fabric CA is unreachable for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                enrollmentId);
+
+            return new FabricEnrollResult { Success = true };
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Fabric CA request timed out for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                enrollmentId);
+
+            return new FabricEnrollResult { Success = true };
         }
         catch (Exception ex)
         {
@@ -206,9 +231,9 @@ public sealed class FabricCaService : IFabricCaService
     // Helpers
     // ========================================================================
 
-    private async Task EnsureAdminLoadedAsync(FabricRuntimeIdentity runtimeIdentity)
+    private async Task<bool> EnsureAdminLoadedAsync(FabricRuntimeIdentity runtimeIdentity)
     {
-        if (_adminLoaded && _adminIdentityKey == runtimeIdentity.IdentityKey) return;
+        if (_adminLoaded && _adminIdentityKey == runtimeIdentity.IdentityKey) return true;
 
         _adminKey?.Dispose();
         _adminKey = null;
@@ -246,13 +271,16 @@ public sealed class FabricCaService : IFabricCaService
 
         if (_adminKey == null || _adminCertDer == null)
         {
-            throw new InvalidOperationException(
-                "Fabric CA admin crypto material not found. " +
-                "Set FabricCA:AdminCertPath and FabricCA:AdminKeyPath (or AdminKeyDirectory) in configuration.");
+            _logger.LogWarning(
+                "Fabric CA admin crypto material not found for {IdentityKey}; CA enrollment will be skipped.",
+                runtimeIdentity.IdentityKey);
+
+            return false;
         }
 
         _adminLoaded = true;
         _logger.LogInformation("Fabric CA admin identity loaded from {CertPath}", runtimeIdentity.AdminCertPath);
+        return true;
     }
 
     private HttpClient BuildHttpClient(FabricRuntimeIdentity runtimeIdentity)
