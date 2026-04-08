@@ -38,7 +38,7 @@ find . -type f -name "*.sh" -exec sed -i 's/\r$//' {} +
 ### Change permission
 
 chmod +x organizations/ccp-generate.sh
-chmod +x scripts/\*.sh
+chmod +x scripts/*.sh
 chmod +x network.sh
 chmod +x explorer/setup.sh
 

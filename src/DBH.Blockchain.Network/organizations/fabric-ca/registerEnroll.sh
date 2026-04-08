@@ -6,6 +6,9 @@
 
 function createHospital1() {
   infoln "Enrolling the CA admin"
+  if [ -e "organizations/peerOrganizations" ] && [ ! -d "organizations/peerOrganizations" ]; then
+    rm -f organizations/peerOrganizations
+  fi
   mkdir -p organizations/peerOrganizations/hospital1.ehr.com/
 
   export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital1.ehr.com/
@@ -95,6 +98,9 @@ function createHospital1() {
 
 function createHospital2() {
   infoln "Enrolling the CA admin"
+  if [ -e "organizations/peerOrganizations" ] && [ ! -d "organizations/peerOrganizations" ]; then
+    rm -f organizations/peerOrganizations
+  fi
   mkdir -p organizations/peerOrganizations/hospital2.ehr.com/
 
   export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital2.ehr.com/
@@ -175,6 +181,9 @@ function createHospital2() {
 
 function createClinic() {
   infoln "Enrolling the CA admin"
+  if [ -e "organizations/peerOrganizations" ] && [ ! -d "organizations/peerOrganizations" ]; then
+    rm -f organizations/peerOrganizations
+  fi
   mkdir -p organizations/peerOrganizations/clinic.ehr.com/
 
   export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/clinic.ehr.com/
@@ -255,6 +264,9 @@ function createClinic() {
 
 function createOrderer() {
   infoln "Enrolling the CA admin"
+  if [ -e "organizations/ordererOrganizations" ] && [ ! -d "organizations/ordererOrganizations" ]; then
+    rm -f organizations/ordererOrganizations
+  fi
   mkdir -p organizations/ordererOrganizations/ehr.com
 
   export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/ordererOrganizations/ehr.com
@@ -323,30 +335,4 @@ function createOrderer() {
   { set +x; } 2>/dev/null
 
   cp "${PWD}/organizations/ordererOrganizations/ehr.com/msp/config.yaml" "${PWD}/organizations/ordererOrganizations/ehr.com/users/Admin@ehr.com/msp/config.yaml"
-}
-
-function syncOrganizationsToCryptoVolume() {
-  : ${CONTAINER_CLI:="docker"}
-  CRYPTO_VOLUME="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
-
-  if [ ! -d "${PWD}/organizations/peerOrganizations" ] || [ ! -d "${PWD}/organizations/ordererOrganizations" ]; then
-    fatalln "organizations/peerOrganizations or organizations/ordererOrganizations not found for volume sync"
-  fi
-
-  infoln "Syncing organizations crypto into Docker volume '${CRYPTO_VOLUME}'"
-  ${CONTAINER_CLI} volume create "${CRYPTO_VOLUME}" >/dev/null
-
-  set -x
-  ${CONTAINER_CLI} run --rm \
-    -v "${PWD}:/workspace" \
-    -v "${CRYPTO_VOLUME}:/crypto" \
-    busybox sh -c 'rm -rf /crypto/peerOrganizations /crypto/ordererOrganizations /crypto/fabric-ca && mkdir -p /crypto && cp -r /workspace/organizations/peerOrganizations /crypto/ && cp -r /workspace/organizations/ordererOrganizations /crypto/ && cp -r /workspace/organizations/fabric-ca /crypto/'
-  res=$?
-  { set +x; } 2>/dev/null
-
-  if [ $res -ne 0 ]; then
-    fatalln "Failed to sync organizations crypto into Docker volume ${CRYPTO_VOLUME}"
-  fi
-
-  infoln "Crypto volume sync complete: ${CRYPTO_VOLUME}"
 }

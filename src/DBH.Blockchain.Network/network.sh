@@ -172,8 +172,8 @@ function cleanupHostOrganizations() {
 
 # Create Organization crypto material using cryptogen or Fabric CA
 function createOrgs() {
-  if [ -d "organizations/peerOrganizations" ]; then
-    rm -Rf organizations/peerOrganizations && rm -Rf organizations/ordererOrganizations
+  if [ -e "organizations/peerOrganizations" ] || [ -e "organizations/ordererOrganizations" ]; then
+    rm -rf organizations/peerOrganizations organizations/ordererOrganizations
   fi
 
   if [ "$CRYPTO" == "cryptogen" ]; then
@@ -229,8 +229,15 @@ function createOrgs() {
     infoln "Waiting for Fabric CA servers to start..."
     sleep 5
 
-    # --- Hospital1 CA readiness (volume-backed) ---
-    waitForAndStageCaCerts "ca_hospital1" "organizations/fabric-ca/hospital1"
+    # --- Hospital1 CA readiness ---
+    while :
+    do
+      if [ ! -f "organizations/fabric-ca/hospital1/tls-cert.pem" ]; then
+        sleep 1
+      else
+        break
+      fi
+    done
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital1.ehr.com/
     COUNTER=0
@@ -248,8 +255,15 @@ function createOrgs() {
     infoln "Creating Hospital1 Identities"
     createHospital1
 
-    # --- Hospital2 CA readiness (volume-backed) ---
-    waitForAndStageCaCerts "ca_hospital2" "organizations/fabric-ca/hospital2"
+    # --- Hospital2 CA readiness ---
+    while :
+    do
+      if [ ! -f "organizations/fabric-ca/hospital2/tls-cert.pem" ]; then
+        sleep 1
+      else
+        break
+      fi
+    done
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital2.ehr.com/
     COUNTER=0
@@ -267,8 +281,15 @@ function createOrgs() {
     infoln "Creating Hospital2 Identities"
     createHospital2
 
-    # --- Clinic CA readiness (volume-backed) ---
-    waitForAndStageCaCerts "ca_clinic" "organizations/fabric-ca/clinic"
+    # --- Clinic CA readiness ---
+    while :
+    do
+      if [ ! -f "organizations/fabric-ca/clinic/tls-cert.pem" ]; then
+        sleep 1
+      else
+        break
+      fi
+    done
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/clinic.ehr.com/
     COUNTER=0
@@ -286,8 +307,15 @@ function createOrgs() {
     infoln "Creating Clinic Identities"
     createClinic
 
-    # --- Orderer CA readiness (volume-backed) ---
-    waitForAndStageCaCerts "ca_orderer" "organizations/fabric-ca/ordererOrg"
+    # --- Orderer CA readiness ---
+    while :
+    do
+      if [ ! -f "organizations/fabric-ca/ordererOrg/tls-cert.pem" ]; then
+        sleep 1
+      else
+        break
+      fi
+    done
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/ordererOrganizations/ehr.com/
     COUNTER=0
@@ -304,9 +332,6 @@ function createOrgs() {
 
     infoln "Creating Orderer Org Identities"
     createOrderer
-
-    infoln "Syncing generated organizations crypto to docker volume for consumers (Explorer, tools)"
-    syncOrganizationsToCryptoVolume
 
   else
     fatalln "Unknown crypto mode: $CRYPTO. Use 'cryptogen' or 'CA'"
@@ -327,9 +352,6 @@ function networkUp() {
   infoln "Finish Generating CCP files"
 
   COMPOSE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE} "
-  if [ "$CRYPTO" == "CA" ]; then
-    COMPOSE_FILES="${COMPOSE_FILES} -f compose/${COMPOSE_FILE_CA}"
-  fi
   
   if [ "${DATABASE}" == "couchdb" ]; then
     COMPOSE_FILES="${COMPOSE_FILES} -f compose/${COMPOSE_FILE_COUCH}"
@@ -347,8 +369,6 @@ function networkUp() {
 function createChannel() {
   bringUpNetwork="false"
 
-  ensureOrganizationsOnHost
-
   if ! $CONTAINER_CLI info > /dev/null 2>&1 ; then
     fatalln "$CONTAINER_CLI network is required to be running to create a channel"
   fi
@@ -358,7 +378,8 @@ function createChannel() {
   len=$(echo ${#CONTAINERS[@]})
 
   if [[ $len -ge 4 ]] && [[ ! -d "organizations/peerOrganizations" ]]; then
-    ensureOrganizationsOnHost
+    echo "Bringing network down to sync certs with containers"
+    networkDown
   fi
 
   [[ $len -lt 4 ]] || [[ ! -d "organizations/peerOrganizations" ]] && bringUpNetwork="true" || echo "Network Running Already"
@@ -383,8 +404,6 @@ function createChannel() {
 
 ## Call the script to deploy a chaincode to the channel
 function deployCC() {
-  ensureOrganizationsOnHost
-
   if [ "$CHANNEL_MODE" == "multi" ]; then
     infoln "Multi-channel mode: deploying channel-specific chaincodes"
 
@@ -459,19 +478,6 @@ function queryChaincode() {
   chaincodeQuery $ORG $CHANNEL_NAME $CC_NAME $CC_QUERY_CONSTRUCTOR
 }
 
-function startExplorer() {
-  local explorer_dir="${PWD}/explorer"
-  if [ ! -d "$explorer_dir" ] || [ ! -f "${explorer_dir}/explorer.sh" ]; then
-    fatalln "Explorer helper not found at ${explorer_dir}/explorer.sh"
-  fi
-
-  infoln "Starting Hyperledger Explorer stack"
-  (cd "$explorer_dir" && bash ./explorer.sh start)
-  if [ $? -ne 0 ]; then
-    fatalln "Failed to start Explorer stack"
-  fi
-}
-
 
 # Tear down running network
 function networkDown() {
@@ -479,7 +485,6 @@ function networkDown() {
   COMPOSE_COUCH_FILES="-f compose/${COMPOSE_FILE_COUCH}"
   COMPOSE_CA_FILES="-f compose/${COMPOSE_FILE_CA}"
   COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES} ${COMPOSE_CA_FILES}"
-  CRYPTO_VOLUME="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
 
   if [ "${CONTAINER_CLI}" == "docker" ]; then
     DOCKER_SOCK=$DOCKER_SOCK ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} down --volumes --remove-orphans
@@ -488,8 +493,6 @@ function networkDown() {
   else
     fatalln "Container CLI ${CONTAINER_CLI} not supported"
   fi
-
-  ${CONTAINER_CLI} volume rm -f "${CRYPTO_VOLUME}" 2>/dev/null || true
 
   # Don't remove the generated artifacts -- note, the ledgers are always removed
   if [ "$MODE" != "restart" ]; then
@@ -516,7 +519,7 @@ function printHelp() {
   println "Usage: "
   println "  network.sh <Mode> [Flags]"
   println "    Modes:"
-  println "      up - Full bootstrap: start CA + nodes, create 3 channels, deploy per-channel chaincodes, start Explorer."
+  println "      up - Bring up Fabric orderer and peer nodes."
   println "      down - Bring down the network."
   println "      restart - Restart the network."
   println "      createChannel - Create and join a channel."
@@ -700,15 +703,14 @@ fi
 # Determine mode of operation and printing out what we asked for
 if [ "$MODE" == "up" ]; then
   CRYPTO="CA"
+  DATABASE="couchdb"
   CHANNEL_MODE="multi"
   infoln "Starting nodes with CLI timeout of '${MAX_RETRY}' tries and CLI delay of '${CLI_DELAY}' seconds and using database '${DATABASE}' ${CRYPTO_MODE}"
   infoln "Channel mode: ${CHANNEL_MODE}"
-  infoln "Auto bootstrap enabled for 'up': CA startup + 3 channels + per-channel chaincode deployment + Explorer"
+  infoln "Auto bootstrap enabled for 'up': CA startup + 3 channels + per-channel chaincode deployment"
   networkUp
   createChannel
   deployCC
-  startExplorer
-  cleanupHostOrganizations
 elif [ "$MODE" == "createChannel" ]; then
   if [ "$CHANNEL_MODE" == "multi" ]; then
     infoln "Creating 3 channels: '${CHANNEL_CONSENT}', '${CHANNEL_AUDIT}', '${CHANNEL_EHR_HASH}'."

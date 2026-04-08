@@ -12,7 +12,7 @@ export EXPLORER_CONFIG_FILE_PATH="${WIN_SCRIPT_DIR}/config.json"
 export EXPLORER_PROFILE_DIR_PATH="${WIN_SCRIPT_DIR}/connection-profile"
 
 run_setup() {
-  echo "[explorer] Validating crypto volume and refreshing connection profile key path..."
+  echo "[explorer] Syncing crypto copy and connection profile..."
   bash ./setup.sh
 }
 
@@ -21,8 +21,8 @@ usage() {
 Usage: ./explorer.sh [action]
 
 Actions:
-  start   Validate crypto volume/profile and start explorer stack (default)
-  reset   Validate crypto volume/profile, recreate stack, clear wallet/db volumes
+  start   Sync crypto/profile and start explorer stack (default)
+  reset   Sync crypto/profile, recreate stack, clear wallet/db volumes
   status  Show docker compose status
   logs    Tail explorer service logs
   down    Stop explorer stack
