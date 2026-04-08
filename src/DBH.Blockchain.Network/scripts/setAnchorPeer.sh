@@ -7,13 +7,14 @@
 
 # import utils
 EHR_NETWORK_HOME=${EHR_NETWORK_HOME:-${PWD}}
+WIN_EHR_NETWORK_HOME=${WIN_PWD:-${PWD}}
 . ${EHR_NETWORK_HOME}/scripts/configUpdate.sh
 
 
 # NOTE: This requires jq and configtxlator for execution.
 createAnchorPeerUpdate() {
   infoln "Fetching channel config for channel $CHANNEL_NAME"
-  fetchChannelConfig $ORG $CHANNEL_NAME ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json
+  fetchChannelConfig $ORG $CHANNEL_NAME ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json
 
   infoln "Generating anchor peer update transaction for Org${ORG} on channel $CHANNEL_NAME"
 
@@ -31,16 +32,16 @@ createAnchorPeerUpdate() {
   fi
 
   set -x
-  jq '.channel_group.groups.Application.groups.'${CORE_PEER_LOCALMSPID}'.values += {"AnchorPeers":{"mod_policy": "Admins","value":{"anchor_peers": [{"host": "'$HOST'","port": '$PORT'}]},"version": "0"}}' ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json > ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json
+  jq '.channel_group.groups.Application.groups.'${CORE_PEER_LOCALMSPID}'.values += {"AnchorPeers":{"mod_policy": "Admins","value":{"anchor_peers": [{"host": "'$HOST'","port": '$PORT'}]},"version": "0"}}' ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json > ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json
   res=$?
   { set +x; } 2>/dev/null
   verifyResult $res "Channel configuration update for anchor peer failed, make sure you have jq installed"
 
-  createConfigUpdate ${CHANNEL_NAME} ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}anchors.tx
+  createConfigUpdate ${CHANNEL_NAME} ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}anchors.tx
 }
 
 updateAnchorPeer() {
-  peer channel update -o localhost:7050 --ordererTLSHostnameOverride orderer.ehr.com -c $CHANNEL_NAME -f ${EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}anchors.tx --tls --cafile "$ORDERER_CA" >&log.txt
+  peer channel update -o localhost:7050 --ordererTLSHostnameOverride orderer.ehr.com -c $CHANNEL_NAME -f ${WIN_EHR_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}anchors.tx --tls --cafile "$ORDERER_CA" >&log.txt
   res=$?
   cat log.txt
   verifyResult $res "Anchor peer update failed"
