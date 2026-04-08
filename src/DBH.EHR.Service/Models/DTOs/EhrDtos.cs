@@ -101,3 +101,36 @@ public class EhrVersionDetailDto
     public string? IpfsCid { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+public class EncryptIpfsPayloadRequestDto
+{
+    [Required]
+    public string Data { get; set; } = string.Empty;
+}
+
+public class EncryptIpfsPayloadResponseDto
+{
+    public string IpfsCid { get; set; } = string.Empty;
+    public string WrappedAesKey { get; set; } = string.Empty;
+    public string DataHash { get; set; } = string.Empty;
+}
+
+public class DecryptIpfsPayloadRequestDto
+{
+    [Required]
+    public string IpfsCid { get; set; } = string.Empty;
+
+    [Required]
+    public string WrappedAesKey { get; set; } = string.Empty;
+}
+
+public class DecryptIpfsPayloadResponseDto
+{
+    public string Data { get; set; } = string.Empty;
+}
+
+public class IpfsRawDownloadResponseDto
+{
+    public string IpfsCid { get; set; } = string.Empty;
+    public string EncryptedData { get; set; } = string.Empty;
+}

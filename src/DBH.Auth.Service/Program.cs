@@ -73,9 +73,9 @@
             client.Timeout = TimeSpan.FromSeconds(10);
         });
 
-    // Fabric CA enrollment (singleton because it caches admin crypto material)
+    // Fabric CA enrollment uses request-scoped org context for identity selection.
     builder.Services.Configure<FabricCaOptions>(builder.Configuration.GetSection(FabricCaOptions.SectionName));
-    builder.Services.AddSingleton<IFabricCaService, FabricCaService>();
+    builder.Services.AddScoped<IFabricCaService, FabricCaService>();
     builder.Services.AddHyperledgerFabric(builder.Configuration);
 
     // JWT Authentication Configuration

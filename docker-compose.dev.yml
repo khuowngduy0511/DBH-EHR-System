@@ -37,6 +37,8 @@ services:
         - action: rebuild
           path: ./src/DBH.Gateway
         - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
           path: ./src/DBH.Gateway/Dockerfile
 
   # ============================================================================
@@ -54,11 +56,20 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5101
       - ConnectionStrings__PostgreSQL=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+      - ServiceUrls__OrganizationService=http://organization_service:5002
+      - FabricCA__CaUrl=https://ca_hospital1:7054
+      - FabricCA__CaName=ca-hospital1
+      - FabricCA__AdminCertPath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
+      - FabricCA__AdminKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
+      - FabricCA__TlsCertPath=/tmp/fabric-crypto/fabric-ca/hospital1/ca-cert.pem
     depends_on:
       pg_primary:
         condition: service_healthy
     networks:
       - dbh_network
+      - fabric_ehr
+    volumes:
+      - fabric-crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5101/health"]
       interval: 30s
@@ -128,6 +139,14 @@ services:
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__ConsentService=http://consent_service:5004
       - ServiceUrls__NotificationService=http://notification_service:5006
+      - HyperledgerFabric__Enabled=true
+      - HyperledgerFabric__SimulationMode=false
+      - HyperledgerFabric__PeerEndpoint=peer0.hospital1.ehr.com:7051
+      - HyperledgerFabric__GatewayPeerOverride=peer0.hospital1.ehr.com
+      - HyperledgerFabric__MspId=Hospital1MSP
+      - HyperledgerFabric__CertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
+      - HyperledgerFabric__PrivateKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
+      - HyperledgerFabric__TlsCertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -135,6 +154,9 @@ services:
         condition: service_started
     networks:
       - dbh_network
+      - fabric_ehr
+    volumes:
+      - fabric-crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
       interval: 30s
@@ -167,11 +189,22 @@ services:
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__EhrService=http://ehr_service:5003
       - ServiceUrls__NotificationService=http://notification_service:5006
+      - HyperledgerFabric__Enabled=true
+      - HyperledgerFabric__SimulationMode=false
+      - HyperledgerFabric__PeerEndpoint=peer0.hospital1.ehr.com:7051
+      - HyperledgerFabric__GatewayPeerOverride=peer0.hospital1.ehr.com
+      - HyperledgerFabric__MspId=Hospital1MSP
+      - HyperledgerFabric__CertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
+      - HyperledgerFabric__PrivateKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
+      - HyperledgerFabric__TlsCertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt
     depends_on:
       pg_primary:
         condition: service_healthy
     networks:
       - dbh_network
+      - fabric_ehr
+    volumes:
+      - fabric-crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
       interval: 30s
@@ -201,11 +234,22 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5005
       - ConnectionStrings__AuditDb=Host=pg_primary;Port=5432;Database=dbh_audit;Username=admin;Password=dbh_123
+      - HyperledgerFabric__Enabled=true
+      - HyperledgerFabric__SimulationMode=false
+      - HyperledgerFabric__PeerEndpoint=peer0.hospital1.ehr.com:7051
+      - HyperledgerFabric__GatewayPeerOverride=peer0.hospital1.ehr.com
+      - HyperledgerFabric__MspId=Hospital1MSP
+      - HyperledgerFabric__CertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
+      - HyperledgerFabric__PrivateKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
+      - HyperledgerFabric__TlsCertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt
     depends_on:
       pg_primary:
         condition: service_healthy
     networks:
       - dbh_network
+      - fabric_ehr
+    volumes:
+      - fabric-crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
       interval: 30s
@@ -403,7 +447,12 @@ volumes:
   ipfs_staging:
   rabbitmq_data:
   redis_data:
+  fabric-crypto:
+    external: true
+    name: fabric-crypto
 
 networks:
   dbh_network:
     driver: bridge
+  fabric_ehr:
+    external: true

@@ -202,15 +202,19 @@ public static class InfrastructureServiceExtensions
 
         services.Configure<FabricOptions>(options => fabricSection.Bind(options));
         services.Configure<RabbitMQOptions>(options => rabbitSection.Bind(options));
+        services.Configure<FabricCaOptions>(options => configuration.GetSection(FabricCaOptions.SectionName).Bind(options));
 
+        services.AddHttpContextAccessor();
+        services.AddHttpClient();
+        services.AddScoped<IFabricRuntimeIdentityResolver, FabricRuntimeIdentityResolver>();
         services.AddSingleton<BlockchainSyncQueue>();
         services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
         services.AddHostedService<BlockchainSyncBackgroundService>();
 
         if (fabricOptions.Enabled)
         {
-            // Fabric Gateway client (singleton - manages gRPC connection)
-            services.AddSingleton<IFabricGateway, FabricGatewayClient>();
+            // Scoped gateway avoids cross-request identity leakage when switching org context.
+            services.AddScoped<IFabricGateway, FabricGatewayClient>();
 
             // Blockchain service implementations
             services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();

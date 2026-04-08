@@ -23,16 +23,22 @@ namespace DBH.Shared.Infrastructure.Blockchain;
 public sealed class FabricCaService : IFabricCaService
 {
     private readonly FabricCaOptions _options;
+    private readonly IFabricRuntimeIdentityResolver _identityResolver;
     private readonly ILogger<FabricCaService> _logger;
 
     // Loaded lazily / once
     private ECDsa? _adminKey;
     private byte[]? _adminCertDer;   // DER bytes of the admin PEM certificate
     private bool _adminLoaded;
+    private string? _adminIdentityKey;
 
-    public FabricCaService(IOptions<FabricCaOptions> options, ILogger<FabricCaService> logger)
+    public FabricCaService(
+        IOptions<FabricCaOptions> options,
+        IFabricRuntimeIdentityResolver identityResolver,
+        ILogger<FabricCaService> logger)
     {
         _options = options.Value;
+        _identityResolver = identityResolver;
         _logger = logger;
     }
 
@@ -50,20 +56,21 @@ public sealed class FabricCaService : IFabricCaService
 
         try
         {
-            await EnsureAdminLoadedAsync();
+            var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+            await EnsureAdminLoadedAsync(runtimeIdentity);
 
             // ----------------------------------------------------------------
             // Step 1: Register the identity on the CA
             // ----------------------------------------------------------------
             var secret = GenerateSecret();
-            await RegisterAsync(enrollmentId, username, role, secret);
+            await RegisterAsync(runtimeIdentity, enrollmentId, username, role, secret);
 
             // ----------------------------------------------------------------
             // Step 2: Generate a local EC key + CSR, then enroll
             // ----------------------------------------------------------------
             using var userKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var csrPem = CreateCsrPem(enrollmentId, userKey);
-            var certPem = await DoEnrollAsync(enrollmentId, secret, csrPem);
+            var certPem = await DoEnrollAsync(runtimeIdentity, enrollmentId, secret, csrPem);
 
             _logger.LogInformation(
                 "Fabric CA enrollment succeeded for identity {EnrollmentId} (role={Role})",
@@ -87,29 +94,29 @@ public sealed class FabricCaService : IFabricCaService
     // Register (POST /api/v1/register)
     // ========================================================================
 
-    private async Task RegisterAsync(string enrollmentId, string username, string role, string secret)
+    private async Task RegisterAsync(FabricRuntimeIdentity runtimeIdentity, string enrollmentId, string username, string role, string secret)
     {
         var body = JsonConvert.SerializeObject(new
         {
             id = enrollmentId,
             type = "client",
             secret,
-            affiliation = _options.DefaultAffiliation,
+            affiliation = runtimeIdentity.DefaultAffiliation,
             attrs = new[]
             {
                 new { name = "username", value = username, ecert = true },
                 new { name = "role",     value = role,     ecert = true },
                 new { name = "ou",       value = role,     ecert = true },
             },
-            caname = _options.CaName,
+            caname = runtimeIdentity.CaName,
         });
 
         var bodyBytes = Encoding.UTF8.GetBytes(body);
-        var token = BuildAuthToken("POST", "/api/v1/register", bodyBytes);
+        var token = BuildAuthToken(runtimeIdentity, "POST", "/api/v1/register", bodyBytes);
 
-        using var http = BuildHttpClient();
+        using var http = BuildHttpClient(runtimeIdentity);
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            $"{_options.CaUrl.TrimEnd('/')}/api/v1/register");
+            $"{runtimeIdentity.CaUrl.TrimEnd('/')}/api/v1/register");
 
         request.Headers.Add("Authorization", token);
         request.Content = new ByteArrayContent(bodyBytes);
@@ -131,17 +138,17 @@ public sealed class FabricCaService : IFabricCaService
     // Enroll (POST /api/v1/enroll)
     // ========================================================================
 
-    private async Task<string> DoEnrollAsync(string enrollmentId, string secret, string csrPem)
+    private async Task<string> DoEnrollAsync(FabricRuntimeIdentity runtimeIdentity, string enrollmentId, string secret, string csrPem)
     {
         var body = JsonConvert.SerializeObject(new
         {
             signingRequest = csrPem,
-            caname = _options.CaName,
+            caname = runtimeIdentity.CaName,
         });
 
-        using var http = BuildHttpClient();
+        using var http = BuildHttpClient(runtimeIdentity);
         using var request = new HttpRequestMessage(HttpMethod.Post,
-            $"{_options.CaUrl.TrimEnd('/')}/api/v1/enroll");
+            $"{runtimeIdentity.CaUrl.TrimEnd('/')}/api/v1/enroll");
 
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{enrollmentId}:{secret}"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
@@ -177,14 +184,14 @@ public sealed class FabricCaService : IFabricCaService
     // Matches fabric-ca-client lib/client.go GenTokenAuthority
     // ========================================================================
 
-    private string BuildAuthToken(string method, string urlPath, byte[] bodyBytes)
+    private string BuildAuthToken(FabricRuntimeIdentity runtimeIdentity, string method, string urlPath, byte[] bodyBytes)
     {
         if (_adminCertDer == null || _adminKey == null)
             throw new InvalidOperationException("Admin crypto material not loaded.");
 
         var b64body = Convert.ToBase64String(bodyBytes);
         var b64url = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes($"{_options.CaUrl.TrimEnd('/')}{urlPath}"));
+            Encoding.UTF8.GetBytes($"{runtimeIdentity.CaUrl.TrimEnd('/')}{urlPath}"));
 
         var sigPayload = $"{method}.{b64url}.{b64body}";
         var digest = SHA256.HashData(Encoding.UTF8.GetBytes(sigPayload));
@@ -199,23 +206,29 @@ public sealed class FabricCaService : IFabricCaService
     // Helpers
     // ========================================================================
 
-    private async Task EnsureAdminLoadedAsync()
+    private async Task EnsureAdminLoadedAsync(FabricRuntimeIdentity runtimeIdentity)
     {
-        if (_adminLoaded) return;
+        if (_adminLoaded && _adminIdentityKey == runtimeIdentity.IdentityKey) return;
+
+        _adminKey?.Dispose();
+        _adminKey = null;
+        _adminCertDer = null;
+        _adminLoaded = false;
+        _adminIdentityKey = runtimeIdentity.IdentityKey;
 
         // Load admin private key
-        if (!string.IsNullOrEmpty(_options.AdminKeyPath) && File.Exists(_options.AdminKeyPath))
+        if (!string.IsNullOrEmpty(runtimeIdentity.AdminKeyPath) && File.Exists(runtimeIdentity.AdminKeyPath))
         {
-            var pem = await File.ReadAllTextAsync(_options.AdminKeyPath);
+            var pem = await File.ReadAllTextAsync(runtimeIdentity.AdminKeyPath);
             _adminKey = ECDsa.Create();
             _adminKey.ImportFromPem(pem);
         }
-        else if (!string.IsNullOrEmpty(_options.AdminKeyDirectory) &&
-                 Directory.Exists(_options.AdminKeyDirectory))
+        else if (!string.IsNullOrEmpty(runtimeIdentity.AdminKeyDirectory) &&
+                 Directory.Exists(runtimeIdentity.AdminKeyDirectory))
         {
-            var files = Directory.GetFiles(_options.AdminKeyDirectory, "*_sk");
+            var files = Directory.GetFiles(runtimeIdentity.AdminKeyDirectory, "*_sk");
             if (files.Length == 0)
-                files = Directory.GetFiles(_options.AdminKeyDirectory, "*.pem");
+                files = Directory.GetFiles(runtimeIdentity.AdminKeyDirectory, "*.pem");
             if (files.Length > 0)
             {
                 var pem = await File.ReadAllTextAsync(files[0]);
@@ -225,9 +238,9 @@ public sealed class FabricCaService : IFabricCaService
         }
 
         // Load admin certificate (DER bytes extracted from PEM)
-        if (!string.IsNullOrEmpty(_options.AdminCertPath) && File.Exists(_options.AdminCertPath))
+        if (!string.IsNullOrEmpty(runtimeIdentity.AdminCertPath) && File.Exists(runtimeIdentity.AdminCertPath))
         {
-            var certPem = await File.ReadAllTextAsync(_options.AdminCertPath);
+            var certPem = await File.ReadAllTextAsync(runtimeIdentity.AdminCertPath);
             _adminCertDer = ExtractDerFromPem(certPem, "CERTIFICATE");
         }
 
@@ -239,16 +252,16 @@ public sealed class FabricCaService : IFabricCaService
         }
 
         _adminLoaded = true;
-        _logger.LogInformation("Fabric CA admin identity loaded from {CertPath}", _options.AdminCertPath);
+        _logger.LogInformation("Fabric CA admin identity loaded from {CertPath}", runtimeIdentity.AdminCertPath);
     }
 
-    private HttpClient BuildHttpClient()
+    private HttpClient BuildHttpClient(FabricRuntimeIdentity runtimeIdentity)
     {
         HttpClientHandler handler;
 
-        if (!string.IsNullOrEmpty(_options.TlsCertPath) && File.Exists(_options.TlsCertPath))
+        if (!string.IsNullOrEmpty(runtimeIdentity.TlsCaCertPath) && File.Exists(runtimeIdentity.TlsCaCertPath))
         {
-            var caCert = new X509Certificate2(_options.TlsCertPath);
+            var caCert = new X509Certificate2(runtimeIdentity.TlsCaCertPath);
             handler = new HttpClientHandler();
             handler.ServerCertificateCustomValidationCallback = (_, cert, chain, _) =>
             {

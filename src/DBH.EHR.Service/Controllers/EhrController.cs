@@ -126,6 +126,108 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy EHR Document theo user đăng nhập hiện tại (không cần X-Requester-Id)
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/document/self")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetEhrDocumentForCurrentUser(Guid ehrId)
+    {
+        var (decryptedData, forbidden, message) = await _ehrService.GetEhrDocumentForCurrentUserAsync(ehrId);
+
+        if (forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
+
+        if (string.IsNullOrEmpty(decryptedData))
+            return NotFound(new { Message = message ?? $"EHR Document {ehrId} not found or extraction failed" });
+
+        return Content(decryptedData, "application/json");
+    }
+
+    /// <summary>
+    /// Tải raw encrypted payload từ IPFS CID
+    /// </summary>
+    [HttpGet("ipfs/{cid}/download")]
+    [ProducesResponseType(typeof(IpfsRawDownloadResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IpfsRawDownloadResponseDto>> DownloadIpfsRaw(string cid)
+    {
+        var encryptedData = await _ehrService.DownloadIpfsRawAsync(cid);
+        if (string.IsNullOrWhiteSpace(encryptedData))
+        {
+            return NotFound(new { Message = "IPFS payload not found" });
+        }
+
+        return Ok(new IpfsRawDownloadResponseDto
+        {
+            IpfsCid = cid,
+            EncryptedData = encryptedData
+        });
+    }
+
+    /// <summary>
+    /// Tải raw encrypted payload từ IPFS theo ehrId (version mới nhất)
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/ipfs/download")]
+    [ProducesResponseType(typeof(IpfsRawDownloadResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IpfsRawDownloadResponseDto>> DownloadLatestIpfsRawByEhrId(Guid ehrId)
+    {
+        var result = await _ehrService.DownloadLatestIpfsRawByEhrIdAsync(ehrId);
+        if (result == null)
+        {
+            return NotFound(new { Message = "EHR/IPFS payload not found for this ehrId" });
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Mã hóa payload và upload lên IPFS bằng key của user đăng nhập
+    /// </summary>
+    [HttpPost("ipfs/encrypt")]
+    [ProducesResponseType(typeof(EncryptIpfsPayloadResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<EncryptIpfsPayloadResponseDto>> EncryptToIpfs([FromBody] EncryptIpfsPayloadRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var result = await _ehrService.EncryptToIpfsForCurrentUserAsync(request);
+        if (result == null)
+        {
+            return BadRequest(new { Message = "Failed to encrypt payload for current user" });
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Giải mã payload IPFS bằng key của user đăng nhập
+    /// </summary>
+    [HttpPost("ipfs/decrypt")]
+    [ProducesResponseType(typeof(DecryptIpfsPayloadResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<DecryptIpfsPayloadResponseDto>> DecryptFromIpfs([FromBody] DecryptIpfsPayloadRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var decrypted = await _ehrService.DecryptIpfsForCurrentUserAsync(request);
+        if (string.IsNullOrWhiteSpace(decrypted))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Decrypt failed. Ensure the wrapped key belongs to current user." });
+        }
+
+        return Ok(new DecryptIpfsPayloadResponseDto { Data = decrypted });
+    }
+
+    /// <summary>
     /// Lấy EHR của bệnh nhân
     /// </summary>
     [HttpGet("records/patient/{patientId:guid}")]

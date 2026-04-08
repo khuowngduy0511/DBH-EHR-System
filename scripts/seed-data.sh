@@ -121,9 +121,55 @@ api_call "POST" "$AUTH/login" "$(jq -n --arg email "admin@dbh.vn" --arg password
 admin_token="$(json_get "$API_BODY" '.token')"
 
 # =============================================================================
-# 2. Register Patients (5 patients)
+# 2. Organizations (2 hospitals, 1 clinic)
 # =============================================================================
-printf '\n--- 2. Patients ---\n'
+printf '\n--- 2. Organizations ---\n'
+
+orgs=(
+  "Benh vien Da khoa Trung uong|BVDKTU|HOSPITAL|BV-HCM-001|0301234567|{\"line\":[\"215 Hong Bang\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 5\",\"country\":\"VN\"}|{\"phone\":\"028-3855-4269\",\"email\":\"contact@bvdktu.vn\"}|https://bvdktu.vn"
+  "Benh vien Nhi Dong 1|BVND1|HOSPITAL|BV-HCM-002|0301234568|{\"line\":[\"341 Su Van Hanh\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 10\",\"country\":\"VN\"}|{\"phone\":\"028-3927-1119\",\"email\":\"contact@bvnd1.vn\"}|https://bvnd1.vn"
+  "Phong kham Da lieu Sai Gon|PKDLSG|CLINIC|PK-HCM-001|0301234569|{\"line\":[\"123 Nguyen Hue\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 1\",\"country\":\"VN\"}|{\"phone\":\"028-3821-0000\",\"email\":\"contact@pkdlsg.vn\"}|https://pkdlsg.vn"
+)
+
+org_ids=()
+org_names=()
+
+for o in "${orgs[@]}"; do
+  IFS='|' read -r org_name org_code org_type license tax_id address contact website <<< "$o"
+
+  body="$(jq -n \
+    --arg orgName "$org_name" \
+    --arg orgCode "$org_code" \
+    --arg orgType "$org_type" \
+    --arg licenseNumber "$license" \
+    --arg taxId "$tax_id" \
+    --arg address "$address" \
+    --arg contactInfo "$contact" \
+    --arg website "$website" \
+    '{orgName:$orgName,orgCode:$orgCode,orgType:$orgType,licenseNumber:$licenseNumber,taxId:$taxId,address:$address,contactInfo:$contactInfo,website:$website}')"
+
+  api_call "POST" "$ORG" "$body" "$admin_token"
+  org_id="$(json_get "$API_BODY" '.data.orgId // .orgId')"
+
+  org_ids+=("$org_id")
+  org_names+=("$org_name")
+
+  printf '  Org: %s | orgId=%s\n' "$org_name" "$org_id"
+done
+
+for i in "${!org_ids[@]}"; do
+  if [[ -n "${org_ids[$i]}" ]]; then
+    api_call "POST" "$ORG/${org_ids[$i]}/verify?verifiedByUserId=$admin_user_id" "" "$admin_token"
+    printf '  Verified: %s\n' "${org_names[$i]}"
+  fi
+done
+
+hospital_org_id="${org_ids[0]}"
+
+# =============================================================================
+# 3. Register Patients (5 patients)
+# =============================================================================
+printf '\n--- 3. Patients ---\n'
 
 patients=(
   "Nguyen Van An|patient.an@dbh.vn|0912000001|1990-05-15|A+"
@@ -169,9 +215,9 @@ for p in "${patients[@]}"; do
 done
 
 # =============================================================================
-# 3. Register Doctors (4 doctors, different specialties)
+# 4. Register Doctors (4 doctors, different specialties)
 # =============================================================================
-printf '\n--- 3. Doctors ---\n'
+printf '\n--- 4. Doctors ---\n'
 
 doctors=(
   "BS. Tran Minh Hieu|dr.hieu@dbh.vn|0913000001|Noi khoa|VN-DOC-001"
@@ -196,8 +242,9 @@ for d in "${doctors[@]}"; do
     --arg email "$email" \
     --arg password "Doctor@123" \
     --arg phone "$phone" \
+    --arg organizationId "$hospital_org_id" \
     --arg role "Doctor" \
-    '{fullName:$fullName,email:$email,password:$password,phone:$phone,role:$role}')" "$admin_token"
+    '{fullName:$fullName,email:$email,password:$password,phone:$phone,organizationId:$organizationId,role:$role}')" "$admin_token"
 
   api_call "POST" "$AUTH/login" "$(jq -n --arg email "$email" --arg password "Doctor@123" '{email:$email,password:$password}')"
   token="$(json_get "$API_BODY" '.token')"
@@ -219,9 +266,9 @@ for d in "${doctors[@]}"; do
 done
 
 # =============================================================================
-# 4. Register Staff (2 nurses, 1 receptionist, 1 pharmacist)
+# 5. Register Staff (2 nurses, 1 receptionist, 1 pharmacist)
 # =============================================================================
-printf '\n--- 4. Staff ---\n'
+printf '\n--- 5. Staff ---\n'
 
 staffs=(
   "DD. Vo Thi Hoa|nurse.hoa@dbh.vn|0914000001|Nurse"
@@ -242,8 +289,9 @@ for s in "${staffs[@]}"; do
     --arg email "$email" \
     --arg password "Staff@123" \
     --arg phone "$phone" \
+    --arg organizationId "$hospital_org_id" \
     --arg role "$role" \
-    '{fullName:$fullName,email:$email,password:$password,phone:$phone,role:$role}')" "$admin_token"
+    '{fullName:$fullName,email:$email,password:$password,phone:$phone,organizationId:$organizationId,role:$role}')" "$admin_token"
 
   api_call "POST" "$AUTH/login" "$(jq -n --arg email "$email" --arg password "Staff@123" '{email:$email,password:$password}')"
   token="$(json_get "$API_BODY" '.token')"
@@ -259,55 +307,9 @@ for s in "${staffs[@]}"; do
 done
 
 # =============================================================================
-# 5. Organizations (2 hospitals, 1 clinic)
-# =============================================================================
-printf '\n--- 5. Organizations ---\n'
-
-orgs=(
-  "Benh vien Da khoa Trung uong|BVDKTU|HOSPITAL|BV-HCM-001|0301234567|{\"line\":[\"215 Hong Bang\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 5\",\"country\":\"VN\"}|{\"phone\":\"028-3855-4269\",\"email\":\"contact@bvdktu.vn\"}|https://bvdktu.vn"
-  "Benh vien Nhi Dong 1|BVND1|HOSPITAL|BV-HCM-002|0301234568|{\"line\":[\"341 Su Van Hanh\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 10\",\"country\":\"VN\"}|{\"phone\":\"028-3927-1119\",\"email\":\"contact@bvnd1.vn\"}|https://bvnd1.vn"
-  "Phong kham Da lieu Sai Gon|PKDLSG|CLINIC|PK-HCM-001|0301234569|{\"line\":[\"123 Nguyen Hue\"],\"city\":\"Ho Chi Minh\",\"district\":\"Quan 1\",\"country\":\"VN\"}|{\"phone\":\"028-3821-0000\",\"email\":\"contact@pkdlsg.vn\"}|https://pkdlsg.vn"
-)
-
-org_ids=()
-org_names=()
-
-for o in "${orgs[@]}"; do
-  IFS='|' read -r org_name org_code org_type license tax_id address contact website <<< "$o"
-
-  body="$(jq -n \
-    --arg orgName "$org_name" \
-    --arg orgCode "$org_code" \
-    --arg orgType "$org_type" \
-    --arg licenseNumber "$license" \
-    --arg taxId "$tax_id" \
-    --arg address "$address" \
-    --arg contactInfo "$contact" \
-    --arg website "$website" \
-    '{orgName:$orgName,orgCode:$orgCode,orgType:$orgType,licenseNumber:$licenseNumber,taxId:$taxId,address:$address,contactInfo:$contactInfo,website:$website}')"
-
-  api_call "POST" "$ORG" "$body" "$admin_token"
-  org_id="$(json_get "$API_BODY" '.data.orgId // .orgId')"
-
-  org_ids+=("$org_id")
-  org_names+=("$org_name")
-
-  printf '  Org: %s | orgId=%s\n' "$org_name" "$org_id"
-done
-
-for i in "${!org_ids[@]}"; do
-  if [[ -n "${org_ids[$i]}" ]]; then
-    api_call "POST" "$ORG/${org_ids[$i]}/verify?verifiedByUserId=$admin_user_id" "" "$admin_token"
-    printf '  Verified: %s\n' "${org_names[$i]}"
-  fi
-done
-
-# =============================================================================
 # 6. Departments (for first hospital)
 # =============================================================================
 printf '\n--- 6. Departments ---\n'
-
-hospital_org_id="${org_ids[0]}"
 
 depts=(
   "Khoa Noi tong hop|NTH|Khoa Noi tong hop kham va dieu tri|2|201-210"

@@ -589,6 +589,9 @@ public class OrganizationService : IOrganizationService
             Status = org.Status,
             VerifiedAt = org.VerifiedAt,
             CreatedAt = org.CreatedAt,
+            FabricMspId = org.FabricMspId,
+            FabricChannelPeers = org.FabricChannelPeers,
+            FabricCaUrl = org.FabricCaUrl,
             DepartmentCount = org.Departments?.Count ?? 0,
             MemberCount = org.Memberships?.Count ?? 0
         };

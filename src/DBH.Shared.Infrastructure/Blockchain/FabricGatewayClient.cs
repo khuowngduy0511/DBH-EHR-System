@@ -28,20 +28,32 @@ namespace DBH.Shared.Infrastructure.Blockchain;
 public class FabricGatewayClient : IFabricGateway
 {
     private readonly FabricOptions _options;
+    private readonly IFabricRuntimeIdentityResolver _identityResolver;
     private readonly ILogger<FabricGatewayClient> _logger;
     private GrpcChannel? _channel;
     private ECDsa? _signingKey;
     private string? _certificate;
     private byte[]? _tlsCaCert;
+    private string _activeMspId;
+    private string _activePeerEndpoint;
+    private string? _activeGatewayPeerOverride;
+    private bool _activeUseTls;
+    private string? _activeIdentityKey;
     private bool _cryptoLoaded;
     private bool _disposed;
 
     public FabricGatewayClient(
         IOptions<FabricOptions> options,
+        IFabricRuntimeIdentityResolver identityResolver,
         ILogger<FabricGatewayClient> logger)
     {
         _options = options.Value;
+        _identityResolver = identityResolver;
         _logger = logger;
+        _activeMspId = _options.MspId;
+        _activePeerEndpoint = _options.PeerEndpoint;
+        _activeGatewayPeerOverride = _options.GatewayPeerOverride;
+        _activeUseTls = _options.UseTls;
     }
 
     // ========================================================================
@@ -64,7 +76,8 @@ public class FabricGatewayClient : IFabricGateway
                     "Submitting transaction: Channel={Channel}, Chaincode={Chaincode}, Function={Function}, Attempt={Attempt}",
                     channelName, chaincodeName, functionName, retryCount + 1);
 
-                await EnsureCryptoLoadedAsync();
+                var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+                await EnsureCryptoLoadedAsync(runtimeIdentity);
 
                 if (_options.SimulationMode || !_cryptoLoaded)
                 {
@@ -124,7 +137,8 @@ public class FabricGatewayClient : IFabricGateway
                 "Evaluating transaction: Channel={Channel}, Chaincode={Chaincode}, Function={Function}",
                 channelName, chaincodeName, functionName);
 
-            await EnsureCryptoLoadedAsync();
+            var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+            await EnsureCryptoLoadedAsync(runtimeIdentity);
 
             if (_options.SimulationMode || !_cryptoLoaded)
             {
@@ -148,7 +162,8 @@ public class FabricGatewayClient : IFabricGateway
         {
             if (_options.SimulationMode) return true;
 
-            await EnsureCryptoLoadedAsync();
+            var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+            await EnsureCryptoLoadedAsync(runtimeIdentity);
             if (!_cryptoLoaded) return false;
 
             var channel = GetOrCreateChannel();
@@ -165,26 +180,41 @@ public class FabricGatewayClient : IFabricGateway
     // Crypto Material Loading
     // ========================================================================
 
-    private async Task EnsureCryptoLoadedAsync()
+    private async Task EnsureCryptoLoadedAsync(FabricRuntimeIdentity runtimeIdentity)
     {
+        if (_activeIdentityKey != runtimeIdentity.IdentityKey)
+        {
+            _signingKey?.Dispose();
+            _signingKey = null;
+            _certificate = null;
+            _tlsCaCert = null;
+            _cryptoLoaded = false;
+            _activeIdentityKey = runtimeIdentity.IdentityKey;
+            _activeMspId = runtimeIdentity.MspId;
+            _activePeerEndpoint = runtimeIdentity.PeerEndpoint;
+            _activeGatewayPeerOverride = runtimeIdentity.GatewayPeerOverride;
+            _activeUseTls = runtimeIdentity.UseTls;
+            ResetChannel();
+        }
+
         if (_cryptoLoaded) return;
 
         try
         {
             // Load signing key
-            if (!string.IsNullOrEmpty(_options.PrivateKeyPath) && File.Exists(_options.PrivateKeyPath))
+            if (!string.IsNullOrEmpty(runtimeIdentity.PrivateKeyPath) && File.Exists(runtimeIdentity.PrivateKeyPath))
             {
-                var keyPem = await File.ReadAllTextAsync(_options.PrivateKeyPath);
+                var keyPem = await File.ReadAllTextAsync(runtimeIdentity.PrivateKeyPath);
                 _signingKey = ECDsa.Create();
                 _signingKey.ImportFromPem(keyPem);
-                _logger.LogInformation("Loaded signing key from {Path}", _options.PrivateKeyPath);
+                _logger.LogInformation("Loaded signing key from {Path}", runtimeIdentity.PrivateKeyPath);
             }
-            else if (!string.IsNullOrEmpty(_options.PrivateKeyDirectory) && Directory.Exists(_options.PrivateKeyDirectory))
+            else if (!string.IsNullOrEmpty(runtimeIdentity.PrivateKeyDirectory) && Directory.Exists(runtimeIdentity.PrivateKeyDirectory))
             {
                 // Fabric CA stores keys with random names in keystore/
-                var keyFiles = Directory.GetFiles(_options.PrivateKeyDirectory, "*_sk");
+                var keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*_sk");
                 if (keyFiles.Length == 0)
-                    keyFiles = Directory.GetFiles(_options.PrivateKeyDirectory, "*.pem");
+                    keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*.pem");
 
                 if (keyFiles.Length > 0)
                 {
@@ -196,17 +226,17 @@ public class FabricGatewayClient : IFabricGateway
             }
 
             // Load certificate
-            if (!string.IsNullOrEmpty(_options.CertificatePath) && File.Exists(_options.CertificatePath))
+            if (!string.IsNullOrEmpty(runtimeIdentity.CertificatePath) && File.Exists(runtimeIdentity.CertificatePath))
             {
-                _certificate = await File.ReadAllTextAsync(_options.CertificatePath);
-                _logger.LogInformation("Loaded certificate from {Path}", _options.CertificatePath);
+                _certificate = await File.ReadAllTextAsync(runtimeIdentity.CertificatePath);
+                _logger.LogInformation("Loaded certificate from {Path}", runtimeIdentity.CertificatePath);
             }
 
             // Load TLS CA cert
-            if (!string.IsNullOrEmpty(_options.TlsCertificatePath) && File.Exists(_options.TlsCertificatePath))
+            if (!string.IsNullOrEmpty(runtimeIdentity.GatewayTlsCertificatePath) && File.Exists(runtimeIdentity.GatewayTlsCertificatePath))
             {
-                _tlsCaCert = await File.ReadAllBytesAsync(_options.TlsCertificatePath);
-                _logger.LogInformation("Loaded TLS CA cert from {Path}", _options.TlsCertificatePath);
+                _tlsCaCert = await File.ReadAllBytesAsync(runtimeIdentity.GatewayTlsCertificatePath);
+                _logger.LogInformation("Loaded TLS CA cert from {Path}", runtimeIdentity.GatewayTlsCertificatePath);
             }
 
             _cryptoLoaded = _signingKey != null && _certificate != null;
@@ -510,7 +540,7 @@ public class FabricGatewayClient : IFabricGateway
 
         var identity = new SerializedIdentity
         {
-            MspId = _options.MspId,
+            MspId = _activeMspId,
             IdBytes = Encoding.UTF8.GetBytes(_certificate)
         };
 
@@ -600,8 +630,8 @@ public class FabricGatewayClient : IFabricGateway
     {
         if (_channel != null) return _channel;
 
-        var scheme = _options.UseTls ? "https" : "http";
-        var address = $"{scheme}://{_options.PeerEndpoint}";
+        var scheme = _activeUseTls ? "https" : "http";
+        var address = $"{scheme}://{_activePeerEndpoint}";
 
         var channelOptions = new GrpcChannelOptions
         {
@@ -609,7 +639,7 @@ public class FabricGatewayClient : IFabricGateway
             MaxSendMessageSize = 16 * 1024 * 1024
         };
 
-        if (_options.UseTls)
+        if (_activeUseTls)
         {
             var httpHandler = new SocketsHttpHandler();
 
@@ -633,10 +663,10 @@ public class FabricGatewayClient : IFabricGateway
                 };
             }
 
-            if (!string.IsNullOrEmpty(_options.GatewayPeerOverride))
+            if (!string.IsNullOrEmpty(_activeGatewayPeerOverride))
             {
                 // Required when peer hostname inside Docker differs from external hostname
-                httpHandler.SslOptions.TargetHost = _options.GatewayPeerOverride;
+                httpHandler.SslOptions.TargetHost = _activeGatewayPeerOverride;
             }
 
             channelOptions.HttpHandler = httpHandler;
