@@ -133,7 +133,12 @@ public class EhrService : IEhrService
         try 
         {
             var authClient = _httpClientFactory.CreateClient("AuthService");
-            var keyRes = await authClient.GetAsync($"/api/v1/auth/{request.PatientId}/keys");
+            
+            var httpContext = _httpContextAccessor.HttpContext;
+            var token = httpContext?.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+            var patientUserId = await _authServiceClient.GetUserIdByPatientIdAsync(request.PatientId, token ?? "");
+            
+            var keyRes = await authClient.GetAsync($"/api/v1/auth/{patientUserId ?? request.PatientId}/keys");
             if (keyRes.IsSuccessStatusCode)
             {
                 var keysJson = await keyRes.Content.ReadAsStringAsync();
@@ -235,8 +240,12 @@ public class EhrService : IEhrService
         if (record == null)
             return (null, false, null);
 
+        var httpContext = _httpContextAccessor.HttpContext;
+        var token = httpContext?.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+        var patientUserId = await _authServiceClient.GetUserIdByPatientIdAsync(record.PatientId, token ?? "");
+
         // Bypass consent check nếu requester là chính bệnh nhân
-        if (requesterId == record.PatientId)
+        if (requesterId == patientUserId)
         {
             _logger.LogInformation("Consent bypass: requester {RequesterId} is owner of EHR {EhrId}", requesterId, ehrId);
             var response = MapToEhrRecordResponse(record);
@@ -311,7 +320,11 @@ public class EhrService : IEhrService
 
         byte[]? blueKeyBytes = null;
 
-        if (requesterId == record.PatientId)
+        var httpContext = _httpContextAccessor.HttpContext;
+        var token = httpContext?.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+        var patientUserId = await _authServiceClient.GetUserIdByPatientIdAsync(record.PatientId, token ?? "");
+
+        if (requesterId == patientUserId)
         {
              if (_blockchainService != null) {
                   var ehrHashRecordList = await _blockchainService.GetEhrHistoryAsync(ehrId.ToString());
@@ -452,7 +465,12 @@ public class EhrService : IEhrService
         try
         {
             var authClient = _httpClientFactory.CreateClient("AuthService");
-            var keyRes = await authClient.GetAsync($"/api/v1/auth/{record.PatientId}/keys");
+
+            var httpCtx = _httpContextAccessor.HttpContext;
+            var tkn = httpCtx?.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+            var patUserId = await _authServiceClient.GetUserIdByPatientIdAsync(record.PatientId, tkn ?? "");
+
+            var keyRes = await authClient.GetAsync($"/api/v1/auth/{patUserId ?? record.PatientId}/keys");
             if (keyRes.IsSuccessStatusCode)
             {
                 var keysJson = await keyRes.Content.ReadAsStringAsync();
@@ -784,3 +802,4 @@ internal class AuthUserKeysDto
     public string PublicKey { get; set; } = string.Empty;
     public string EncryptedPrivateKey { get; set; } = string.Empty;
 }
+
