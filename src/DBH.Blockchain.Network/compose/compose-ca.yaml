@@ -10,7 +10,7 @@ networks:
 
 services:
   ca_hospital1:
-    image: hyperledger/fabric-ca:latest
+    image: hyperledger/fabric-ca:1.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -30,7 +30,7 @@ services:
       - ehr
 
   ca_hospital2:
-    image: hyperledger/fabric-ca:latest
+    image: hyperledger/fabric-ca:1.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -50,7 +50,7 @@ services:
       - ehr
 
   ca_clinic:
-    image: hyperledger/fabric-ca:latest
+    image: hyperledger/fabric-ca:1.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -70,7 +70,7 @@ services:
       - ehr
 
   ca_orderer:
-    image: hyperledger/fabric-ca:latest
+    image: hyperledger/fabric-ca:1.5
     labels:
       service: hyperledger-fabric
     environment:

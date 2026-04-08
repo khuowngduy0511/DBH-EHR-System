@@ -31,6 +31,11 @@ public class GenericRepository<T> : IGenericRepository<T> where T : class
         return await _dbSet.FirstOrDefaultAsync(predicate);
     }
 
+    public async Task<IEnumerable<T>> FindManyAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.Where(predicate).ToListAsync();
+    }
+
     public async Task AddAsync(T entity)
     {
         await _dbSet.AddAsync(entity);

@@ -16,7 +16,7 @@ networks:
 services:
   orderer.ehr.com:
     container_name: orderer.ehr.com
-    image: hyperledger/fabric-orderer:latest
+    image: hyperledger/fabric-orderer:2.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -58,7 +58,7 @@ services:
 
   peer0.hospital1.ehr.com:
     container_name: peer0.hospital1.ehr.com
-    image: hyperledger/fabric-peer:latest
+    image: hyperledger/fabric-peer:2.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -97,7 +97,7 @@ services:
 
   peer0.hospital2.ehr.com:
     container_name: peer0.hospital2.ehr.com
-    image: hyperledger/fabric-peer:latest
+    image: hyperledger/fabric-peer:2.5
     labels:
       service: hyperledger-fabric
     environment:
@@ -136,7 +136,7 @@ services:
 
   peer0.clinic.ehr.com:
     container_name: peer0.clinic.ehr.com
-    image: hyperledger/fabric-peer:latest
+    image: hyperledger/fabric-peer:2.5
     labels:
       service: hyperledger-fabric
     environment:

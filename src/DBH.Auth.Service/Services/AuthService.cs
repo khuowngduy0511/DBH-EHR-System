@@ -64,19 +64,19 @@ public class AuthService : IAuthService
         if (user == null)
         {
             _logger.LogWarning("User not found: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "Invalid email or password." };
+            return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không chính xác." };
         }
 
         if (string.IsNullOrEmpty(user.Password) || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
             _logger.LogWarning("Invalid password for user: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "Invalid email or password." };
+            return new AuthResponse { Success = false, Message = "Email hoặc mật khẩu không chính xác." };
         }
 
         if (user.Status != Models.Enums.UserStatus.Active)
         {
             _logger.LogWarning("User account is not active: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "User account delete" };
+            return new AuthResponse { Success = false, Message = "Tài khoản đã bị vô hiệu hóa." };
         }
         
         return await GenerateAuthResponseAsync(user);
@@ -87,7 +87,7 @@ public class AuthService : IAuthService
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             _logger.LogWarning("User with this email already exists: {Email}", request.Email);
-            return new AuthResponse { Success = false, Message = "User with this email already exists." };
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
 
         // Generate RSA/ECC Key Pair
@@ -100,12 +100,6 @@ public class AuthService : IAuthService
             FullName = request.FullName,
             Email = request.Email,
             Phone = request.Phone,
-            Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth.HasValue
-                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
-                : null,
-            Address = request.Address,
-            OrganizationId = request.OrganizationId,
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
@@ -160,14 +154,10 @@ public class AuthService : IAuthService
                 return Task.CompletedTask;
             });
 
-        var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
-
         return new AuthResponse
         {
             Success = true,
-            Message = string.IsNullOrEmpty(organizationWarning)
-                ? "User registered successfully."
-                : $"User registered successfully. {organizationWarning}",
+            Message = "Đăng ký tài khoản thành công.",
             UserId = user.UserId,
         };
     }
@@ -176,12 +166,12 @@ public class AuthService : IAuthService
     {
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
-            return new AuthResponse { Success = false, Message = "User with this email already exists." };
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
 
         if (!Enum.TryParse<RoleName>(request.Role, true, out var roleName))
         {
-            return new AuthResponse { Success = false, Message = "Invalid role specified." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
         }
 
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
@@ -235,11 +225,25 @@ public class AuthService : IAuthService
 
         var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
 
+        // Enqueue Fabric CA enrollment for async processing via RabbitMQ
+        var enrollRoleName = assignedRole?.RoleName.ToString() ?? request.Role;
+        _blockchainSyncService.EnqueueFabricCaEnrollment(
+            enrollmentId: user.UserId.ToString(),
+            username: user.FullName ?? user.Email ?? user.UserId.ToString(),
+            role: enrollRoleName,
+            onFailure: error =>
+            {
+                _logger.LogWarning(
+                    "Blockchain enrollment failed for staff/doctor user {UserId}: {Error}",
+                    user.UserId, error);
+                return Task.CompletedTask;
+            });
+
         return new AuthResponse
         {
             Success = true,
             Message = string.IsNullOrEmpty(organizationWarning)
-                ? "Admin/User registered successfully with the specified role."
+                ? "Đăng ký tài khoản nhân sự thành công."
                 : $"Admin/User registered successfully with the specified role. {organizationWarning}",
             UserId = user.UserId,
         };
@@ -249,17 +253,17 @@ public class AuthService : IAuthService
     {
         var user = await _userRepository.GetByIdAsync(request.UserId);
         if (user == null)
-            return new AuthResponse { Success = false, Message = "User not found." };
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
 
         if (!Enum.TryParse<RoleName>(request.NewRole, true, out var newRoleEnum))
         {
-            return new AuthResponse { Success = false, Message = "Invalid role specified." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
         }
 
         var newRoleEntity = await _roleRepository.FindAsync(r => r.RoleName == newRoleEnum);
         if (newRoleEntity == null)
         {
-            return new AuthResponse { Success = false, Message = "Role does not exist in the system." };
+            return new AuthResponse { Success = false, Message = "Quyền (Role) không tồn tại trong hệ thống." };
         }
 
         var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == user.UserId);
@@ -267,7 +271,7 @@ public class AuthService : IAuthService
         {
             if (existingUserRole.RoleId == newRoleEntity.RoleId)
             {
-                return new AuthResponse { Success = true, Message = "User already has the specified role." };
+                return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
             }
             await _userRoleRepository.DeleteAsync(existingUserRole);
             await _userRoleRepository.AddAsync(new UserRole
@@ -287,7 +291,7 @@ public class AuthService : IAuthService
 
         await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
 
-        return new AuthResponse { Success = true, Message = "User role updated successfully." };
+        return new AuthResponse { Success = true, Message = "Cập nhật quyền thành công." };
     }
 
     public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
@@ -298,12 +302,12 @@ public class AuthService : IAuthService
 
         if (savedRefreshToken == null)
         {
-            return new AuthResponse { Success = false, Message = "Invalid refresh token." };
+            return new AuthResponse { Success = false, Message = "Mã xác thực lại (Refresh Token) không hợp lệ." };
         }
         
         var userId = savedRefreshToken.UserId;
         var user = await _userRepository.GetByIdAsync(userId); 
-        if (user == null) return new AuthResponse { Success = false, Message = "User not found." };
+        if (user == null) return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
         
         user = await _userRepository.GetByEmailWithRolesAsync(user.Email!);
         
@@ -312,17 +316,19 @@ public class AuthService : IAuthService
 
     public async Task<bool> RevokeTokenAsync(Guid userId)
     {
-        var credentials = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
-        if (credentials != null)
+        var credentials = await _credentialRepository.FindManyAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
+        var tokenList = credentials.ToList();
+        if (tokenList.Count == 0)
+            return false;
+
+        foreach (var token in tokenList)
         {
-            
-             await _credentialRepository.DeleteAsync(credentials);
-             return true;
+            await _credentialRepository.DeleteAsync(token);
         }
-        return false;
+        return true;
     }
 
-    public async Task<object?> GetMyProfileAsync(Guid userId)
+    public async Task<UserProfileResponse?> GetMyProfileAsync(Guid userId)
     {
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
@@ -381,20 +387,77 @@ public class AuthService : IAuthService
             }
         }
 
-        return new 
+        return new UserProfileResponse
         {
-            user.UserId,
-            user.FullName,
-            user.Email,
-            user.Phone,
-            user.Gender,
-            user.DateOfBirth,
-            user.Address,
-            user.OrganizationId,
-            user.Status,
+            UserId = user.UserId,
+            FullName = user.FullName,
+            Email = user.Email,
+            Phone = user.Phone,
+            Gender = user.Gender,
+            DateOfBirth = user.DateOfBirth,
+            Address = user.Address,
+            OrganizationId = user.OrganizationId,
+            Status = user.Status.ToString(),
             Roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()),
             Profiles = profiles
         };
+    }
+
+    public async Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
+    {
+        var user = await _userRepository.GetByIdWithProfileAsync(userId);
+        if (user == null)
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+
+        bool isUpdated = false;
+
+        if (!string.IsNullOrWhiteSpace(request.FullName) && user.FullName != request.FullName)
+        {
+            user.FullName = request.FullName;
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone) && user.Phone != request.Phone)
+        {
+            user.Phone = request.Phone;
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Gender) && user.Gender != request.Gender)
+        {
+            user.Gender = request.Gender;
+            isUpdated = true;
+        }
+
+        if (request.DateOfBirth.HasValue && user.DateOfBirth != request.DateOfBirth.Value)
+        {
+            user.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            isUpdated = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Address) && user.Address != request.Address)
+        {
+            user.Address = request.Address;
+            isUpdated = true;
+        }
+
+        if (isUpdated)
+        {
+            await _userRepository.UpdateAsync(user);
+
+            // Cập nhật thêm vào Profile Patient nếu User có role Patient
+            if (user.PatientProfile != null && request.DateOfBirth.HasValue)
+            {
+                var patientDob = DateOnly.FromDateTime(request.DateOfBirth.Value);
+                if (user.PatientProfile.Dob != patientDob)
+                {
+                    user.PatientProfile.Dob = patientDob;
+                    await _patientRepository.UpdateAsync(user.PatientProfile);
+                }
+            }
+        }
+
+        return new AuthResponse { Success = true, Message = "Cập nhật hồ sơ cá nhân thành công." };
     }
 
     public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
@@ -466,7 +529,7 @@ public class AuthService : IAuthService
             Token = accessToken,
             RefreshToken = refreshToken,
             UserId = user.UserId,
-            Message = "Authentication successful."
+            Message = "Đăng nhập thành công."
         };
     }
 
@@ -548,13 +611,11 @@ public class AuthService : IAuthService
 
         if (!Guid.TryParse(requestedOrganizationId, out var organizationId))
         {
-            user.OrganizationId = "666";
-            await _userRepository.UpdateAsync(user);
             _logger.LogWarning(
-                "Invalid organization ID format provided for user {UserId}. Assigned fake OrganizationId=666. Membership was not created.",
-                user.UserId);
+                "Invalid organization ID format '{OrgId}' provided for user {UserId}. Membership was not created.",
+                requestedOrganizationId, user.UserId);
 
-            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+            return $"Organization ID '{requestedOrganizationId}' is not a valid GUID format. Membership was not created.";
         }
 
         var membershipResult = await _organizationServiceClient.CreateMembershipAsync(
@@ -565,14 +626,11 @@ public class AuthService : IAuthService
 
         if (!membershipResult.Success)
         {
-            user.OrganizationId = "666";
-            await _userRepository.UpdateAsync(user);
-
             _logger.LogWarning(
-                "Membership was not created for user {UserId} in organization {OrgId}: {Error}. Assigned fake OrganizationId=666.",
+                "Membership was not created for user {UserId} in organization {OrgId}: {Error}.",
                 user.UserId, organizationId, membershipResult.Message);
 
-            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+            return $"Failed to create membership in organization {organizationId}: {membershipResult.Message}";
         }
 
         _logger.LogInformation(
@@ -582,3 +640,4 @@ public class AuthService : IAuthService
         return null;
     }
 }
+

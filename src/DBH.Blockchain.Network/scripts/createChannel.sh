@@ -60,7 +60,7 @@ createChannel() {
 # joinChannel ORG
 joinChannel() {
   ORG=$1
-  FABRIC_CFG_PATH=$PWD/config/
+  FABRIC_CFG_PATH=${WIN_PWD:-$PWD}/config/
   setGlobals $ORG
 	local rc=1
 	local COUNTER=1
@@ -84,11 +84,11 @@ setAnchorPeer() {
 }
 
 ## Create channel genesis block
-FABRIC_CFG_PATH=$PWD/config/
+FABRIC_CFG_PATH=${WIN_PWD:-$PWD}/config/
 BLOCKFILE="./channel-artifacts/${CHANNEL_NAME}.block"
 
 infoln "Generating channel genesis block '${CHANNEL_NAME}.block'"
-FABRIC_CFG_PATH=${PWD}/configtx
+FABRIC_CFG_PATH=${WIN_PWD:-$PWD}/configtx
 createChannelGenesisBlock
 
 ## Create channel
