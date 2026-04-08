@@ -225,6 +225,20 @@ public class AuthService : IAuthService
 
         var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
 
+        // Enqueue Fabric CA enrollment for async processing via RabbitMQ
+        var enrollRoleName = assignedRole?.RoleName.ToString() ?? request.Role;
+        _blockchainSyncService.EnqueueFabricCaEnrollment(
+            enrollmentId: user.UserId.ToString(),
+            username: user.FullName ?? user.Email ?? user.UserId.ToString(),
+            role: enrollRoleName,
+            onFailure: error =>
+            {
+                _logger.LogWarning(
+                    "Blockchain enrollment failed for staff/doctor user {UserId}: {Error}",
+                    user.UserId, error);
+                return Task.CompletedTask;
+            });
+
         return new AuthResponse
         {
             Success = true,
@@ -302,17 +316,19 @@ public class AuthService : IAuthService
 
     public async Task<bool> RevokeTokenAsync(Guid userId)
     {
-        var credentials = await _credentialRepository.FindAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
-        if (credentials != null)
+        var credentials = await _credentialRepository.FindManyAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
+        var tokenList = credentials.ToList();
+        if (tokenList.Count == 0)
+            return false;
+
+        foreach (var token in tokenList)
         {
-            
-             await _credentialRepository.DeleteAsync(credentials);
-             return true;
+            await _credentialRepository.DeleteAsync(token);
         }
-        return false;
+        return true;
     }
 
-    public async Task<object?> GetMyProfileAsync(Guid userId)
+    public async Task<UserProfileResponse?> GetMyProfileAsync(Guid userId)
     {
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
@@ -371,17 +387,17 @@ public class AuthService : IAuthService
             }
         }
 
-        return new 
+        return new UserProfileResponse
         {
-            user.UserId,
-            user.FullName,
-            user.Email,
-            user.Phone,
-            user.Gender,
-            user.DateOfBirth,
-            user.Address,
-            user.OrganizationId,
-            user.Status,
+            UserId = user.UserId,
+            FullName = user.FullName,
+            Email = user.Email,
+            Phone = user.Phone,
+            Gender = user.Gender,
+            DateOfBirth = user.DateOfBirth,
+            Address = user.Address,
+            OrganizationId = user.OrganizationId,
+            Status = user.Status.ToString(),
             Roles = user.UserRoles.Select(ur => ur.Role.RoleName.ToString()),
             Profiles = profiles
         };
@@ -595,13 +611,11 @@ public class AuthService : IAuthService
 
         if (!Guid.TryParse(requestedOrganizationId, out var organizationId))
         {
-            user.OrganizationId = "666";
-            await _userRepository.UpdateAsync(user);
             _logger.LogWarning(
-                "Invalid organization ID format provided for user {UserId}. Assigned fake OrganizationId=666. Membership was not created.",
-                user.UserId);
+                "Invalid organization ID format '{OrgId}' provided for user {UserId}. Membership was not created.",
+                requestedOrganizationId, user.UserId);
 
-            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+            return $"Organization ID '{requestedOrganizationId}' is not a valid GUID format. Membership was not created.";
         }
 
         var membershipResult = await _organizationServiceClient.CreateMembershipAsync(
@@ -612,14 +626,11 @@ public class AuthService : IAuthService
 
         if (!membershipResult.Success)
         {
-            user.OrganizationId = "666";
-            await _userRepository.UpdateAsync(user);
-
             _logger.LogWarning(
-                "Membership was not created for user {UserId} in organization {OrgId}: {Error}. Assigned fake OrganizationId=666.",
+                "Membership was not created for user {UserId} in organization {OrgId}: {Error}.",
                 user.UserId, organizationId, membershipResult.Message);
 
-            return "Organization is invalid, created fake OrganizationId=666 for user and did not create membership.";
+            return $"Failed to create membership in organization {organizationId}: {membershipResult.Message}";
         }
 
         _logger.LogInformation(

@@ -51,6 +51,7 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpPut("updateRole")]
     public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest request)
     {
@@ -172,6 +173,7 @@ public class AuthController : ControllerBase
         return Ok(new { UserId = userId.Value });
     }
 
+    [Authorize]
     [HttpGet("{userId:guid}/keys")]
     public async Task<IActionResult> GetUserKeys(Guid userId)
     {

@@ -11,7 +11,7 @@ public interface IAuthService
     Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress);
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task<bool> RevokeTokenAsync(Guid userId);
-    Task<object?> GetMyProfileAsync(Guid userId);
+    Task<UserProfileResponse?> GetMyProfileAsync(Guid userId);
     Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);
     Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId);
     Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
