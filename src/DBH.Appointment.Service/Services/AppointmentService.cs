@@ -56,7 +56,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Scheduled date cannot be in the past"
+                Message = "Ngày hẹn không được nằm trong quá khứ."
             };
         }
 
@@ -66,9 +66,32 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Patient not found"
+                Message = "Không tìm thấy hồ sơ bệnh nhân."
             };
         }
+
+        // FIX IDOR
+        var userClaims = _httpContextAccessor.HttpContext?.User;
+        if (userClaims != null && 
+            !userClaims.IsInRole("Admin") && 
+            !userClaims.IsInRole("Receptionist") && 
+            !userClaims.IsInRole("Doctor"))
+        {
+            var currentUserIdStr = userClaims.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (currentUserIdStr != patientUserId.Value.ToString())
+            {
+                _logger.LogWarning("IDOR Attempt: User {CurrentUserId} tried to book an appt for Patient's UserId {PatientUserId}", 
+                    currentUserIdStr, patientUserId.Value);
+
+                return new ApiResponse<AppointmentResponse>
+                {
+                    Success = false,
+                    Message = "Bạn không có quyền đặt lịch khám thay cho bệnh nhân khác."
+                };
+            }
+        }
+        //
+        
 
         var doctorValidation = await ValidateDoctorAndOrganizationAsync(request.DoctorId, request.OrgId);
         if (!doctorValidation.Success)
@@ -168,7 +191,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Appointment created successfully",
+            Message = "Đặt lịch hẹn thành công.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -184,7 +207,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Appointment not found"
+                Message = "Không tìm thấy lịch hẹn."
             };
         }
 
@@ -241,7 +264,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Appointment not found"
+                Message = "Không tìm thấy lịch hẹn."
             };
         }
 
@@ -261,7 +284,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = $"Appointment status updated to {status}",
+            Message = $"Cập nhật trạng thái lịch hẹn thành {status} thành công.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -274,7 +297,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Appointment not found"
+                Message = "Không tìm thấy lịch hẹn."
             };
         }
 
@@ -287,7 +310,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = "Scheduled date cannot be in the past"
+                Message = "Ngày hẹn không được nằm trong quá khứ."
             };
         }
 
@@ -361,7 +384,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Appointment rescheduled successfully",
+            Message = "Dời lịch hẹn thành công.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -377,13 +400,13 @@ public class AppointmentService : IAppointmentService
     {
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
-            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Appointment not found" };
+            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
         if (appointment.Status != AppointmentStatus.PENDING)
             return new ApiResponse<AppointmentResponse> 
             { 
                 Success = false, 
-                Message = $"Cannot confirm appointment with status {appointment.Status}. Only PENDING appointments can be confirmed." 
+                Message = $"Không thể xác nhận lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING mới có thể được xác nhận." 
             };
 
         var oldStatus = appointment.Status.ToString();
@@ -428,7 +451,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Appointment confirmed successfully",
+            Message = "Xác nhận lịch hẹn thành công.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -440,13 +463,13 @@ public class AppointmentService : IAppointmentService
     {
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
-            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Appointment not found" };
+            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
         if (appointment.Status != AppointmentStatus.PENDING)
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = $"Cannot reject appointment with status {appointment.Status}. Only PENDING appointments can be rejected."
+                Message = $"Không thể từ chối lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING mới có thể bị từ chối."
             };
 
         var oldStatus = appointment.Status.ToString();
@@ -481,7 +504,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Appointment rejected",
+            Message = "Đã từ chối lịch hẹn.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -493,13 +516,13 @@ public class AppointmentService : IAppointmentService
     {
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
-            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Appointment not found" };
+            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
         if (appointment.Status == AppointmentStatus.COMPLETED || appointment.Status == AppointmentStatus.CANCELLED)
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = $"Cannot cancel appointment with status {appointment.Status}"
+                Message = $"Không thể hủy lịch hẹn đang ở trạng thái {appointment.Status}."
             };
 
         var oldStatus = appointment.Status.ToString();
@@ -532,7 +555,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Appointment cancelled",
+            Message = "Đã hủy lịch hẹn.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -544,13 +567,13 @@ public class AppointmentService : IAppointmentService
     {
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
-            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Appointment not found" };
+            return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
         if (appointment.Status != AppointmentStatus.CONFIRMED)
             return new ApiResponse<AppointmentResponse>
             {
                 Success = false,
-                Message = $"Cannot check in with status {appointment.Status}. Only CONFIRMED appointments can be checked in."
+                Message = $"Không thể check-in khi lịch hẹn ở trạng thái {appointment.Status}. Chỉ lịch hẹn CONFIRMED mới được phép check-in."
             };
 
         appointment.Status = AppointmentStatus.CHECKED_IN;
@@ -575,7 +598,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<AppointmentResponse>
         {
             Success = true,
-            Message = "Checked in successfully",
+            Message = "Check-in thành công.",
             Data = await MapToResponseWithProfilesAsync(appointment)
         };
     }
@@ -664,7 +687,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<EncounterResponse>
             {
                 Success = false,
-                Message = "Linked appointment not found"
+                Message = "Không tìm thấy lịch hẹn liên kết để tạo lượt khám."
             };
         }
 
@@ -707,7 +730,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<EncounterResponse>
         {
             Success = true,
-            Message = "Encounter created successfully",
+            Message = "Khởi tạo phiên khám bệnh thành công.",
             Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
@@ -720,7 +743,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<EncounterResponse>
             {
                 Success = false,
-                Message = "Encounter not found"
+                Message = "Không tìm thấy hồ sơ phiên khám."
             };
         }
 
@@ -783,7 +806,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<EncounterResponse>
             {
                 Success = false,
-                Message = "Encounter not found"
+                Message = "Không tìm thấy hồ sơ phiên khám."
             };
         }
 
@@ -797,7 +820,7 @@ public class AppointmentService : IAppointmentService
         return new ApiResponse<EncounterResponse>
         {
             Success = true,
-            Message = "Encounter updated successfully",
+            Message = "Cập nhật phiếu khám thành công.",
             Data = await MapToResponseWithProfilesAsync(encounter)
         };
     }
@@ -817,7 +840,7 @@ public class AppointmentService : IAppointmentService
             .FirstOrDefaultAsync(e => e.EncounterId == encounterId);
 
         if (encounter == null)
-            return new ApiResponse<EncounterResponse> { Success = false, Message = "Encounter not found" };
+            return new ApiResponse<EncounterResponse> { Success = false, Message = "Không tìm thấy hồ sơ phiên khám." };
 
         // Update notes if provided
         if (!string.IsNullOrEmpty(request.Notes))
@@ -1422,3 +1445,4 @@ public class AppointmentService : IAppointmentService
         }
     }
 }
+

@@ -7,12 +7,21 @@
 
 ROOTDIR=$(cd "$(dirname "$0")" && pwd)
 export PATH=${ROOTDIR}/bin:${PWD}/bin:$PATH
-export FABRIC_CFG_PATH=${PWD}/configtx
 export VERBOSE=false
+
+# Prevent Git Bash MSYS path mangling on Windows (e.g. /var/run → C:\Program Files\Git\var)
+export MSYS_NO_PATHCONV=1
 
 # push to the required directory & set a trap to go back if needed
 pushd ${ROOTDIR} > /dev/null
 trap "popd > /dev/null" EXIT
+
+# Windows-compatible PWD for Fabric Go binaries (fabric-ca-client, peer, configtxgen, osnadmin)
+# pwd -W returns D:/path on Git Bash/MSYS2; falls back to $PWD on Linux/Mac
+WIN_PWD=$(pwd -W 2>/dev/null || pwd)
+export WIN_PWD
+
+export FABRIC_CFG_PATH=${WIN_PWD}/configtx
 
 . scripts/utils.sh
 
@@ -71,6 +80,94 @@ function checkPrereqs() {
       fatalln "Fabric Docker image version of $DOCKER_IMAGE_VERSION does not match the versions supported by the EHR network."
     fi
   done
+}
+
+function getCaDataVolumeFromContainer() {
+  local ca_container="$1"
+  ${CONTAINER_CLI} inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/hyperledger/fabric-ca-server"}}{{.Name}}{{end}}{{end}}' "$ca_container" 2>/dev/null
+}
+
+function stageCaCertsFromVolume() {
+  local ca_container="$1"
+  local org_fabric_ca_subdir="$2"
+
+  mkdir -p "${PWD}/${org_fabric_ca_subdir}"
+
+  # On MINGW/Git Bash, docker cp needs Windows-style host paths (D:\...)
+  # pwd -W gives the Windows path; on Linux/Mac it falls back to PWD
+  local host_base
+  host_base=$(cd "${PWD}" && pwd -W 2>/dev/null || pwd)
+  local host_dir="${host_base}/${org_fabric_ca_subdir}"
+
+  # Use docker cp directly — more reliable on Windows Docker Desktop
+  set -x
+  ${CONTAINER_CLI} cp "${ca_container}:/etc/hyperledger/fabric-ca-server/ca-cert.pem" "${host_dir}/ca-cert.pem"
+  res=$?
+  if [ $res -eq 0 ]; then
+    ${CONTAINER_CLI} cp "${ca_container}:/etc/hyperledger/fabric-ca-server/tls-cert.pem" "${host_dir}/tls-cert.pem"
+    res=$?
+  fi
+  { set +x; } 2>/dev/null
+
+  if [ $res -ne 0 ]; then
+    fatalln "Failed to stage CA certs from container '${ca_container}'"
+  fi
+}
+
+function waitForAndStageCaCerts() {
+  local ca_container="$1"
+  local org_fabric_ca_subdir="$2"
+  local attempts=1
+  local rc=1
+
+  while [[ $rc -ne 0 && $attempts -le $MAX_RETRY ]]; do
+    sleep 1
+    stageCaCertsFromVolume "$ca_container" "$org_fabric_ca_subdir" && rc=0 || rc=1
+    attempts=$((attempts + 1))
+  done
+
+  if [ $rc -ne 0 ]; then
+    fatalln "CA '${ca_container}' is not ready after ${MAX_RETRY} retries"
+  fi
+}
+
+function restoreOrganizationsFromCryptoVolume() {
+  : ${CONTAINER_CLI:="docker"}
+  local crypto_volume="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
+
+  if ! ${CONTAINER_CLI} volume inspect "${crypto_volume}" >/dev/null 2>&1; then
+    fatalln "Crypto volume '${crypto_volume}' does not exist"
+  fi
+
+  mkdir -p "${PWD}/organizations"
+
+  set -x
+  ${CONTAINER_CLI} run --rm \
+    -v "${crypto_volume}:/crypto:ro" \
+    -v "${PWD}:/workspace" \
+    busybox sh -c 'test -d /crypto/peerOrganizations && test -d /crypto/ordererOrganizations && rm -rf /workspace/organizations/peerOrganizations /workspace/organizations/ordererOrganizations && cp -r /crypto/peerOrganizations /workspace/organizations/ && cp -r /crypto/ordererOrganizations /workspace/organizations/'
+  res=$?
+  { set +x; } 2>/dev/null
+
+  if [ $res -ne 0 ]; then
+    fatalln "Failed to restore organizations from docker volume '${crypto_volume}'"
+  fi
+
+  infoln "Restored organizations crypto from volume '${crypto_volume}'"
+}
+
+function ensureOrganizationsOnHost() {
+  if [ ! -d "organizations/peerOrganizations" ] || [ ! -d "organizations/ordererOrganizations" ]; then
+    infoln "Host organizations crypto missing; restoring from docker volume"
+    restoreOrganizationsFromCryptoVolume
+  fi
+}
+
+function cleanupHostOrganizations() {
+  if [ -d "organizations/peerOrganizations" ] || [ -d "organizations/ordererOrganizations" ]; then
+    infoln "Cleaning host organizations crypto (volume remains source-of-truth)"
+    rm -rf organizations/peerOrganizations organizations/ordererOrganizations
+  fi
 }
 
 # Create Organization crypto material using cryptogen or Fabric CA
@@ -142,13 +239,13 @@ function createOrgs() {
       fi
     done
 
-    export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/peerOrganizations/hospital1.ehr.com/
+    export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital1.ehr.com/
     COUNTER=0
     rc=1
     while [[ $rc -ne 0 && $COUNTER -lt $MAX_RETRY ]]; do
       sleep 1
       set -x
-      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:7054 --caname ca-hospital1 --tls.certfiles "${PWD}/organizations/fabric-ca/hospital1/ca-cert.pem"
+      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:7054 --caname ca-hospital1 --tls.certfiles "${WIN_PWD}/organizations/fabric-ca/hospital1/ca-cert.pem"
       res=$?
       { set +x; } 2>/dev/null
       rc=$res
@@ -168,13 +265,13 @@ function createOrgs() {
       fi
     done
 
-    export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/peerOrganizations/hospital2.ehr.com/
+    export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital2.ehr.com/
     COUNTER=0
     rc=1
     while [[ $rc -ne 0 && $COUNTER -lt $MAX_RETRY ]]; do
       sleep 1
       set -x
-      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:8054 --caname ca-hospital2 --tls.certfiles "${PWD}/organizations/fabric-ca/hospital2/ca-cert.pem"
+      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:8054 --caname ca-hospital2 --tls.certfiles "${WIN_PWD}/organizations/fabric-ca/hospital2/ca-cert.pem"
       res=$?
       { set +x; } 2>/dev/null
       rc=$res
@@ -194,13 +291,13 @@ function createOrgs() {
       fi
     done
 
-    export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/peerOrganizations/clinic.ehr.com/
+    export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/clinic.ehr.com/
     COUNTER=0
     rc=1
     while [[ $rc -ne 0 && $COUNTER -lt $MAX_RETRY ]]; do
       sleep 1
       set -x
-      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:10054 --caname ca-clinic --tls.certfiles "${PWD}/organizations/fabric-ca/clinic/ca-cert.pem"
+      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:10054 --caname ca-clinic --tls.certfiles "${WIN_PWD}/organizations/fabric-ca/clinic/ca-cert.pem"
       res=$?
       { set +x; } 2>/dev/null
       rc=$res
@@ -220,13 +317,13 @@ function createOrgs() {
       fi
     done
 
-    export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/ordererOrganizations/ehr.com/
+    export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/ordererOrganizations/ehr.com/
     COUNTER=0
     rc=1
     while [[ $rc -ne 0 && $COUNTER -lt $MAX_RETRY ]]; do
       sleep 1
       set -x
-      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:9054 --caname ca-orderer --tls.certfiles "${PWD}/organizations/fabric-ca/ordererOrg/ca-cert.pem"
+      fabric-ca-client getcainfo -u https://admin:adminpw@localhost:9054 --caname ca-orderer --tls.certfiles "${WIN_PWD}/organizations/fabric-ca/ordererOrg/ca-cert.pem"
       res=$?
       { set +x; } 2>/dev/null
       rc=$res
@@ -369,7 +466,9 @@ function packageChaincode() {
 
 ## Call the script to list installed and committed chaincode on a peer
 function listChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/config
+  ensureOrganizationsOnHost
+
+  export FABRIC_CFG_PATH=${WIN_PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -381,7 +480,9 @@ function listChaincode() {
 
 ## Call the script to invoke
 function invokeChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/config
+  ensureOrganizationsOnHost
+
+  export FABRIC_CFG_PATH=${WIN_PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG
@@ -390,7 +491,9 @@ function invokeChaincode() {
 
 ## Call the script to query chaincode
 function queryChaincode() {
-  export FABRIC_CFG_PATH=${PWD}/config
+  ensureOrganizationsOnHost
+
+  export FABRIC_CFG_PATH=${WIN_PWD}/config
   . scripts/envVar.sh
   . scripts/ccutils.sh
   setGlobals $ORG

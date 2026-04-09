@@ -7,6 +7,7 @@
 
 # import utils
 EHR_NETWORK_HOME=${EHR_NETWORK_HOME:-${PWD}}
+WIN_EHR_NETWORK_HOME=${WIN_PWD:-${PWD}}
 . ${EHR_NETWORK_HOME}/scripts/envVar.sh
 
 # fetchChannelConfig <org> <channel_id> <output_json>
@@ -19,13 +20,13 @@ fetchChannelConfig() {
 
   infoln "Fetching the most recent configuration block for the channel"
   set -x
-  peer channel fetch config ${EHR_NETWORK_HOME}/channel-artifacts/config_block.pb -o localhost:7050 --ordererTLSHostnameOverride orderer.ehr.com -c $CHANNEL --tls --cafile "$ORDERER_CA"
+  peer channel fetch config ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_block.pb -o localhost:7050 --ordererTLSHostnameOverride orderer.ehr.com -c $CHANNEL --tls --cafile "$ORDERER_CA"
   { set +x; } 2>/dev/null
 
   infoln "Decoding config block to JSON and isolating config to ${OUTPUT}"
   set -x
-  configtxlator proto_decode --input ${EHR_NETWORK_HOME}/channel-artifacts/config_block.pb --type common.Block --output ${EHR_NETWORK_HOME}/channel-artifacts/config_block.json
-  jq .data.data[0].payload.data.config ${EHR_NETWORK_HOME}/channel-artifacts/config_block.json >"${OUTPUT}"
+  configtxlator proto_decode --input ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_block.pb --type common.Block --output ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_block.json
+  jq .data.data[0].payload.data.config ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_block.json >"${OUTPUT}"
   res=$?
   { set +x; } 2>/dev/null
   verifyResult $res "Failed to parse channel configuration, make sure you have jq installed"
@@ -39,12 +40,12 @@ createConfigUpdate() {
   OUTPUT=$4
 
   set -x
-  configtxlator proto_encode --input "${ORIGINAL}" --type common.Config --output ${EHR_NETWORK_HOME}/channel-artifacts/original_config.pb
-  configtxlator proto_encode --input "${MODIFIED}" --type common.Config --output ${EHR_NETWORK_HOME}/channel-artifacts/modified_config.pb
-  configtxlator compute_update --channel_id "${CHANNEL}" --original ${EHR_NETWORK_HOME}/channel-artifacts/original_config.pb --updated ${EHR_NETWORK_HOME}/channel-artifacts/modified_config.pb --output ${EHR_NETWORK_HOME}/channel-artifacts/config_update.pb
-  configtxlator proto_decode --input ${EHR_NETWORK_HOME}/channel-artifacts/config_update.pb --type common.ConfigUpdate --output ${EHR_NETWORK_HOME}/channel-artifacts/config_update.json
-  echo '{"payload":{"header":{"channel_header":{"channel_id":"'$CHANNEL'", "type":2}},"data":{"config_update":'$(cat ${EHR_NETWORK_HOME}/channel-artifacts/config_update.json)'}}}' | jq . > ${EHR_NETWORK_HOME}/channel-artifacts/config_update_in_envelope.json
-  configtxlator proto_encode --input ${EHR_NETWORK_HOME}/channel-artifacts/config_update_in_envelope.json --type common.Envelope --output "${OUTPUT}"
+  configtxlator proto_encode --input "${ORIGINAL}" --type common.Config --output ${WIN_EHR_NETWORK_HOME}/channel-artifacts/original_config.pb
+  configtxlator proto_encode --input "${MODIFIED}" --type common.Config --output ${WIN_EHR_NETWORK_HOME}/channel-artifacts/modified_config.pb
+  configtxlator compute_update --channel_id "${CHANNEL}" --original ${WIN_EHR_NETWORK_HOME}/channel-artifacts/original_config.pb --updated ${WIN_EHR_NETWORK_HOME}/channel-artifacts/modified_config.pb --output ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update.pb
+  configtxlator proto_decode --input ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update.pb --type common.ConfigUpdate --output ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update.json
+  echo '{"payload":{"header":{"channel_header":{"channel_id":"'$CHANNEL'", "type":2}},"data":{"config_update":'$(cat ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update.json)'}}}' | jq . > ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update_in_envelope.json
+  configtxlator proto_encode --input ${WIN_EHR_NETWORK_HOME}/channel-artifacts/config_update_in_envelope.json --type common.Envelope --output "${OUTPUT}"
   { set +x; } 2>/dev/null
 }
 

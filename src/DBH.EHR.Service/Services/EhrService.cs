@@ -180,7 +180,7 @@ public class EhrService : IEhrService
                     EhrId = savedRecord.EhrId.ToString(),
                     PatientDid = $"did:fabric:patient:{request.PatientId}",
                     CreatedByDid = $"did:fabric:org:{request.OrgId}",
-                    OrganizationId = request.OrgId.ToString(),
+                    OrganizationId = request.OrgId?.ToString() ?? string.Empty,
                     Version = 1,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
@@ -324,7 +324,20 @@ public class EhrService : IEhrService
             return (null, false, "No encrypted data available for this EHR version");
         }
 
-        var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{normalizedRequesterId}/keys");
+        bool isPatientOwner = requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId;
+
+        // Check consent BEFORE fetching keys (avoid unnecessary Auth calls if denied)
+        (bool HasAccess, string? ConsentId) consentCheckResult = (false, null);
+        if (!isPatientOwner)
+        {
+            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId);
+            if (!consentCheckResult.HasAccess || string.IsNullOrEmpty(consentCheckResult.ConsentId))
+            {
+                return (null, true, "Requester does not have consent to read this EHR.");
+            }
+        }
+
+        var requesterKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedRequesterId}/keys", bearerToken);
         if (!requesterKeyRes.IsSuccessStatusCode)
            return (null, false, "Cannot fetch requester keys from Auth Service");
            
@@ -337,7 +350,7 @@ public class EhrService : IEhrService
 
         byte[]? blueKeyBytes = null;
 
-         if (requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId)
+        if (isPatientOwner)
         {
            var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
            if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
@@ -347,14 +360,9 @@ public class EhrService : IEhrService
         }
         else 
         {
-               var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId);
-             if (!consentResult.HasAccess || string.IsNullOrEmpty(consentResult.ConsentId))
-             {
-                  return (null, true, "Requester does not have consent to read this EHR.");
-             }
 
              if (_consentBlockchainService != null) {
-                   var blockchainConsentId = await ResolveBlockchainConsentIdAsync(consentResult.ConsentId) ?? consentResult.ConsentId;
+                   var blockchainConsentId = await ResolveBlockchainConsentIdAsync(consentCheckResult.ConsentId!) ?? consentCheckResult.ConsentId!;
                    var consentRecord = await _consentBlockchainService.GetConsentAsync(blockchainConsentId);
                   if (consentRecord != null && !string.IsNullOrEmpty(consentRecord.EncryptedAesKey))
                   {
@@ -362,7 +370,7 @@ public class EhrService : IEhrService
                   }
                    else
                    {
-                       _logger.LogWarning("Unable to load encrypted consent key from blockchain for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentResult.ConsentId, blockchainConsentId);
+                       _logger.LogWarning("Unable to load encrypted consent key from blockchain for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentCheckResult.ConsentId, blockchainConsentId);
 
                        // Fallback: derive AES key via patient's wrapped key on EHR hash ledger,
                        // after consent has already been verified.
@@ -472,7 +480,8 @@ public class EhrService : IEhrService
         }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
-        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        var bearerToken = GetBearerTokenFromContext();
+        var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{currentUserId.Value}/keys", bearerToken);
         if (!keyRes.IsSuccessStatusCode)
         {
             return null;
@@ -545,7 +554,8 @@ public class EhrService : IEhrService
         }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
-        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        var bearerToken = GetBearerTokenFromContext();
+        var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{currentUserId.Value}/keys", bearerToken);
         if (!keyRes.IsSuccessStatusCode)
         {
             return null;
@@ -717,7 +727,7 @@ public class EhrService : IEhrService
                     EhrId = ehrId.ToString(),
                     PatientDid = $"did:fabric:patient:{record.PatientId}",
                     CreatedByDid = $"did:fabric:org:{record.OrgId}",
-                    OrganizationId = record.OrgId.ToString(),
+                    OrganizationId = record.OrgId?.ToString() ?? string.Empty,
                     Version = newVersionNumber,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
@@ -1223,3 +1233,4 @@ internal class AuthUserKeysDto
     public string PublicKey { get; set; } = string.Empty;
     public string EncryptedPrivateKey { get; set; } = string.Empty;
 }
+

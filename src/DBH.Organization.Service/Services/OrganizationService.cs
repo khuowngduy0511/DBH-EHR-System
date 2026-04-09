@@ -1,4 +1,4 @@
-using DBH.Organization.Service.DbContext;
+﻿using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
@@ -70,7 +70,7 @@ public class OrganizationService : IOrganizationService
             return new ApiResponse<OrganizationResponse>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy tổ chức / bệnh viện."
             };
         }
 
@@ -119,7 +119,7 @@ public class OrganizationService : IOrganizationService
             return new ApiResponse<OrganizationResponse>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy tổ chức / bệnh viện."
             };
         }
 
@@ -150,7 +150,7 @@ public class OrganizationService : IOrganizationService
         var org = await _context.Organizations.FindAsync(orgId);
         if (org == null)
         {
-            return new ApiResponse<bool> { Success = false, Message = "Organization not found" };
+            return new ApiResponse<bool> { Success = false, Message = "Không tìm thấy tổ chức / bệnh viện." };
         }
 
         org.Status = OrganizationStatus.INACTIVE;
@@ -168,7 +168,7 @@ public class OrganizationService : IOrganizationService
             return new ApiResponse<OrganizationResponse>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy tổ chức / bệnh viện."
             };
         }
 
@@ -204,7 +204,7 @@ public class OrganizationService : IOrganizationService
             return new ApiResponse<DepartmentResponse>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy tổ chức / bệnh viện."
             };
         }
 
@@ -338,7 +338,7 @@ public class OrganizationService : IOrganizationService
             return new ApiResponse<MembershipResponse>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy tổ chức / bệnh viện."
             };
         }
 
@@ -641,3 +641,4 @@ public class OrganizationService : IOrganizationService
         };
     }
 }
+

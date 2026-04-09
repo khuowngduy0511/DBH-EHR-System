@@ -78,7 +78,6 @@ public class ConsentService : IConsentService
             {
                 var ehrClient = _httpClientFactory.CreateClient("EhrService"); // Cần lấy record để lấy EncryptedAesKey của patient
 
-                // 1. Lấy patient private key (cần unwrap bằng MasterKey - rủi ro thiết kế nếu flow bắt patient gửi private key raw lên đây, hoặc AuthService có endpoint giải mã)
                 // Theo kiến trúc: Auth Service cung cấp EncryptedPrivateKey -> ConsentService có cấu hình MasterKey để decrypt
                 var patientKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedPatientId}/keys", bearerToken);
                 var granteeKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedGranteeId}/keys", bearerToken);
@@ -94,10 +93,19 @@ public class ConsentService : IConsentService
                     {
                         var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
 
-                        // 2. Fetch EHR Blockchain record to get Patient's EncryptedAesKey
+                        // 2. Fetch EHR Blockchain record to get Patient's EncryptedAesKey (with retry for async commit)
                         if (_ehrBlockchainService != null && request.EhrId.HasValue)
                         {
-                            var ehrHashRecordList = await _ehrBlockchainService.GetEhrHistoryAsync(request.EhrId.Value.ToString());
+                            List<EhrHashRecord>? ehrHashRecordList = null;
+                            for (int attempt = 1; attempt <= 8; attempt++)
+                            {
+                                ehrHashRecordList = await _ehrBlockchainService.GetEhrHistoryAsync(request.EhrId.Value.ToString());
+                                var latestAttempt = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
+                                if (latestAttempt != null && !string.IsNullOrEmpty(latestAttempt.EncryptedAesKey))
+                                    break;
+                                if (attempt < 8)
+                                    await Task.Delay(400);
+                            }
                             var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
                             
                             if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))

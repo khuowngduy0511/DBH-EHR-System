@@ -120,7 +120,7 @@ public class EhrController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
         
         if (string.IsNullOrEmpty(decryptedData))
-            return NotFound(new { Message = $"EHR Document {ehrId} not found or extraction failed" });
+            return NotFound(new { Message = denyMessage ?? $"EHR Document {ehrId} not found or extraction failed" });
         
         return Content(decryptedData, "application/json");
     }
