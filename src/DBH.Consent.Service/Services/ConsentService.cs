@@ -93,10 +93,19 @@ public class ConsentService : IConsentService
                     {
                         var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
 
-                        // 2. Fetch EHR Blockchain record to get Patient's EncryptedAesKey
+                        // 2. Fetch EHR Blockchain record to get Patient's EncryptedAesKey (with retry for async commit)
                         if (_ehrBlockchainService != null && request.EhrId.HasValue)
                         {
-                            var ehrHashRecordList = await _ehrBlockchainService.GetEhrHistoryAsync(request.EhrId.Value.ToString());
+                            List<EhrHashRecord>? ehrHashRecordList = null;
+                            for (int attempt = 1; attempt <= 8; attempt++)
+                            {
+                                ehrHashRecordList = await _ehrBlockchainService.GetEhrHistoryAsync(request.EhrId.Value.ToString());
+                                var latestAttempt = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
+                                if (latestAttempt != null && !string.IsNullOrEmpty(latestAttempt.EncryptedAesKey))
+                                    break;
+                                if (attempt < 8)
+                                    await Task.Delay(400);
+                            }
                             var latestEhrHash = ehrHashRecordList?.OrderByDescending(x => x.Version).FirstOrDefault();
                             
                             if (latestEhrHash != null && !string.IsNullOrEmpty(latestEhrHash.EncryptedAesKey))

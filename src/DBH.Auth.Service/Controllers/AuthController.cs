@@ -84,6 +84,7 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [Authorize]
     [HttpPost("revoke-token")]
     public async Task<IActionResult> RevokeToken()
     {

@@ -337,7 +337,7 @@ public class EhrService : IEhrService
             }
         }
 
-        var requesterKeyRes = await authClient.GetAsync($"/api/v1/auth/{normalizedRequesterId}/keys");
+        var requesterKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedRequesterId}/keys", bearerToken);
         if (!requesterKeyRes.IsSuccessStatusCode)
            return (null, false, "Cannot fetch requester keys from Auth Service");
            
@@ -480,7 +480,8 @@ public class EhrService : IEhrService
         }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
-        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        var bearerToken = GetBearerTokenFromContext();
+        var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{currentUserId.Value}/keys", bearerToken);
         if (!keyRes.IsSuccessStatusCode)
         {
             return null;
@@ -553,7 +554,8 @@ public class EhrService : IEhrService
         }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
-        var keyRes = await authClient.GetAsync($"/api/v1/auth/{currentUserId.Value}/keys");
+        var bearerToken = GetBearerTokenFromContext();
+        var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{currentUserId.Value}/keys", bearerToken);
         if (!keyRes.IsSuccessStatusCode)
         {
             return null;

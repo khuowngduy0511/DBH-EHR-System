@@ -10,6 +10,7 @@ cd "$SCRIPT_DIR"
 WIN_SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd -W 2>/dev/null || pwd)"
 export EXPLORER_CONFIG_FILE_PATH="${WIN_SCRIPT_DIR}/config.json"
 export EXPLORER_PROFILE_DIR_PATH="${WIN_SCRIPT_DIR}/connection-profile"
+export PORT="${PORT:-8070}"
 
 run_setup() {
   echo "[explorer] Syncing crypto copy and connection profile..."
