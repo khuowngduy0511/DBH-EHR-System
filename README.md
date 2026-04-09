@@ -1,28 +1,62 @@
-# DBH-EHR System - Decentralized Blockchain Healthcare
-## Full lệnh chạy từ đầu + blockchain
-docker-compose -f docker-compose.dev.yml up -d --build
+# Setup Guide
 
-cd .\src\DBH.Blockchain.Network\
-Xong rồi chạy wsl hoặc git bash để kích hoạt linux 
+## PHASE 0 — Dọn dẹp hoàn toàn
+
+```bash
+# Terminal 1: Từ thư mục gốc project
+cd /d/DBH-EHR-Backend
+
+# Tắt & xóa infra containers + volumes
+docker compose -f docker-compose.dev.yml down -v
+
+# Tắt & xóa blockchain network
+cd src/DBH.Blockchain.Network
+./network.sh down
+
+cd /d/DBH-EHR-Backend
+```
+
+---
+
+## PHASE 1 — Fix line endings (Windows, cần làm sau mỗi git pull)
+
+```bash
+cd /d/DBH-EHR-Backend/src/DBH.Blockchain.Network
 
 find . -type f -name "*.sh" -exec sed -i 's/\r$//' {} +
-chmod +x organizations/ccp-generate.sh
-chmod +x scripts/*.sh
-chmod +x network.sh
-chmod +x explorer/setup.sh
-./network.sh up
-//////////////////////////////////////
-Build
-docker-compose -f docker-compose.dev.yml up -d --build
+chmod +x network.sh \
+         organizations/ccp-generate.sh \
+         scripts/*.sh \
+         explorer/setup.sh \
+         explorer/explorer.sh
+```
 
-Check log
-docker-compose -f docker-compose.dev.yml logs -f
+---
 
-Build specific service
-docker compose -f docker-compose.dev.yml up -d --build --no-deps auth_service
+## PHASE 2 — Khởi động Infrastructure
 
-Run unit tests
-dotnet test .\src\src.sln -c Debug
+```bash
+cd /d/DBH-EHR-Backend
 
-Remove docker from begin
-docker compose -f docker-compose.dev.yml down -v
+COMPOSE_PARALLEL_LIMIT=2 docker compose -f docker-compose.dev.yml up -d --build
+```
+
+---
+
+## PHASE 3 — Khởi động Blockchain
+
+```bash
+cd /d/DBH-EHR-Backend/src/DBH.Blockchain.Network
+
+./network.sh up -s couchdb
+```
+
+---
+
+## PHASE 4 — Seed Data
+
+```bash
+cd /d/DBH-EHR-Backend
+
+bash scripts/seed-data.sh
+```
