@@ -49,6 +49,9 @@ secrets.json
 # =============================================================================
 blockchain/chaincode/**/node_modules/
 node_modules/
+
+# Blockchain Explorer connection profiles (environment-specific, contains credentials)
+**/explorer/connection-profile/
 # =============================================================================
 # USER-SPECIFIC FILES
 # =============================================================================
