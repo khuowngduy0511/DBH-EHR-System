@@ -100,6 +100,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - ConnectionStrings__OrganizationDb=Host=pg_primary;Port=5432;Database=dbh_organization;Username=admin;Password=dbh_123
+      - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -366,6 +367,7 @@ services:
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
       - ServiceUrls__OrganizationService=http://organization_service:5002
+      - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
     depends_on:
       pg_primary:
         condition: service_healthy
