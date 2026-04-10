@@ -55,10 +55,10 @@ public class FabricOptions
     public int EvaluateTimeoutSeconds { get; set; } = 10;
 
     /// <summary>Số lần retry khi transaction fail</summary>
-    public int MaxRetries { get; set; } = 3;
+    public int MaxRetries { get; set; } = 10;
 
     /// <summary>Delay giữa các retry (milliseconds)</summary>
-    public int RetryDelayMs { get; set; } = 1000;
+    public int RetryDelayMs { get; set; } = 3000;
 
     /// <summary>Sử dụng TLS</summary>
     public bool UseTls { get; set; } = true;
