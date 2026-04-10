@@ -68,7 +68,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - dbh_fabric_network
+      - fabric_ehr
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -156,7 +156,7 @@ services:
         condition: service_started
     networks:
       - dbh_network
-      - dbh_fabric_network
+      - fabric_ehr
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -204,7 +204,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - dbh_fabric_network
+      - fabric_ehr
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -249,7 +249,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - dbh_fabric_network
+      - fabric_ehr
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -495,6 +495,6 @@ volumes:
 networks:
   dbh_network:
     driver: bridge
-  dbh_fabric_network:
+  fabric_ehr:
     external: true
-    name: dbh_fabric_network
+    name: fabric_ehr
