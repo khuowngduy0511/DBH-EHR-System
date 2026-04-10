@@ -252,3 +252,17 @@ public class EncounterCompletedEvent : IntegrationEvent
     public Guid OrganizationId { get; init; }
     public Guid? EhrId { get; init; }
 }
+
+// =============================================================================
+// Payment Events
+// =============================================================================
+
+public class InvoicePaidEvent : IntegrationEvent
+{
+    public Guid InvoiceId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid OrgId { get; init; }
+    public Guid? EncounterId { get; init; }
+    public decimal TotalAmount { get; init; }
+    public DateTime PaidAt { get; init; }
+}

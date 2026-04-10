@@ -28,4 +28,10 @@ public interface IOrganizationService
     Task<PagedResponse<MembershipResponse>> SearchDoctorsAsync(SearchDoctorsRequest request);
     Task<ApiResponse<MembershipResponse>> UpdateMembershipAsync(Guid membershipId, UpdateMembershipRequest request);
     Task<ApiResponse<bool>> DeleteMembershipAsync(Guid membershipId);
+
+    // Payment Config
+    Task<ApiResponse<PaymentConfigStatusResponse>> ConfigurePaymentAsync(Guid orgId, ConfigurePaymentRequest request);
+    Task<ApiResponse<PaymentConfigStatusResponse>> UpdatePaymentConfigAsync(Guid orgId, ConfigurePaymentRequest request);
+    Task<ApiResponse<PaymentConfigStatusResponse>> GetPaymentConfigStatusAsync(Guid orgId);
+    Task<ApiResponse<PaymentKeysResponse>> GetPaymentKeysAsync(Guid orgId);
 }

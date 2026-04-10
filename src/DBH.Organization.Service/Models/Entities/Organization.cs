@@ -122,4 +122,5 @@ public class Organization
     // Navigation (chỉ trong Organization Service)
     public virtual ICollection<Department> Departments { get; set; } = new List<Department>();
     public virtual ICollection<Membership> Memberships { get; set; } = new List<Membership>();
+    public virtual PaymentConfig? PaymentConfig { get; set; }
 }

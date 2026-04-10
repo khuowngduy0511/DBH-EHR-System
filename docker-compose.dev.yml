@@ -25,6 +25,7 @@ services:
       - audit_service
       - notification_service
       - appointment_service
+      - payment_service
     networks:
       - dbh_network
     healthcheck:
@@ -67,7 +68,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - fabric_ehr
+      - dbh_fabric_network
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -99,6 +100,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
       - ConnectionStrings__OrganizationDb=Host=pg_primary;Port=5432;Database=dbh_organization;Username=admin;Password=dbh_123
+      - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -154,7 +156,7 @@ services:
         condition: service_started
     networks:
       - dbh_network
-      - fabric_ehr
+      - dbh_fabric_network
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -202,7 +204,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - fabric_ehr
+      - dbh_fabric_network
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -247,7 +249,7 @@ services:
         condition: service_healthy
     networks:
       - dbh_network
-      - fabric_ehr
+      - dbh_fabric_network
     volumes:
       - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
     healthcheck:
@@ -349,6 +351,48 @@ services:
         - action: rebuild
           path: ./src/DBH.Appointment.Service/Dockerfile
 
+  payment_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Payment.Service/Dockerfile
+    container_name: dbh_payment_service
+    ports:
+      - "5008:5008"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5008
+      - ConnectionStrings__PaymentDb=Host=pg_primary;Port=5432;Database=dbh_payment;Username=admin;Password=dbh_123
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__Username=admin
+      - RabbitMQ__Password=dbh_123
+      - ServiceUrls__OrganizationService=http://organization_service:5002
+      - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
+    depends_on:
+      pg_primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    develop:
+      watch:
+        - action: rebuild
+          path: ./src/DBH.Payment.Service
+        - action: rebuild
+          path: ./src/DBH.Shared.Domain
+        - action: rebuild
+          path: ./src/DBH.Shared.Contracts
+        - action: rebuild
+          path: ./src/DBH.Shared.Infrastructure
+        - action: rebuild
+          path: ./src/DBH.Payment.Service/Dockerfile
+
   # ============================================================================
   # DATABASES
   # ============================================================================
@@ -361,7 +405,7 @@ services:
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=dbh_123
-      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit,dbh_organization,dbh_consent,dbh_notification,dbh_appointment
+      - POSTGRES_MULTIPLE_DATABASES=dbh_identity,dbh_ehr,dbh_audit,dbh_organization,dbh_consent,dbh_notification,dbh_appointment,dbh_payment
     volumes:
       - pg_primary_data:/var/lib/postgresql/data
       - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
@@ -451,6 +495,6 @@ volumes:
 networks:
   dbh_network:
     driver: bridge
-  fabric_ehr:
-    driver: bridge
-    name: fabric_ehr
+  dbh_fabric_network:
+    external: true
+    name: dbh_fabric_network
