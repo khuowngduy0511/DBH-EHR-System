@@ -13,6 +13,7 @@ public class OrganizationDbContext : Microsoft.EntityFrameworkCore.DbContext
     public DbSet<Models.Entities.Organization> Organizations { get; set; } = null!;
     public DbSet<Department> Departments { get; set; } = null!;
     public DbSet<Membership> Memberships { get; set; } = null!;
+    public DbSet<PaymentConfig> PaymentConfigs { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,5 +42,15 @@ public class OrganizationDbContext : Microsoft.EntityFrameworkCore.DbContext
             .WithMany(o => o.Departments)
             .HasForeignKey(d => d.OrgId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PaymentConfig>()
+            .HasOne(pc => pc.Organization)
+            .WithOne(o => o.PaymentConfig)
+            .HasForeignKey<PaymentConfig>(pc => pc.OrgId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PaymentConfig>()
+            .HasIndex(pc => pc.OrgId)
+            .IsUnique();
     }
 }

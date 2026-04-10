@@ -2,6 +2,7 @@
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
+using DBH.Shared.Infrastructure.cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -566,6 +567,115 @@ public class OrganizationService : IOrganizationService
         await _context.SaveChangesAsync();
 
         return new ApiResponse<bool> { Success = true, Message = "Membership terminated", Data = true };
+    }
+
+    // =========================================================================
+    // PAYMENT CONFIG
+    // =========================================================================
+
+    public async Task<ApiResponse<PaymentConfigStatusResponse>> ConfigurePaymentAsync(Guid orgId, ConfigurePaymentRequest request)
+    {
+        var org = await _context.Organizations.FindAsync(orgId);
+        if (org == null)
+            return new ApiResponse<PaymentConfigStatusResponse> { Success = false, Message = "Không tìm thấy tổ chức / bệnh viện." };
+
+        var exists = await _context.PaymentConfigs.AnyAsync(pc => pc.OrgId == orgId);
+        if (exists)
+            return new ApiResponse<PaymentConfigStatusResponse> { Success = false, Message = "Payment config already exists. Use PUT to update." };
+
+        var config = new PaymentConfig
+        {
+            OrgId = orgId,
+            EncryptedClientId = MasterKeyEncryptionService.Encrypt(request.ClientId),
+            EncryptedApiKey = MasterKeyEncryptionService.Encrypt(request.ApiKey),
+            EncryptedChecksumKey = MasterKeyEncryptionService.Encrypt(request.ChecksumKey),
+            IsActive = true
+        };
+
+        _context.PaymentConfigs.Add(config);
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Configured payment for organization {OrgId}", orgId);
+
+        return new ApiResponse<PaymentConfigStatusResponse>
+        {
+            Success = true,
+            Message = "Payment config created successfully",
+            Data = new PaymentConfigStatusResponse
+            {
+                OrgId = orgId,
+                HasPaymentConfig = true,
+                IsActive = config.IsActive,
+                CreatedAt = config.CreatedAt,
+                UpdatedAt = config.UpdatedAt
+            }
+        };
+    }
+
+    public async Task<ApiResponse<PaymentConfigStatusResponse>> UpdatePaymentConfigAsync(Guid orgId, ConfigurePaymentRequest request)
+    {
+        var config = await _context.PaymentConfigs.FirstOrDefaultAsync(pc => pc.OrgId == orgId);
+        if (config == null)
+            return new ApiResponse<PaymentConfigStatusResponse> { Success = false, Message = "Payment config not found. Use POST to create." };
+
+        config.EncryptedClientId = MasterKeyEncryptionService.Encrypt(request.ClientId);
+        config.EncryptedApiKey = MasterKeyEncryptionService.Encrypt(request.ApiKey);
+        config.EncryptedChecksumKey = MasterKeyEncryptionService.Encrypt(request.ChecksumKey);
+        config.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Updated payment config for organization {OrgId}", orgId);
+
+        return new ApiResponse<PaymentConfigStatusResponse>
+        {
+            Success = true,
+            Message = "Payment config updated successfully",
+            Data = new PaymentConfigStatusResponse
+            {
+                OrgId = orgId,
+                HasPaymentConfig = true,
+                IsActive = config.IsActive,
+                CreatedAt = config.CreatedAt,
+                UpdatedAt = config.UpdatedAt
+            }
+        };
+    }
+
+    public async Task<ApiResponse<PaymentConfigStatusResponse>> GetPaymentConfigStatusAsync(Guid orgId)
+    {
+        var config = await _context.PaymentConfigs.FirstOrDefaultAsync(pc => pc.OrgId == orgId);
+
+        return new ApiResponse<PaymentConfigStatusResponse>
+        {
+            Success = true,
+            Data = new PaymentConfigStatusResponse
+            {
+                OrgId = orgId,
+                HasPaymentConfig = config != null,
+                IsActive = config?.IsActive ?? false,
+                CreatedAt = config?.CreatedAt,
+                UpdatedAt = config?.UpdatedAt
+            }
+        };
+    }
+
+    public async Task<ApiResponse<PaymentKeysResponse>> GetPaymentKeysAsync(Guid orgId)
+    {
+        var config = await _context.PaymentConfigs.FirstOrDefaultAsync(pc => pc.OrgId == orgId && pc.IsActive);
+        if (config == null)
+            return new ApiResponse<PaymentKeysResponse> { Success = false, Message = "Payment config not found or inactive." };
+
+        return new ApiResponse<PaymentKeysResponse>
+        {
+            Success = true,
+            Data = new PaymentKeysResponse
+            {
+                ClientId = MasterKeyEncryptionService.Decrypt(config.EncryptedClientId),
+                ApiKey = MasterKeyEncryptionService.Decrypt(config.EncryptedApiKey),
+                ChecksumKey = MasterKeyEncryptionService.Decrypt(config.EncryptedChecksumKey)
+            }
+        };
     }
 
     // =========================================================================
