@@ -36,6 +36,15 @@ public class Encounter
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    [Column("created_by")]
+    public Guid? CreatedBy { get; set; }
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+
+    [Column("updated_by")]
+    public Guid? UpdatedBy { get; set; }
+
     // Navigation
     [ForeignKey("AppointmentId")]
     public virtual Appointment? Appointment { get; set; }

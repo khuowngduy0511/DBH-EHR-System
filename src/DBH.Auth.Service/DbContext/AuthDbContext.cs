@@ -46,6 +46,9 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
             entity.Property(e => e.Status).HasColumnName("status").HasConversion<string>();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
             entity.Property(e => e.PublicKey).HasColumnName("public_key");
         });
 

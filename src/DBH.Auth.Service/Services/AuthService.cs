@@ -26,6 +26,7 @@ public class AuthService : IAuthService
     private readonly ILogger<AuthService> _logger;
     private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IOrganizationServiceClient _organizationServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -39,7 +40,8 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         ITokenService tokenService,
         IBlockchainSyncService blockchainSyncService,
-        IOrganizationServiceClient organizationServiceClient)
+        IOrganizationServiceClient organizationServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -53,6 +55,7 @@ public class AuthService : IAuthService
         _logger = logger;
         _blockchainSyncService = blockchainSyncService;
         _organizationServiceClient = organizationServiceClient;
+        _httpContextAccessor = httpContextAccessor;
     }
 
 
@@ -84,6 +87,8 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
+        var actorUserId = GetCurrentActorId();
+
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             _logger.LogWarning("User with this email already exists: {Email}", request.Email);
@@ -103,7 +108,10 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
         
         // Save User
@@ -164,6 +172,8 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
+        var actorUserId = GetCurrentActorId();
+
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
@@ -190,7 +200,10 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
         
         await _userRepository.AddAsync(user);
@@ -443,6 +456,8 @@ public class AuthService : IAuthService
 
         if (isUpdated)
         {
+            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedBy = userId;
             await _userRepository.UpdateAsync(user);
 
             // Cập nhật thêm vào Profile Patient nếu User có role Patient
@@ -638,6 +653,14 @@ public class AuthService : IAuthService
             user.UserId, organizationId);
 
         return null;
+    }
+
+    private Guid? GetCurrentActorId()
+    {
+        var claimValue = _httpContextAccessor.HttpContext?.User
+            .FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        return Guid.TryParse(claimValue, out var userId) ? userId : null;
     }
 }
 
