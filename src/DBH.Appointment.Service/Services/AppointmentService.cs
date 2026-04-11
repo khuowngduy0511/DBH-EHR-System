@@ -47,6 +47,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<AppointmentResponse>> CreateAppointmentAsync(CreateAppointmentRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var scheduledAtUtc = request.ScheduledAt.Kind == DateTimeKind.Utc
             ? request.ScheduledAt
             : request.ScheduledAt.ToUniversalTime();
@@ -152,7 +153,10 @@ public class AppointmentService : IAppointmentService
             DoctorId = request.DoctorId,
             OrgId = request.OrgId,
             ScheduledAt = scheduledAtUtc,
-            Status = AppointmentStatus.PENDING
+            Status = AppointmentStatus.PENDING,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
 
         _context.Appointments.Add(appointment);
@@ -258,6 +262,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<AppointmentResponse>> UpdateAppointmentStatusAsync(Guid appointmentId, AppointmentStatus status)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
         {
@@ -270,6 +275,8 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = status;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
         
         _logger.LogInformation("Updated appointment {Id} status to {Status}", appointmentId, status);
@@ -291,6 +298,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<AppointmentResponse>> RescheduleAppointmentAsync(Guid appointmentId, DateTime newDate)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
         {
@@ -365,6 +373,8 @@ public class AppointmentService : IAppointmentService
 
         appointment.ScheduledAt = newDateUtc;
         appointment.Status = AppointmentStatus.RESCHEDULED;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDateUtc);
@@ -398,6 +408,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     public async Task<ApiResponse<AppointmentResponse>> ConfirmAppointmentAsync(Guid appointmentId)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
@@ -411,6 +422,8 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CONFIRMED;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Confirmed appointment {Id}", appointmentId);
@@ -461,6 +474,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     public async Task<ApiResponse<AppointmentResponse>> RejectAppointmentAsync(Guid appointmentId, string reason)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
@@ -474,6 +488,8 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Rejected appointment {Id}. Reason: {Reason}", appointmentId, reason);
@@ -514,6 +530,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     public async Task<ApiResponse<AppointmentResponse>> CancelAppointmentAsync(Guid appointmentId, string reason)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
@@ -527,6 +544,8 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Cancelled appointment {Id}. Reason: {Reason}", appointmentId, reason);
@@ -565,6 +584,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     public async Task<ApiResponse<AppointmentResponse>> CheckInAsync(Guid appointmentId)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(appointmentId);
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
@@ -577,6 +597,8 @@ public class AppointmentService : IAppointmentService
             };
 
         appointment.Status = AppointmentStatus.CHECKED_IN;
+        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Patient checked in for appointment {Id}", appointmentId);
@@ -681,6 +703,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<EncounterResponse>> CreateEncounterAsync(CreateEncounterRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var appointment = await _context.Appointments.FindAsync(request.AppointmentId);
         if (appointment == null)
         {
@@ -695,6 +718,8 @@ public class AppointmentService : IAppointmentService
         if (appointment.Status == AppointmentStatus.CONFIRMED || appointment.Status == AppointmentStatus.CHECKED_IN)
         {
             appointment.Status = AppointmentStatus.IN_PROGRESS;
+            appointment.UpdatedAt = DateTime.UtcNow;
+            appointment.UpdatedBy = actorUserId;
         }
 
         var encounter = new Encounter
@@ -703,7 +728,10 @@ public class AppointmentService : IAppointmentService
             DoctorId = request.DoctorId,
             AppointmentId = request.AppointmentId,
             OrgId = request.OrgId,
-            Notes = request.Notes
+            Notes = request.Notes,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
 
         _context.Encounters.Add(encounter);
@@ -800,6 +828,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<ApiResponse<EncounterResponse>> UpdateEncounterAsync(Guid encounterId, UpdateEncounterRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var encounter = await _context.Encounters.FindAsync(encounterId);
         if (encounter == null)
         {
@@ -814,6 +843,9 @@ public class AppointmentService : IAppointmentService
         {
             encounter.Notes = request.Notes;
         }
+
+        encounter.UpdatedAt = DateTime.UtcNow;
+        encounter.UpdatedBy = actorUserId;
 
         await _context.SaveChangesAsync();
 
@@ -835,6 +867,7 @@ public class AppointmentService : IAppointmentService
     /// </summary>
     public async Task<ApiResponse<EncounterResponse>> CompleteEncounterAsync(Guid encounterId, CompleteEncounterRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var encounter = await _context.Encounters
             .Include(e => e.Appointment)
             .FirstOrDefaultAsync(e => e.EncounterId == encounterId);
@@ -848,10 +881,15 @@ public class AppointmentService : IAppointmentService
             encounter.Notes = request.Notes;
         }
 
+        encounter.UpdatedAt = DateTime.UtcNow;
+        encounter.UpdatedBy = actorUserId;
+
         // Mark appointment as COMPLETED
         if (encounter.Appointment != null && encounter.Appointment.Status != AppointmentStatus.COMPLETED)
         {
             encounter.Appointment.Status = AppointmentStatus.COMPLETED;
+            encounter.Appointment.UpdatedAt = DateTime.UtcNow;
+            encounter.Appointment.UpdatedBy = actorUserId;
         }
 
         await _context.SaveChangesAsync();
@@ -1172,6 +1210,14 @@ public class AppointmentService : IAppointmentService
         }
 
         return null;
+    }
+
+    private Guid? GetCurrentActorId()
+    {
+        var claimValue = _httpContextAccessor.HttpContext?.User
+            .FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        return Guid.TryParse(claimValue, out var userId) ? userId : null;
     }
 
     private async Task PublishEventAsync<T>(T @event) where T : class

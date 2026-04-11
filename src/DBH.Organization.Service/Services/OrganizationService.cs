@@ -333,6 +333,7 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<MembershipResponse>> CreateMembershipAsync(CreateMembershipRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var orgExists = await _context.Organizations.AnyAsync(o => o.OrgId == request.OrgId);
         if (!orgExists)
         {
@@ -371,7 +372,10 @@ public class OrganizationService : IOrganizationService
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             OrgPermissions = request.OrgPermissions,
-            Notes = request.Notes
+            Notes = request.Notes,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
 
         _context.Memberships.Add(membership);
@@ -521,6 +525,7 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<MembershipResponse>> UpdateMembershipAsync(Guid membershipId, UpdateMembershipRequest request)
     {
+        var actorUserId = GetCurrentActorId();
         var membership = await _context.Memberships.FindAsync(membershipId);
         if (membership == null)
         {
@@ -542,6 +547,7 @@ public class OrganizationService : IOrganizationService
         if (request.OrgPermissions != null) membership.OrgPermissions = request.OrgPermissions;
         if (request.Notes != null) membership.Notes = request.Notes;
         membership.UpdatedAt = DateTime.UtcNow;
+        membership.UpdatedBy = actorUserId;
 
         await _context.SaveChangesAsync();
 
@@ -555,6 +561,7 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<bool>> DeleteMembershipAsync(Guid membershipId)
     {
+        var actorUserId = GetCurrentActorId();
         var membership = await _context.Memberships.FindAsync(membershipId);
         if (membership == null)
         {
@@ -564,6 +571,7 @@ public class OrganizationService : IOrganizationService
         membership.Status = MembershipStatus.TERMINATED;
         membership.EndDate = DateOnly.FromDateTime(DateTime.UtcNow);
         membership.UpdatedAt = DateTime.UtcNow;
+        membership.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<bool> { Success = true, Message = "Membership terminated", Data = true };
@@ -640,6 +648,14 @@ public class OrganizationService : IOrganizationService
                 UpdatedAt = config.UpdatedAt
             }
         };
+    }
+
+    private Guid? GetCurrentActorId()
+    {
+        var claimValue = _httpContextAccessor.HttpContext?.User
+            .FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        return Guid.TryParse(claimValue, out var userId) ? userId : null;
     }
 
     public async Task<ApiResponse<PaymentConfigStatusResponse>> GetPaymentConfigStatusAsync(Guid orgId)

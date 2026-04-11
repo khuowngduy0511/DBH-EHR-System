@@ -7,7 +7,6 @@ networks:
   ehr:
     name: fabric_ehr
 
-
 services:
   ca_hospital1:
     image: hyperledger/fabric-ca:1.5

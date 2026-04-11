@@ -43,6 +43,8 @@ secrets.json
 # =============================================================================
 **/*.aes
 **/*.decrypted
+real-flow-result.json
+real-flow-existing-accounts-result.json
 
 # =============================================================================
 # BLOCKCHAIN - JS chaincode dependencies (installed at build time)
@@ -50,8 +52,9 @@ secrets.json
 blockchain/chaincode/**/node_modules/
 node_modules/
 
-# Blockchain Explorer connection profiles (environment-specific, contains credentials)
+# Blockchain Explorer generated runtime files (environment-specific, contains credentials)
 **/explorer/connection-profile/
+**/explorer/organizations/
 # =============================================================================
 # USER-SPECIFIC FILES
 # =============================================================================

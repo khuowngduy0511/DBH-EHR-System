@@ -26,6 +26,7 @@ public class AuthService : IAuthService
     private readonly ILogger<AuthService> _logger;
     private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IOrganizationServiceClient _organizationServiceClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -39,7 +40,8 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         ITokenService tokenService,
         IBlockchainSyncService blockchainSyncService,
-        IOrganizationServiceClient organizationServiceClient)
+        IOrganizationServiceClient organizationServiceClient,
+        IHttpContextAccessor httpContextAccessor)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -53,6 +55,7 @@ public class AuthService : IAuthService
         _logger = logger;
         _blockchainSyncService = blockchainSyncService;
         _organizationServiceClient = organizationServiceClient;
+        _httpContextAccessor = httpContextAccessor;
     }
 
 
@@ -84,10 +87,24 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
+        var actorUserId = GetCurrentActorId();
+
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             _logger.LogWarning("User with this email already exists: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            {
+                _logger.LogWarning("User with this phone already exists: {Phone}", normalizedPhone);
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            request.Phone = normalizedPhone;
         }
 
         // Generate RSA/ECC Key Pair
@@ -103,7 +120,10 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
         
         // Save User
@@ -164,9 +184,22 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
+        var actorUserId = GetCurrentActorId();
+
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            request.Phone = normalizedPhone;
         }
 
         if (!Enum.TryParse<RoleName>(request.Role, true, out var roleName))
@@ -190,7 +223,10 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
         };
         
         await _userRepository.AddAsync(user);
@@ -333,7 +369,46 @@ public class AuthService : IAuthService
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
 
+        return BuildUserProfileResponse(user);
+    }
 
+    public async Task<UserProfileResponse?> GetProfileByContactAsync(string? email, string? phone)
+    {
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        var normalizedPhone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+
+        if (normalizedEmail == null && normalizedPhone == null)
+        {
+            return null;
+        }
+
+        if (normalizedEmail != null)
+        {
+            var userByEmail = await _userRepository.GetByEmailWithProfileAsync(normalizedEmail);
+            if (userByEmail == null)
+            {
+                return null;
+            }
+
+            if (normalizedPhone != null && !string.Equals(userByEmail.Phone, normalizedPhone, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return BuildUserProfileResponse(userByEmail);
+        }
+
+        var userByPhone = await _userRepository.GetByPhoneWithProfileAsync(normalizedPhone!);
+        if (userByPhone == null)
+        {
+            return null;
+        }
+
+        return BuildUserProfileResponse(userByPhone);
+    }
+
+    private static UserProfileResponse BuildUserProfileResponse(User user)
+    {
         var profiles = new Dictionary<string, object?>();
         foreach (var role in user.UserRoles)
         {
@@ -370,7 +445,6 @@ public class AuthService : IAuthService
                 case Models.Enums.RoleName.Pharmacist:
                 case Models.Enums.RoleName.Receptionist:
                 case Models.Enums.RoleName.LabTech:
-                    // Tất cả staff roles sử dụng chung StaffProfile
                     if (user.StaffProfile != null)
                     {
                         profiles[roleName.ToString()] = new
@@ -419,7 +493,14 @@ public class AuthService : IAuthService
 
         if (!string.IsNullOrWhiteSpace(request.Phone) && user.Phone != request.Phone)
         {
-            user.Phone = request.Phone;
+            var normalizedPhone = request.Phone.Trim();
+            var phoneExists = await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.UserId != userId);
+            if (phoneExists)
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            user.Phone = normalizedPhone;
             isUpdated = true;
         }
 
@@ -443,6 +524,8 @@ public class AuthService : IAuthService
 
         if (isUpdated)
         {
+            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedBy = userId;
             await _userRepository.UpdateAsync(user);
 
             // Cập nhật thêm vào Profile Patient nếu User có role Patient
@@ -638,6 +721,14 @@ public class AuthService : IAuthService
             user.UserId, organizationId);
 
         return null;
+    }
+
+    private Guid? GetCurrentActorId()
+    {
+        var claimValue = _httpContextAccessor.HttpContext?.User
+            .FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        return Guid.TryParse(claimValue, out var userId) ? userId : null;
     }
 }
 

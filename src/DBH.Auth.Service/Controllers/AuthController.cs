@@ -120,7 +120,7 @@ public class AuthController : ControllerBase
         }
 
         var profile = await _authService.GetMyProfileAsync(userId);
-        if (profile == null) return NotFound();
+        if (profile == null) return NotFound(Failed("Profile not found."));
         return Ok(profile);
     }
 
@@ -147,7 +147,21 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> GetUserProfile(Guid userId)
     {
         var profile = await _authService.GetMyProfileAsync(userId);
-        if (profile == null) return NotFound();
+        if (profile == null) return NotFound(Failed("Profile not found."));
+        return Ok(profile);
+    }
+
+    [Authorize]
+    [HttpGet("users/by-contact")]
+    public async Task<IActionResult> GetUserProfileByContact([FromQuery] string? email, [FromQuery] string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(phone))
+        {
+            return BadRequest("At least one of email or phone is required.");
+        }
+
+        var profile = await _authService.GetProfileByContactAsync(email, phone);
+        if (profile == null) return NotFound(Failed("Profile not found."));
         return Ok(profile);
     }
 
@@ -168,7 +182,7 @@ public class AuthController : ControllerBase
         var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId);
         if (!userId.HasValue)
         {
-            return NotFound();
+            return NotFound(Failed("User not found."));
         }
 
         return Ok(new { UserId = userId.Value });
@@ -179,8 +193,17 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> GetUserKeys(Guid userId)
     {
         var keys = await _authService.GetUserKeysAsync(userId);
-        if (keys == null) return NotFound("User keys not found. User might not have been initialized properly.");
+        if (keys == null) return NotFound(Failed("User keys not found. User might not have been initialized properly."));
         return Ok(keys);
+    }
+
+    private static AuthResponse Failed(string message)
+    {
+        return new AuthResponse
+        {
+            Success = false,
+            Message = message
+        };
     }
 }
 

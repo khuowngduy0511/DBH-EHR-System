@@ -40,12 +40,16 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.Email).HasColumnName("email").HasMaxLength(255);
             entity.HasIndex(e => e.Email).IsUnique();
             entity.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(50);
+            entity.HasIndex(e => e.Phone).IsUnique();
             entity.Property(e => e.Password).HasColumnName("password").HasMaxLength(255);
             entity.Property(e => e.DateOfBirth).HasColumnName("date_of_birth");
             entity.Property(e => e.Address).HasColumnName("address");
             entity.Property(e => e.OrganizationId).HasColumnName("organization_id");
             entity.Property(e => e.Status).HasColumnName("status").HasConversion<string>();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
             entity.Property(e => e.PublicKey).HasColumnName("public_key");
         });
 

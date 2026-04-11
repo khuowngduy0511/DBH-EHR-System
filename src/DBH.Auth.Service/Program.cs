@@ -61,6 +61,7 @@
     // Repositories
     builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
     builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddHttpContextAccessor();
 
     // Auth Services
     builder.Services.AddScoped<ITokenService, TokenService>();
