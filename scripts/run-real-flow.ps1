@@ -66,7 +66,7 @@ function ApiJson {
 
 $stamp = Get-Date -Format 'yyyyMMddHHmmss'
 
-$adminLogin = ApiJson -Method 'POST' -Url "$base/api/v1/auth/login" -Body @{email='admin@dbh.vn';password='Admin@123456'}
+$adminLogin = ApiJson -Method 'POST' -Url "$base/api/v1/auth/login" -Body @{email='admin@dbh.com';password='admin123'}
 $adminToken = $adminLogin.token
 
 $orgs = ApiJson -Method 'GET' -Url "$base/api/v1/organizations?page=1&pageSize=50" -Token $adminToken
