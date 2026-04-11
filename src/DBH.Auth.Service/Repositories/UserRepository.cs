@@ -31,6 +31,28 @@ public class UserRepository : GenericRepository<User>, IUserRepository
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }
 
+    public async Task<User?> GetByEmailWithProfileAsync(string email)
+    {
+        return await _dbSet
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+            .Include(u => u.DoctorProfile)
+            .Include(u => u.PatientProfile)
+            .Include(u => u.StaffProfile)
+            .FirstOrDefaultAsync(u => u.Email == email);
+    }
+
+    public async Task<User?> GetByPhoneWithProfileAsync(string phone)
+    {
+        return await _dbSet
+            .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+            .Include(u => u.DoctorProfile)
+            .Include(u => u.PatientProfile)
+            .Include(u => u.StaffProfile)
+            .FirstOrDefaultAsync(u => u.Phone == phone);
+    }
+
     public async Task<List<User>> GetDoctorsByOrganizationAsync(string organizationId)
     {
         return await _dbSet

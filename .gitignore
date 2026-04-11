@@ -43,6 +43,8 @@ secrets.json
 # =============================================================================
 **/*.aes
 **/*.decrypted
+real-flow-result.json
+real-flow-existing-accounts-result.json
 
 # =============================================================================
 # BLOCKCHAIN - JS chaincode dependencies (installed at build time)

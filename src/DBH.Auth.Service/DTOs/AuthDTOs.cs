@@ -1,11 +1,16 @@
+using System.Text.Json.Serialization;
+
 namespace DBH.Auth.Service.DTOs;
 
 public class AuthResponse
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Token { get; set; } 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RefreshToken { get; set; } 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? UserId { get; set; }
 }
     

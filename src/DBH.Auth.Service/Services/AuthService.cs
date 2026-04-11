@@ -95,6 +95,18 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
 
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            {
+                _logger.LogWarning("User with this phone already exists: {Phone}", normalizedPhone);
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            request.Phone = normalizedPhone;
+        }
+
         // Generate RSA/ECC Key Pair
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
         // _logger.LogInformation("Generated key pair for PublicKey: {PublicKey}", keyPair.PublicKey);
@@ -177,6 +189,17 @@ public class AuthService : IAuthService
         if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
         {
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            request.Phone = normalizedPhone;
         }
 
         if (!Enum.TryParse<RoleName>(request.Role, true, out var roleName))
@@ -346,7 +369,46 @@ public class AuthService : IAuthService
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
 
+        return BuildUserProfileResponse(user);
+    }
 
+    public async Task<UserProfileResponse?> GetProfileByContactAsync(string? email, string? phone)
+    {
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        var normalizedPhone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+
+        if (normalizedEmail == null && normalizedPhone == null)
+        {
+            return null;
+        }
+
+        if (normalizedEmail != null)
+        {
+            var userByEmail = await _userRepository.GetByEmailWithProfileAsync(normalizedEmail);
+            if (userByEmail == null)
+            {
+                return null;
+            }
+
+            if (normalizedPhone != null && !string.Equals(userByEmail.Phone, normalizedPhone, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return BuildUserProfileResponse(userByEmail);
+        }
+
+        var userByPhone = await _userRepository.GetByPhoneWithProfileAsync(normalizedPhone!);
+        if (userByPhone == null)
+        {
+            return null;
+        }
+
+        return BuildUserProfileResponse(userByPhone);
+    }
+
+    private static UserProfileResponse BuildUserProfileResponse(User user)
+    {
         var profiles = new Dictionary<string, object?>();
         foreach (var role in user.UserRoles)
         {
@@ -383,7 +445,6 @@ public class AuthService : IAuthService
                 case Models.Enums.RoleName.Pharmacist:
                 case Models.Enums.RoleName.Receptionist:
                 case Models.Enums.RoleName.LabTech:
-                    // Tất cả staff roles sử dụng chung StaffProfile
                     if (user.StaffProfile != null)
                     {
                         profiles[roleName.ToString()] = new
@@ -432,7 +493,14 @@ public class AuthService : IAuthService
 
         if (!string.IsNullOrWhiteSpace(request.Phone) && user.Phone != request.Phone)
         {
-            user.Phone = request.Phone;
+            var normalizedPhone = request.Phone.Trim();
+            var phoneExists = await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.UserId != userId);
+            if (phoneExists)
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            user.Phone = normalizedPhone;
             isUpdated = true;
         }
 
