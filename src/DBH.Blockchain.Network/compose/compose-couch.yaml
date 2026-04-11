@@ -4,7 +4,7 @@
 #
 
 networks:
-  ehr:
+  fabric_ehr:
     name: fabric_ehr
     external: true
 
@@ -20,7 +20,7 @@ services:
     ports:
       - "5984:5984"
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.hospital1.ehr.com:
     environment:
@@ -42,7 +42,7 @@ services:
     ports:
       - "7984:5984"
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.hospital2.ehr.com:
     environment:
@@ -64,7 +64,7 @@ services:
     ports:
       - "9984:5984"
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.clinic.ehr.com:
     environment:

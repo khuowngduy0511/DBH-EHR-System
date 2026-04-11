@@ -30,7 +30,7 @@ public class NotificationsController : ControllerBase
     /// POST /api/v1/notifications/broadcast - Broadcast (admin)
     /// </summary>
     [HttpPost("broadcast")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Broadcast([FromBody] BroadcastNotificationRequest request)
     {
         var result = await _notificationService.BroadcastNotificationAsync(request);

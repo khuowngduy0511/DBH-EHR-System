@@ -24,7 +24,7 @@ public class OrganizationsController : ControllerBase
     /// Create a new organization (hospital, clinic, etc.)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateOrganization([FromBody] CreateOrganizationRequest request)
     {
         var result = await _organizationService.CreateOrganizationAsync(request);
@@ -66,7 +66,7 @@ public class OrganizationsController : ControllerBase
     /// Update organization
     /// </summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,SystemAdmin,OrgAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateOrganization(Guid id, [FromBody] UpdateOrganizationRequest request)
     {
         var result = await _organizationService.UpdateOrganizationAsync(id, request);
@@ -80,7 +80,7 @@ public class OrganizationsController : ControllerBase
     /// Deactivate organization (soft delete)
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteOrganization(Guid id)
     {
         var result = await _organizationService.DeleteOrganizationAsync(id);

@@ -7,7 +7,7 @@ namespace DBH.Organization.Service.Controllers;
 
 [ApiController]
 [Route("api/v1/organizations/{orgId}/payment-config")]
-[Authorize(Roles = "Admin,SystemAdmin,OrgAdmin")]
+[Authorize(Roles = "Admin")]
 public class PaymentConfigController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
