@@ -189,6 +189,29 @@ public class ConsentService : IConsentService
         _context.Consents.Add(consent);
         await _context.SaveChangesAsync();
 
+        // Tự động tạo Audit Log khi Grant Consent
+        var auditEntry = new AuditEntry
+        {
+            AuditId = Guid.NewGuid().ToString(),
+            ActorDid = request.PatientDid, // Hoặc lấy từ token user đăng nhập
+            ActorType = "PATIENT",
+            Action = "GRANT",
+            TargetType = "CONSENT",
+            TargetId = consent.ConsentId.ToString(),
+            PatientDid = request.PatientDid,
+            ConsentId = consent.ConsentId.ToString(),
+            Result = "SUCCESS",
+            Timestamp = DateTime.UtcNow.ToString("o")
+        };
+
+        _blockchainSyncService.EnqueueAuditEntry(
+            auditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for {ConsentId}: {Error}", consent.ConsentId, error);
+                return Task.CompletedTask;
+            });
+
         _logger.LogInformation(
             "Granted consent {ConsentId} from patient {PatientId} to grantee {GranteeId}",
             consent.ConsentId, consent.PatientId, consent.GranteeId);
@@ -233,13 +256,31 @@ public class ConsentService : IConsentService
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByPatientAsync(Guid patientId, int page = 1, int pageSize = 10)
     {
-        var query = _context.Consents.Where(c => c.PatientId == patientId);
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolveUserIdAsync(authClient, patientId, isPatientProfile: true, bearerToken);
+        
+        var patientCandidates = new[] { patientId, normalizedPatientId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        var query = _context.Consents.Where(c => patientCandidates.Contains(c.PatientId));
         return await ExecutePagedQueryAsync(query, page, pageSize);
     }
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByGranteeAsync(Guid granteeId, int page = 1, int pageSize = 10)
     {
-        var query = _context.Consents.Where(c => c.GranteeId == granteeId);
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedGranteeId = await ResolveUserIdAsync(authClient, granteeId, isPatientProfile: false, bearerToken);
+
+        var granteeCandidates = new[] { granteeId, normalizedGranteeId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        var query = _context.Consents.Where(c => granteeCandidates.Contains(c.GranteeId));
         return await ExecutePagedQueryAsync(query, page, pageSize);
     }
 
@@ -311,6 +352,29 @@ public class ConsentService : IConsentService
         consent.RevokeTxHash = txHash;
 
         await _context.SaveChangesAsync();
+
+        // Tự động tạo Audit Log khi Revoke Consent
+        var auditEntry = new AuditEntry
+        {
+            AuditId = Guid.NewGuid().ToString(),
+            ActorDid = consent.PatientDid, // Chủ thẻ là người thu hồi
+            ActorType = "PATIENT",
+            Action = "REVOKE",
+            TargetType = "CONSENT",
+            TargetId = consent.ConsentId.ToString(),
+            PatientDid = consent.PatientDid,
+            ConsentId = consent.ConsentId.ToString(),
+            Result = "SUCCESS",
+            Timestamp = DateTime.UtcNow.ToString("o")
+        };
+
+        _blockchainSyncService.EnqueueAuditEntry(
+            auditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for {ConsentId}: {Error}", consent.ConsentId, error);
+                return Task.CompletedTask;
+            });
 
         _logger.LogInformation("Revoked consent {ConsentId}", consentId);
 
