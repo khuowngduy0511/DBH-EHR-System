@@ -7,6 +7,7 @@ using DBH.Consent.Service.Services;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Notification;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -25,6 +26,7 @@ public class ConsentServiceHappyPathTests
             db,
             NullLogger<ConsentService>.Instance,
             new StubHttpClientFactory(),
+            new StubHttpContextAccessor(),
             sync,
             blockchainService: new DummyConsentBlockchainService(),
             ehrBlockchainService: null,
@@ -92,9 +94,14 @@ public class ConsentServiceHappyPathTests
         return new ConsentDbContext(options);
     }
 
+    private sealed class StubHttpContextAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; }
+    }
+
     private sealed class StubHttpClientFactory : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => new(new StubHttpMessageHandler());
+        public HttpClient CreateClient(string name) => new(new StubHttpMessageHandler()) { BaseAddress = new Uri("http://localhost") };
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler

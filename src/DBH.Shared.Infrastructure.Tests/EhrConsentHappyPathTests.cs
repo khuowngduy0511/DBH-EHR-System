@@ -72,6 +72,7 @@ public class EhrConsentHappyPathTests
             consentDb,
             NullLogger<ConsentService>.Instance,
             new StubHttpClientFactory(),
+            new StubHttpContextAccessor(),
             sync,
             blockchainService: new DummyConsentBlockchainService(),
             ehrBlockchainService: null,
@@ -127,9 +128,14 @@ public class EhrConsentHappyPathTests
         return new ConsentDbContext(options);
     }
 
+    private sealed class StubHttpContextAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; }
+    }
+
     private sealed class StubHttpClientFactory : IHttpClientFactory
     {
-        public HttpClient CreateClient(string name) => new(new StubHttpMessageHandler());
+        public HttpClient CreateClient(string name) => new(new StubHttpMessageHandler()) { BaseAddress = new Uri("http://localhost") };
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
