@@ -202,6 +202,9 @@ public class EhrService : IEhrService
             }
         }
         
+        // Tự động Audit Log
+        EnqueueEhrAuditLog("CREATE", savedRecord.EhrId, request.PatientId, request.OrgId);
+
         _logger.LogInformation(
             "Tạo EHR {EhrId} version {VersionId} file {FileId}, IPFS CID: {IpfsCid}",
             savedRecord.EhrId, savedVersion.VersionId, savedFile.FileId, ipfsCid ?? "fallback");
@@ -399,6 +402,10 @@ public class EhrService : IEhrService
 
         try {
             var decryptedPayload = SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
+            
+            // Tự động Audit Log
+            EnqueueEhrAuditLog("VIEW", ehrId, record.PatientId, record.OrgId);
+
             return (decryptedPayload, false, null);
         }
         catch (Exception ex) {
@@ -749,6 +756,9 @@ public class EhrService : IEhrService
             }
         }
 
+        // Tự động Audit Log
+        EnqueueEhrAuditLog("UPDATE", ehrId, record.PatientId, record.OrgId);
+
         _logger.LogInformation("Updated EHR {EhrId} to version {Version}, IPFS CID: {IpfsCid}", ehrId, newVersionNumber, ipfsCid ?? "fallback");
 
         // Notify patient about EHR update
@@ -1061,6 +1071,31 @@ public class EhrService : IEhrService
         }
 
         return null;
+    }
+
+    private void EnqueueEhrAuditLog(string action, Guid targetId, Guid patientId, Guid? orgId = null, string result = "SUCCESS")
+    {
+        var auditEntry = new AuditEntry
+        {
+            AuditId = Guid.NewGuid().ToString(),
+            ActorDid = GetCurrentUserIdFromContext()?.ToString() ?? orgId?.ToString() ?? "SYSTEM",
+            ActorType = "USER",
+            Action = action,
+            TargetType = "EHR",
+            TargetId = targetId.ToString(),
+            PatientDid = patientId.ToString(),
+            OrganizationId = orgId?.ToString(),
+            Result = result,
+            Timestamp = DateTime.UtcNow.ToString("o")
+        };
+
+        _blockchainSyncService.EnqueueAuditEntry(
+            auditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for EHR {EhrId}: {Error}", targetId, error);
+                return Task.CompletedTask;
+            });
     }
 
     private async Task<(Guid? UserId, AuthUserProfileDetailDto? Profile)> GetPatientUserProfileAsync(Guid patientId)

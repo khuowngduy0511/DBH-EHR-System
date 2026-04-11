@@ -514,10 +514,25 @@ public class ConsentService : IConsentService
 
     public async Task<ApiResponse<AccessRequestResponse>> CreateAccessRequestAsync(CreateAccessRequestDto request)
     {
-        // Check for existing pending request
+        // Normalize PatientId and RequesterId to UserId
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolveUserIdAsync(authClient, request.PatientId, isPatientProfile: true, bearerToken) ?? request.PatientId;
+        var normalizedRequesterId = await ResolveUserIdAsync(authClient, request.RequesterId, isPatientProfile: false, bearerToken) ?? request.RequesterId;
+
+        // Check for existing pending request (dùng cả ID gốc và ID đã normalize)
+        var patientCandidates = new[] { request.PatientId, normalizedPatientId }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+        var requesterCandidates = new[] { request.RequesterId, normalizedRequesterId }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
         var existingRequest = await _context.AccessRequests.FirstOrDefaultAsync(r =>
-            r.PatientId == request.PatientId &&
-            r.RequesterId == request.RequesterId &&
+            patientCandidates.Contains(r.PatientId) &&
+            requesterCandidates.Contains(r.RequesterId) &&
             r.Status == AccessRequestStatus.PENDING);
 
         if (existingRequest != null)
@@ -531,9 +546,9 @@ public class ConsentService : IConsentService
 
         var accessRequest = new Models.Entities.AccessRequest
         {
-            PatientId = request.PatientId,
+            PatientId = normalizedPatientId,
             PatientDid = request.PatientDid,
-            RequesterId = request.RequesterId,
+            RequesterId = normalizedRequesterId,
             RequesterDid = request.RequesterDid,
             RequesterType = request.RequesterType,
             OrganizationId = request.OrganizationId,
@@ -594,7 +609,16 @@ public class ConsentService : IConsentService
     public async Task<PagedResponse<AccessRequestResponse>> GetAccessRequestsByPatientAsync(
         Guid patientId, AccessRequestStatus? status, int page = 1, int pageSize = 10)
     {
-        var query = _context.AccessRequests.Where(r => r.PatientId == patientId);
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolveUserIdAsync(authClient, patientId, isPatientProfile: true, bearerToken);
+
+        var patientCandidates = new[] { patientId, normalizedPatientId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        var query = _context.AccessRequests.Where(r => patientCandidates.Contains(r.PatientId));
 
         if (status.HasValue)
             query = query.Where(r => r.Status == status.Value);
@@ -605,7 +629,16 @@ public class ConsentService : IConsentService
     public async Task<PagedResponse<AccessRequestResponse>> GetAccessRequestsByRequesterAsync(
         Guid requesterId, AccessRequestStatus? status, int page = 1, int pageSize = 10)
     {
-        var query = _context.AccessRequests.Where(r => r.RequesterId == requesterId);
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedRequesterId = await ResolveUserIdAsync(authClient, requesterId, isPatientProfile: false, bearerToken);
+
+        var requesterCandidates = new[] { requesterId, normalizedRequesterId ?? Guid.Empty }
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        var query = _context.AccessRequests.Where(r => requesterCandidates.Contains(r.RequesterId));
 
         if (status.HasValue)
             query = query.Where(r => r.Status == status.Value);
