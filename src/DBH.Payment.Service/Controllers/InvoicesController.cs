@@ -18,7 +18,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Doctor,Admin,SystemAdmin")]
+    [Authorize(Roles = "Receptionist,Doctor,Admin,SystemAdmin")]
     public async Task<IActionResult> CreateInvoice([FromBody] CreateInvoiceRequest request)
     {
         var result = await _invoiceService.CreateInvoiceAsync(request);
@@ -46,7 +46,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpGet("org/{orgId}")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Receptionist,Admin")]
     public async Task<IActionResult> GetInvoicesByOrg(Guid orgId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
         var result = await _invoiceService.GetInvoicesByOrgAsync(orgId, page, pageSize);
@@ -54,7 +54,7 @@ public class InvoicesController : ControllerBase
     }
 
     [HttpPost("{invoiceId}/cancel")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Receptionist,Admin,SystemAdmin")]
     public async Task<IActionResult> CancelInvoice(Guid invoiceId)
     {
         var result = await _invoiceService.CancelInvoiceAsync(invoiceId);

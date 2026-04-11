@@ -10,7 +10,7 @@ volumes:
   peer0.clinic.ehr.com:
 
 networks:
-  ehr:
+  fabric_ehr:
     name: fabric_ehr
     external: true
 services:
@@ -54,7 +54,7 @@ services:
       - 7053:7053
       - 9443:9443
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.hospital1.ehr.com:
     container_name: peer0.hospital1.ehr.com
@@ -93,7 +93,7 @@ services:
       - 7051:7051
       - 9444:9444
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.hospital2.ehr.com:
     container_name: peer0.hospital2.ehr.com
@@ -132,7 +132,7 @@ services:
       - 9051:9051
       - 9445:9445
     networks:
-      - ehr
+      - fabric_ehr
 
   peer0.clinic.ehr.com:
     container_name: peer0.clinic.ehr.com
@@ -171,4 +171,4 @@ services:
       - 11051:11051
       - 9446:9446
     networks:
-      - ehr
+      - fabric_ehr

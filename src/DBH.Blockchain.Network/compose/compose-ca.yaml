@@ -4,7 +4,7 @@
 #
 
 networks:
-  ehr:
+  fabric_ehr:
     name: fabric_ehr
 
 
@@ -27,7 +27,7 @@ services:
       - ../organizations/fabric-ca/hospital1:/etc/hyperledger/fabric-ca-server
     container_name: ca_hospital1
     networks:
-      - ehr
+      - fabric_ehr
 
   ca_hospital2:
     image: hyperledger/fabric-ca:1.5
@@ -47,7 +47,7 @@ services:
       - ../organizations/fabric-ca/hospital2:/etc/hyperledger/fabric-ca-server
     container_name: ca_hospital2
     networks:
-      - ehr
+      - fabric_ehr
 
   ca_clinic:
     image: hyperledger/fabric-ca:1.5
@@ -67,7 +67,7 @@ services:
       - ../organizations/fabric-ca/clinic:/etc/hyperledger/fabric-ca-server
     container_name: ca_clinic
     networks:
-      - ehr
+      - fabric_ehr
 
   ca_orderer:
     image: hyperledger/fabric-ca:1.5
@@ -87,4 +87,4 @@ services:
       - ../organizations/fabric-ca/ordererOrg:/etc/hyperledger/fabric-ca-server
     container_name: ca_orderer
     networks:
-      - ehr
+      - fabric_ehr

@@ -24,7 +24,7 @@ public class MembershipsController : ControllerBase
     /// Add user to organization (create membership)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Admin,OrgAdmin,HR")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateMembership([FromBody] CreateMembershipRequest request)
     {
         var result = await _organizationService.CreateMembershipAsync(request);
@@ -52,7 +52,7 @@ public class MembershipsController : ControllerBase
     /// Get all memberships for an organization
     /// </summary>
     [HttpGet("by-organization/{orgId:guid}")]
-    [Authorize(Roles = "Admin,OrgAdmin,HR")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetMembershipsByOrg(
         Guid orgId,
         [FromQuery] int page = 1,
@@ -91,7 +91,7 @@ public class MembershipsController : ControllerBase
     /// Update membership details
     /// </summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,OrgAdmin,HR")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateMembership(Guid id, [FromBody] UpdateMembershipRequest request)
     {
         var result = await _organizationService.UpdateMembershipAsync(id, request);
@@ -105,7 +105,7 @@ public class MembershipsController : ControllerBase
     /// Terminate membership (remove user from organization)
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,OrgAdmin,HR")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteMembership(Guid id)
     {
         var result = await _organizationService.DeleteMembershipAsync(id);

@@ -299,7 +299,7 @@ public class EhrController : ControllerBase
     /// Thêm file vào EHR (Flow : upload kết quả xét nghiệm, hình ảnh, đơn thuốc)
     /// </summary>
     [HttpPost("records/{ehrId:guid}/files")]
-    [Authorize(Roles = "Doctor,Admin")]
+    [Authorize(Roles = "Doctor,Admin,LabTech,Nurse")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(EhrFileDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

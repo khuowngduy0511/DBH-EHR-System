@@ -86,7 +86,7 @@ public class AuditLogsController : ControllerBase
     /// GET /api/v1/audit/stats - Thống kê audit
     /// </summary>
     [HttpGet("stats")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetStats(
         [FromQuery] Guid? organizationId,
         [FromQuery] DateTime? fromDate,
@@ -100,7 +100,7 @@ public class AuditLogsController : ControllerBase
     /// POST /api/v1/audit/sync/{blockchainAuditId} - Sync từ blockchain
     /// </summary>
     [HttpPost("sync/{blockchainAuditId}")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SyncFromBlockchain(string blockchainAuditId)
     {
         var result = await _auditService.SyncFromBlockchainAsync(blockchainAuditId);

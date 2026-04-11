@@ -85,7 +85,7 @@ public class ConsentsController : ControllerBase
     /// Search consents with filters
     /// </summary>
     [HttpGet("search")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SearchConsents([FromQuery] ConsentQueryParams query)
     {
         var result = await _consentService.SearchConsentsAsync(query);
@@ -124,7 +124,7 @@ public class ConsentsController : ControllerBase
     /// Sync consent from blockchain (admin action)
     /// </summary>
     [HttpPost("sync/{blockchainConsentId}")]
-    [Authorize(Roles = "Admin,SystemAdmin")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SyncFromBlockchain(string blockchainConsentId)
     {
         var result = await _consentService.SyncFromBlockchainAsync(blockchainConsentId);
@@ -154,7 +154,7 @@ public class AccessRequestsController : ControllerBase
     /// Create access request (doctor/org requests patient consent)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Doctor,Nurse,OrgAdmin")]
+    [Authorize(Roles = "Doctor,Nurse,Admin")]
     public async Task<IActionResult> CreateAccessRequest([FromBody] CreateAccessRequestDto request)
     {
         // TODO: Verify request.RequesterId matches authenticated user

@@ -6,7 +6,7 @@ volumes:
   walletstore:
 
 networks:
-  mynetwork.com:
+  fabric_ehr:
     name: fabric_ehr
     external: true
 
@@ -27,7 +27,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - mynetwork.com
+      - fabric_ehr
 
   explorer.mynetwork.com:
     image: ghcr.io/hyperledger-labs/explorer:latest
@@ -55,4 +55,4 @@ services:
       explorerdb.mynetwork.com:
         condition: service_healthy
     networks:
-      - mynetwork.com
+      - fabric_ehr

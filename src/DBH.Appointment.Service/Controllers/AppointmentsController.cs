@@ -118,7 +118,7 @@ public class AppointmentsController : ControllerBase
     /// Bác sĩ xác nhận lịch hẹn (PENDING → CONFIRMED)
     /// </summary>
     [HttpPut("{id:guid}/confirm")]
-    [Authorize(Roles = "Doctor,Admin")]
+    [Authorize(Roles = "Receptionist,Doctor,Admin")]
     [ProducesResponseType(typeof(ApiResponse<AppointmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<AppointmentResponse>>> ConfirmAppointment(Guid id)
@@ -134,7 +134,7 @@ public class AppointmentsController : ControllerBase
     /// Bác sĩ từ chối lịch hẹn (PENDING → CANCELLED)
     /// </summary>
     [HttpPut("{id:guid}/reject")]
-    [Authorize(Roles = "Doctor,Admin")]
+    [Authorize(Roles = "Receptionist,Doctor,Admin")]
     [ProducesResponseType(typeof(ApiResponse<AppointmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<AppointmentResponse>>> RejectAppointment(Guid id, [FromBody] CancelAppointmentRequest request)
@@ -204,7 +204,7 @@ public class AppointmentsController : ControllerBase
     /// Lấy danh sách bệnh nhân đã khám của bác sĩ (distinct, sắp xếp theo lần khám gần nhất)
     /// </summary>
     [HttpGet("doctors/{doctorId:guid}/patients")]
-    [Authorize(Roles = "Doctor,Admin")]
+    [Authorize(Roles = "Receptionist,Doctor,Admin")]
     [ProducesResponseType(typeof(PagedResponse<DoctorPatientResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<DoctorPatientResponse>>> GetPatientsByDoctor(
         Guid doctorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
