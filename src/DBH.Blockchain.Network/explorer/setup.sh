@@ -73,46 +73,112 @@ if [ -n "$CLINIC_PRIVATE_KEY" ]; then
     echo "Found Clinic admin key: $CLINIC_PRIVATE_KEY"
 fi
 
-# Update the profile using sed
-# This assumes the path format in the file matches /tmp/crypto/.../keystore/.*_sk
-# We capture the path up to keystore/ and replace the filename
-TEMP_FILE="${PROFILE_PATH}.tmp"
+# Generate the connection profile from scratch with the discovered keys
+cat > "$PROFILE_PATH" <<CONN_EOF
+{
+    "name": "ehr-network",
+    "version": "1.0.0",
+    "client": {
+        "tlsEnable": true,
+        "adminCredential": {
+            "id": "exploreradmin",
+            "password": "exploreradminpw"
+        },
+        "enableAuthentication": true,
+        "organization": "Hospital1",
+        "connection": {
+            "timeout": {
+                "peer": { "endorser": "300" },
+                "orderer": "300"
+            }
+        }
+    },
+    "channels": {
+        "consent-channel": {
+            "peers": {
+                "peer0.hospital1.ehr.com": {},
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
+            }
+        },
+        "audit-channel": {
+            "peers": {
+                "peer0.hospital1.ehr.com": {},
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
+            }
+        },
+        "ehr-hash-channel": {
+            "peers": {
+                "peer0.hospital1.ehr.com": {},
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
+            }
+        }
+    },
+    "organizations": {
+        "Hospital1": {
+            "mspid": "Hospital1MSP",
+            "adminPrivateKey": {
+                "path": "/tmp/crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore/${HOSPITAL1_PRIVATE_KEY}"
+            },
+            "peers": ["peer0.hospital1.ehr.com"],
+            "signedCert": {
+                "path": "/tmp/crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem"
+            }
+        },
+        "Hospital2": {
+            "mspid": "Hospital2MSP",
+            "adminPrivateKey": {
+                "path": "/tmp/crypto/peerOrganizations/hospital2.ehr.com/users/Admin@hospital2.ehr.com/msp/keystore/${HOSPITAL2_PRIVATE_KEY}"
+            },
+            "peers": ["peer0.hospital2.ehr.com"],
+            "signedCert": {
+                "path": "/tmp/crypto/peerOrganizations/hospital2.ehr.com/users/Admin@hospital2.ehr.com/msp/signcerts/cert.pem"
+            }
+        },
+        "Clinic": {
+            "mspid": "ClinicMSP",
+            "adminPrivateKey": {
+                "path": "/tmp/crypto/peerOrganizations/clinic.ehr.com/users/Admin@clinic.ehr.com/msp/keystore/${CLINIC_PRIVATE_KEY}"
+            },
+            "peers": ["peer0.clinic.ehr.com"],
+            "signedCert": {
+                "path": "/tmp/crypto/peerOrganizations/clinic.ehr.com/users/Admin@clinic.ehr.com/msp/signcerts/cert.pem"
+            }
+        }
+    },
+    "peers": {
+        "peer0.hospital1.ehr.com": {
+            "url": "grpcs://peer0.hospital1.ehr.com:7051",
+            "tlsCACerts": {
+                "path": "/tmp/crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt"
+            },
+            "grpcOptions": {
+                "ssl-target-name-override": "peer0.hospital1.ehr.com"
+            }
+        },
+        "peer0.hospital2.ehr.com": {
+            "url": "grpcs://peer0.hospital2.ehr.com:9051",
+            "tlsCACerts": {
+                "path": "/tmp/crypto/peerOrganizations/hospital2.ehr.com/peers/peer0.hospital2.ehr.com/tls/ca.crt"
+            },
+            "grpcOptions": {
+                "ssl-target-name-override": "peer0.hospital2.ehr.com"
+            }
+        },
+        "peer0.clinic.ehr.com": {
+            "url": "grpcs://peer0.clinic.ehr.com:11051",
+            "tlsCACerts": {
+                "path": "/tmp/crypto/peerOrganizations/clinic.ehr.com/peers/peer0.clinic.ehr.com/tls/ca.crt"
+            },
+            "grpcOptions": {
+                "ssl-target-name-override": "peer0.clinic.ehr.com"
+            }
+        }
+    }
+}
+CONN_EOF
 
-if [ ! -f "$PROFILE_PATH" ]; then
-    echo "Error: Connection profile not found at $PROFILE_PATH"
-    exit 1
-fi
-
-# Replace placeholder keys for each org with the current generated *_sk file names
-SED_ARGS=(
-    -E
-    -e "s|PLACEHOLDER_HOSPITAL1_SK|${HOSPITAL1_PRIVATE_KEY}|g"
-    -e "s|(/tmp/crypto/peerOrganizations/hospital1\.ehr\.com/users/Admin@hospital1\.ehr\.com/msp/keystore/)[^\"]+_sk|\\1${HOSPITAL1_PRIVATE_KEY}|g"
-)
-
-if [ -n "$HOSPITAL2_PRIVATE_KEY" ]; then
-    SED_ARGS+=(
-        -e "s|PLACEHOLDER_HOSPITAL2_SK|${HOSPITAL2_PRIVATE_KEY}|g"
-        -e "s|(/tmp/crypto/peerOrganizations/hospital2\.ehr\.com/users/Admin@hospital2\.ehr\.com/msp/keystore/)[^\"]+_sk|\\1${HOSPITAL2_PRIVATE_KEY}|g"
-    )
-fi
-
-if [ -n "$CLINIC_PRIVATE_KEY" ]; then
-    SED_ARGS+=(
-        -e "s|PLACEHOLDER_CLINIC_SK|${CLINIC_PRIVATE_KEY}|g"
-        -e "s|(/tmp/crypto/peerOrganizations/clinic\.ehr\.com/users/Admin@clinic\.ehr\.com/msp/keystore/)[^\"]+_sk|\\1${CLINIC_PRIVATE_KEY}|g"
-    )
-fi
-
-sed "${SED_ARGS[@]}" "$PROFILE_PATH" > "$TEMP_FILE"
-
-if [ $? -eq 0 ]; then
-    mv "$TEMP_FILE" "$PROFILE_PATH"
-    echo "Updated ${PROFILE_PATH} successfully."
-else
-    echo "Error updating ${PROFILE_PATH}"
-    if [ -f "$TEMP_FILE" ]; then rm "$TEMP_FILE"; fi
-    exit 1
-fi
-
+echo "Generated ${PROFILE_PATH} successfully."
 echo "Explorer setup complete."

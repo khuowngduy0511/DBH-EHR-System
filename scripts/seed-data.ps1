@@ -3,6 +3,11 @@
 # Run after: docker compose -f docker-compose.dev.yml up -d
 # Idempotent: safe to re-run (existing records will return error and continue)
 # NOTE: Does NOT seed PayOS payment config - manual setup required
+#
+# Coverage: Auth, Organization, Department, Membership, Appointment (full lifecycle),
+#   Encounter, EHR (create + version), Consent (grant + revoke), Access Requests,
+#   Audit Logs, Notifications (individual + broadcast + preferences + device tokens),
+#   Invoices (create + pay cash + cancel) across 3 organizations
 # =============================================================================
 
 $BASE  = "http://localhost:5000"
@@ -23,7 +28,7 @@ function Api($method, $url, $body = $null, $token = $null, $extraHeaders = @{}) 
     if ($token) { $h["Authorization"] = "Bearer $token" }
     foreach ($k in $extraHeaders.Keys) { $h[$k] = $extraHeaders[$k] }
 
-    $params = @{ Method = $method; Uri = $url; Headers = $h; ErrorAction = 'SilentlyContinue' }
+    $params = @{ Method = $method; Uri = $url; Headers = $h; ErrorAction = 'SilentlyContinue'; TimeoutSec = 15 }
     if ($body) {
         $json = $body | ConvertTo-Json -Depth 10
         $params["Body"] = $json
@@ -62,6 +67,16 @@ Write-Host "  Started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Foreground
 # =============================================================================
 Write-Host "`n--- 1. Admin Account ---" -ForegroundColor Green
 
+# Bootstrap: login with DB-seeded admin to get Admin token
+$bootstrapLogin = Api POST "$AUTH/login" @{ email = "admin@dbh.com"; password = "admin123" }
+$bootstrapToken = $bootstrapLogin.token
+if (-not $bootstrapToken) {
+    Write-Host "  FATAL: Cannot login as bootstrap admin (admin@dbh.com). Ensure DB is migrated." -ForegroundColor Red
+    exit 1
+}
+Write-Host "  Bootstrap admin (admin@dbh.com) logged in"
+
+# Register custom admin account
 Api POST "$AUTH/register" @{
     fullName = "System Admin"
     email    = "admin@dbh.vn"
@@ -76,10 +91,11 @@ $adminMe = Api GET "$AUTH/me" $null $adminToken
 $adminUserId = $adminMe.userId
 Write-Host "  Admin: userId=$adminUserId"
 
-Api PUT "$AUTH/updateRole" @{ userId = "$adminUserId"; newRole = "Admin" } $adminToken | Out-Null
-Write-Host "  Role -> Admin"
+# Use bootstrap token to promote admin@dbh.vn to Admin role
+Api PUT "$AUTH/updateRole" @{ userId = "$adminUserId"; newRole = "Admin" } $bootstrapToken | Out-Null
+Write-Host "  Role -> Admin (via bootstrap)"
 
-# Re-login to refresh claims
+# Re-login to refresh claims with Admin role
 $loginAdmin = Api POST "$AUTH/login" @{ email = "admin@dbh.vn"; password = "Admin@123456" }
 $adminToken = $loginAdmin.token
 
@@ -293,6 +309,15 @@ $orgData = @()
 foreach ($o in $orgs) {
     $created = Api POST $ORG $o $adminToken
     $orgId = if ($created.data.orgId) { $created.data.orgId } elseif ($created.orgId) { $created.orgId } else { $null }
+
+    # Fallback: if create failed (duplicate), fetch existing org by code
+    if (-not $orgId) {
+        $existingOrgs = Api GET "$ORG`?search=$($o.orgCode)&pageSize=50" $null $adminToken
+        $orgList = if ($existingOrgs.data) { $existingOrgs.data } elseif ($existingOrgs -is [array]) { $existingOrgs } else { @() }
+        $match = $orgList | Where-Object { $_.orgCode -eq $o.orgCode } | Select-Object -First 1
+        if ($match) { $orgId = $match.orgId }
+    }
+
     $orgData += @{ orgId = $orgId; name = $o.orgName; code = $o.orgCode }
     Write-Host "  Org: $($o.orgName) | orgId=$orgId"
 }
@@ -331,9 +356,22 @@ $departments = @(
 )
 
 $deptData = @()
+$existingDeptCache = @{}
 foreach ($d in $departments) {
     $created = Api POST $DEPT $d $adminToken
     $deptId = if ($created.data.departmentId) { $created.data.departmentId } elseif ($created.departmentId) { $created.departmentId } else { $null }
+
+    # Fallback: if create failed (duplicate), fetch existing dept by org + code
+    if (-not $deptId -and $d.orgId) {
+        $cacheKey = "$($d.orgId)"
+        if (-not $existingDeptCache.ContainsKey($cacheKey)) {
+            $existingDepts = Api GET "$DEPT/by-organization/$($d.orgId)?pageSize=50" $null $adminToken
+            $existingDeptCache[$cacheKey] = if ($existingDepts.data) { $existingDepts.data } elseif ($existingDepts -is [array]) { $existingDepts } else { @() }
+        }
+        $match = $existingDeptCache[$cacheKey] | Where-Object { $_.departmentCode -eq $d.departmentCode } | Select-Object -First 1
+        if ($match) { $deptId = $match.departmentId }
+    }
+
     $deptData += @{ deptId = $deptId; name = $d.departmentName; orgId = $d.orgId }
     Write-Host "  Dept: $($d.departmentName) | deptId=$deptId"
 }
@@ -400,8 +438,35 @@ foreach ($m in $hospitalBMemberships) {
     Write-Host "  Member: Hospital B | empId=$($m.empId) | memId=$memId"
 }
 
+# Clinic memberships (Dr Hieu part-time + Receptionist)
+$clinicMemberships = @(
+    @{ userId = $doctorData[0].userId; deptIdx = 8; empId = "EMP-DOC-C01"; jobTitle = "Bac si tu van Da lieu";  license = $doctorData[0].license; specialty = "Da lieu";  qualifications = '["Dai hoc Y Duoc TP.HCM","Chung chi Da lieu co ban"]'; notes = "Bac si ban thoi gian tai phong kham" },
+    @{ userId = $staffData[2].userId;  deptIdx = 8; empId = "EMP-STF-C01"; jobTitle = "Nhan vien tiep nhan";  license = "LT-C01";              specialty = "Tiep nhan"; qualifications = '["Trung cap Y"]';                                           notes = "Le tan phong kham" }
+)
+
+foreach ($m in $clinicMemberships) {
+    $deptId = if ($m.deptIdx -ne $null -and $m.deptIdx -lt $deptData.Count) { $deptData[$m.deptIdx].deptId } else { $null }
+    $membership = @{
+        userId         = $m.userId
+        orgId          = $clinicId
+        departmentId   = $deptId
+        employeeId     = $m.empId
+        jobTitle       = $m.jobTitle
+        licenseNumber  = $m.license
+        specialty      = $m.specialty
+        qualifications = $m.qualifications
+        startDate      = "2024-03-01"
+        orgPermissions = '["VIEW_PATIENTS","CREATE_RECORDS"]'
+        notes          = $m.notes
+    }
+    $created = Api POST $MEMB $membership $adminToken
+    $memId = if ($created.data.membershipId) { $created.data.membershipId } elseif ($created.membershipId) { $created.membershipId } else { $null }
+    Write-Host "  Member: Clinic | empId=$($m.empId) | memId=$memId"
+}
+Write-Host "  Total memberships: 11 (5 HospA + 4 HospB + 2 Clinic)"
+
 # =============================================================================
-# 8. APPOINTMENTS (various pairings across both hospitals)
+# 8. APPOINTMENTS (various pairings across all organizations)
 # =============================================================================
 Write-Host "`n--- 8. Appointments ---" -ForegroundColor Green
 
@@ -416,18 +481,24 @@ $aptPairs = @(
     # Hospital B appointments (doctors 2,3)
     @{ patIdx = 2; docIdx = 2; orgId = $hospitalBId; daysFromNow = 1;  isPast = $false },  # Cuong -> Dr Phuoc
     @{ patIdx = 4; docIdx = 3; orgId = $hospitalBId; daysFromNow = 3;  isPast = $false },  # Em -> Dr Tuan
+    # Clinic appointments (Dr Hieu part-time)
+    @{ patIdx = 3; docIdx = 0; orgId = $clinicId;    daysFromNow = 4;  isPast = $false },  # Dung -> Dr Hieu @Clinic
+    @{ patIdx = 1; docIdx = 0; orgId = $clinicId;    daysFromNow = 6;  isPast = $false },  # Binh -> Dr Hieu @Clinic
     # Past simulated (for encounters/EHR)
     @{ patIdx = 0; docIdx = 0; orgId = $hospitalAId; daysFromNow = -3; isPast = $true },   # An -> Dr Hieu (past)
     @{ patIdx = 1; docIdx = 1; orgId = $hospitalAId; daysFromNow = -5; isPast = $true },   # Binh -> Dr Lan (past)
     @{ patIdx = 2; docIdx = 2; orgId = $hospitalBId; daysFromNow = -2; isPast = $true }    # Cuong -> Dr Phuoc (past at Hospital B)
 )
 
+$aptIdx = 0
 foreach ($pair in $aptPairs) {
     Start-Sleep -Milliseconds 400
+    # Use 14:00 for "past" appointments, 9:00+ for future (avoid time conflicts on same day)
+    $minuteOffset = $aptIdx * 15
     $createDate = if ($pair.isPast) {
-        (Get-Date).AddDays(1).AddHours(9).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        (Get-Date).AddDays(1).AddHours(14).AddMinutes($minuteOffset).ToString("yyyy-MM-ddTHH:mm:ssZ")
     } else {
-        (Get-Date).AddDays($pair.daysFromNow).AddHours(9).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        (Get-Date).AddDays($pair.daysFromNow).AddHours(9).AddMinutes($minuteOffset).ToString("yyyy-MM-ddTHH:mm:ssZ")
     }
     $patientToken = $patientData[$pair.patIdx].token
 
@@ -439,6 +510,17 @@ foreach ($pair in $aptPairs) {
     } $patientToken
 
     $aptId = if ($aptResult.data.appointmentId) { $aptResult.data.appointmentId } elseif ($aptResult.appointmentId) { $aptResult.appointmentId } else { $null }
+
+    # Fallback: if create failed (re-run), find existing appointment for this patient-doctor pair
+    if (-not $aptId -and $patientToken) {
+        $existingApts = Api GET "$APTU`?patientId=$($patientData[$pair.patIdx].patientId)&doctorId=$($doctorData[$pair.docIdx].doctorId)&pageSize=20" $null $patientToken
+        $aptList = if ($existingApts.data) { $existingApts.data } elseif ($existingApts -is [array]) { $existingApts } else { @() }
+        if ($aptList.Count -gt 0) {
+            # Pick the first matching appointment (prefer unfinished ones)
+            $aptId = $aptList[0].appointmentId
+        }
+    }
+
     $appointmentData += @{
         aptId  = $aptId
         patIdx = $pair.patIdx
@@ -448,16 +530,54 @@ foreach ($pair in $aptPairs) {
     }
     $label = if ($pair.isPast) { "(simulated past)" } else { "" }
     Write-Host "  Appointment: $($patientData[$pair.patIdx].name) -> $($doctorData[$pair.docIdx].name) $label | aptId=$aptId"
+    $aptIdx++
 }
 
-# Confirm ALL appointments
+# Confirm most appointments (skip last 2 future for lifecycle demo)
+$confirmCount = 0
+for ($ci = 0; $ci -lt $appointmentData.Count; $ci++) {
+    $aptItem = $appointmentData[$ci]
+    if ($aptItem.aptId -and -not $aptItem.isPast) {
+        $docToken = $doctorData[$aptItem.docIdx].token
+        Api PUT "$APTU/$($aptItem.aptId)/confirm" $null $docToken | Out-Null
+        $confirmCount++
+    }
+}
+# Also confirm past appointments for encounter flow
 foreach ($aptItem in $appointmentData) {
-    if ($aptItem.aptId) {
+    if ($aptItem.aptId -and $aptItem.isPast) {
         $docToken = $doctorData[$aptItem.docIdx].token
         Api PUT "$APTU/$($aptItem.aptId)/confirm" $null $docToken | Out-Null
     }
 }
-Write-Host "  Confirmed all appointments"
+Write-Host "  Confirmed $confirmCount future + 3 past appointments"
+
+# =============================================================================
+# 8b. APPOINTMENT LIFECYCLE (reject, cancel, reschedule)
+# =============================================================================
+Write-Host "`n--- 8b. Appointment Lifecycle ---" -ForegroundColor Green
+
+# Reject appointment: Em -> Dr Hieu (index 4) - doctor rejects due to schedule conflict
+$rejectApt = $appointmentData[4]
+if ($rejectApt.aptId) {
+    Api PUT "$APTU/$($rejectApt.aptId)/reject" @{ reason = "Bac si bi trung lich hoc thuong xuyen vao ngay nay. Vui long dat lai lich khac." } $doctorData[$rejectApt.docIdx].token | Out-Null
+    Write-Host "  Rejected: $($patientData[$rejectApt.patIdx].name) -> $($doctorData[$rejectApt.docIdx].name) (schedule conflict)"
+}
+
+# Cancel appointment: An -> Dr Lan 2nd (index 3) - patient cancels
+$cancelApt = $appointmentData[3]
+if ($cancelApt.aptId) {
+    Api PUT "$APTU/$($cancelApt.aptId)/cancel" @{ reason = "Benh nhan co viec dot xuat, xin huy lich hen." } $patientData[$cancelApt.patIdx].token | Out-Null
+    Write-Host "  Cancelled: $($patientData[$cancelApt.patIdx].name) -> $($doctorData[$cancelApt.docIdx].name) (patient request)"
+}
+
+# Reschedule appointment: Binh -> Dr Lan (index 1) - reschedule to +7 days
+$reschedApt = $appointmentData[1]
+if ($reschedApt.aptId) {
+    $newDate = (Get-Date).AddDays(7).AddHours(10).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    Api PUT "$APTU/$($reschedApt.aptId)/reschedule?newDate=$newDate" $null $patientData[$reschedApt.patIdx].token | Out-Null
+    Write-Host "  Rescheduled: $($patientData[$reschedApt.patIdx].name) -> $($doctorData[$reschedApt.docIdx].name) (moved +7 days)"
+}
 
 # =============================================================================
 # 9. ENCOUNTERS & EHR (for past appointments)
@@ -617,6 +737,15 @@ foreach ($ehr in $standaloneEhr) {
     $patientId = $patientData[$ehr.patIdx].patientId
     $doctorId  = $doctorData[$ehr.docIdx].doctorId
 
+    if (-not $docToken) {
+        Write-Host "  SKIP EHR: $($patientData[$ehr.patIdx].name) - no doctor token" -ForegroundColor Yellow
+        continue
+    }
+    if (-not $ehr.orgId) {
+        Write-Host "  SKIP EHR: $($patientData[$ehr.patIdx].name) - no orgId" -ForegroundColor Yellow
+        continue
+    }
+
     $ehrReq = @{
         patientId = "$patientId"
         orgId     = "$($ehr.orgId)"
@@ -662,6 +791,87 @@ foreach ($ehr in $standaloneEhr) {
 }
 
 # =============================================================================
+# 10b. EHR VERSION UPDATES (update existing records to create versions)
+# =============================================================================
+Write-Host "`n--- 10b. EHR Version Updates ---" -ForegroundColor Green
+
+if ($ehrIds.Count -gt 0) {
+    # Update first standalone EHR to create version 2
+    $updateEhrId = $ehrIds[0]
+    $ehrUpdate = Api PUT "$EHRU/$updateEhrId" @{
+        data = @{
+            resourceType = "Bundle"
+            type = "document"
+            entry = @(
+                @{
+                    resource = @{
+                        resourceType   = "Condition"
+                        code           = @{ text = "Kham suc khoe tong quat - Tai kham" }
+                        clinicalStatus = @{ coding = @(@{ code = "resolved"; display = "Resolved" }) }
+                        note           = @(@{ text = "Tai kham lan 2: Ket qua on dinh, khong phat hien bat thuong" })
+                    }
+                },
+                @{
+                    resource = @{
+                        resourceType = "Observation"
+                        status = "final"
+                        code = @{ text = "Vital Signs - Tai kham" }
+                        component = @(
+                            @{ code = @{ text = "Huyet ap" }; valueQuantity = @{ value = 115; unit = "mmHg" } },
+                            @{ code = @{ text = "Nhip tim" }; valueQuantity = @{ value = 70; unit = "bpm" } },
+                            @{ code = @{ text = "Can nang" }; valueQuantity = @{ value = 64; unit = "kg" } },
+                            @{ code = @{ text = "BMI" };      valueQuantity = @{ value = 22.1; unit = "kg/m2" } }
+                        )
+                    }
+                },
+                @{
+                    resource = @{
+                        resourceType = "DiagnosticReport"
+                        status       = "final"
+                        code         = @{ text = "Xet nghiem mau tong quat" }
+                        conclusion   = "Chi so mau trong gioi han binh thuong. WBC: 7.2, RBC: 4.8, Hb: 14.5, Plt: 250"
+                    }
+                }
+            )
+        }
+    } $doctorData[0].token
+    Write-Host "  Updated EHR (v2): $updateEhrId - Tai kham + Xet nghiem mau"
+
+    # Update second standalone EHR
+    if ($ehrIds.Count -gt 1) {
+        $updateEhrId2 = $ehrIds[1]
+        $ehrUpdate2 = Api PUT "$EHRU/$updateEhrId2" @{
+            data = @{
+                resourceType = "Bundle"
+                type = "document"
+                entry = @(
+                    @{
+                        resource = @{
+                            resourceType   = "Condition"
+                            code           = @{ text = "Tang huyet ap - Dieu chinh thuoc" }
+                            clinicalStatus = @{ coding = @(@{ code = "active"; display = "Active" }) }
+                            note           = @(@{ text = "Tang lieu Amlodipine 5mg -> 10mg do huyet ap chua on dinh" })
+                        }
+                    },
+                    @{
+                        resource = @{
+                            resourceType = "MedicationRequest"
+                            status       = "active"
+                            intent       = "order"
+                            medicationCodeableConcept = @{ text = "Amlodipine 10mg"; coding = @(@{ system = "http://www.nlm.nih.gov/research/umls/rxnorm"; display = "Amlodipine 10mg" }) }
+                            dosageInstruction = @(@{ text = "Uong 1 lan/ngay buoi sang, sau an"; route = @{ text = "Uong" } })
+                        }
+                    }
+                )
+            }
+        } $doctorData[1].token
+        Write-Host "  Updated EHR (v2): $updateEhrId2 - Dieu chinh thuoc tang huyet ap"
+    }
+} else {
+    Write-Host "  SKIP: No EHR IDs available for version update" -ForegroundColor Yellow
+}
+
+# =============================================================================
 # 11. CONSENTS (patients grant access to doctors and orgs)
 # =============================================================================
 Write-Host "`n--- 11. Consents ---" -ForegroundColor Green
@@ -669,6 +879,10 @@ Write-Host "`n--- 11. Consents ---" -ForegroundColor Green
 # Patient 0,1,2 grant consent to Dr Hieu (Hospital A) for TREATMENT
 for ($i = 0; $i -lt 3; $i++) {
     $patToken = $patientData[$i].token
+    if (-not $patToken) {
+        Write-Host "  SKIP Consent: $($patientData[$i].name) - no token" -ForegroundColor Yellow
+        continue
+    }
     $consent = Api POST $CONSU @{
         patientId    = "$($patientData[$i].patientId)"
         patientDid   = "$($patientData[$i].did)"
@@ -739,6 +953,107 @@ $consent = Api POST $CONSU @{
     durationDays = 365
 } $patientData[4].token
 Write-Host "  Consent: $($patientData[4].name) -> Hospital B (ORG/READ)"
+
+# =============================================================================
+# 11b. ACCESS REQUESTS (doctor requests access -> patient responds)
+# =============================================================================
+Write-Host "`n--- 11b. Access Requests ---" -ForegroundColor Green
+
+$ACCESS_REQ = "$BASE/api/v1/access-requests"
+
+# Dr Tuan requests access to Patient Dung's records (no existing consent)
+$ar1 = Api POST $ACCESS_REQ @{
+    patientId           = "$($patientData[3].patientId)"
+    patientDid          = "$($patientData[3].did)"
+    requesterId         = "$($doctorData[3].doctorId)"
+    requesterDid        = "$($doctorData[3].did)"
+    requesterType       = "DOCTOR"
+    organizationId      = "$hospitalBId"
+    permission          = "READ"
+    purpose             = "TREATMENT"
+    reason              = "Can xem ho so benh nhan de chuan bi phau thuat. Benh nhan chuyen tu BV khac."
+    requestedDurationDays = 30
+} $doctorData[3].token
+$ar1Id = if ($ar1.data.accessRequestId) { $ar1.data.accessRequestId } elseif ($ar1.data.id) { $ar1.data.id } elseif ($ar1.accessRequestId) { $ar1.accessRequestId } else { $null }
+Write-Host "  AccessRequest: $($doctorData[3].name) -> $($patientData[3].name) (TREATMENT) | id=$ar1Id"
+
+# Patient Dung approves the request
+if ($ar1Id) {
+    Api POST "$ACCESS_REQ/$ar1Id/respond" @{
+        approve        = $true
+        responseReason = "Dong y cho bac si xem ho so de chuan bi mo."
+    } $patientData[3].token | Out-Null
+    Write-Host "  Approved: $($patientData[3].name) approved $($doctorData[3].name)'s request"
+}
+
+# Dr Lan requests access to Patient Cuong (research)
+$ar2 = Api POST $ACCESS_REQ @{
+    patientId           = "$($patientData[2].patientId)"
+    patientDid          = "$($patientData[2].did)"
+    requesterId         = "$($doctorData[1].doctorId)"
+    requesterDid        = "$($doctorData[1].did)"
+    requesterType       = "DOCTOR"
+    organizationId      = "$hospitalAId"
+    permission          = "READ"
+    purpose             = "RESEARCH"
+    reason              = "Nghien cuu lam sang ve benh phe quan o tre em. Can truy cap du lieu ket qua dieu tri."
+    requestedDurationDays = 90
+} $doctorData[1].token
+$ar2Id = if ($ar2.data.accessRequestId) { $ar2.data.accessRequestId } elseif ($ar2.data.id) { $ar2.data.id } elseif ($ar2.accessRequestId) { $ar2.accessRequestId } else { $null }
+Write-Host "  AccessRequest: $($doctorData[1].name) -> $($patientData[2].name) (RESEARCH) | id=$ar2Id"
+
+# Patient Cuong denies the research request
+if ($ar2Id) {
+    Api POST "$ACCESS_REQ/$ar2Id/respond" @{
+        approve        = $false
+        responseReason = "Toi khong dong y chia se ho so cho muc dich nghien cuu."
+    } $patientData[2].token | Out-Null
+    Write-Host "  Denied: $($patientData[2].name) denied $($doctorData[1].name)'s research request"
+}
+
+# Nurse Hoa requests access to Patient An (nursing care)
+$ar3 = Api POST $ACCESS_REQ @{
+    patientId           = "$($patientData[0].patientId)"
+    patientDid          = "$($patientData[0].did)"
+    requesterId         = "$($staffData[0].userId)"
+    requesterDid        = "$($staffData[0].did)"
+    requesterType       = "NURSE"
+    organizationId      = "$hospitalAId"
+    permission          = "READ"
+    purpose             = "TREATMENT"
+    reason              = "Can xem ho so benh nhan de theo doi sinh hieu va cham soc dieu duong."
+    requestedDurationDays = 14
+} $staffData[0].token
+$ar3Id = if ($ar3.data.accessRequestId) { $ar3.data.accessRequestId } elseif ($ar3.data.id) { $ar3.data.id } elseif ($ar3.accessRequestId) { $ar3.accessRequestId } else { $null }
+Write-Host "  AccessRequest: $($staffData[0].name) -> $($patientData[0].name) (NURSING) | id=$ar3Id"
+
+# Patient An approves nurse access
+if ($ar3Id) {
+    Api POST "$ACCESS_REQ/$ar3Id/respond" @{
+        approve        = $true
+        responseReason = "Dong y cho dieu duong xem ho so."
+    } $patientData[0].token | Out-Null
+    Write-Host "  Approved: $($patientData[0].name) approved $($staffData[0].name)'s request"
+}
+
+# =============================================================================
+# 11c. CONSENT REVOCATION (revoke one consent for lifecycle demo)
+# =============================================================================
+Write-Host "`n--- 11c. Consent Revocation ---" -ForegroundColor Green
+
+# Patient An revokes the RESEARCH consent given to Dr Lan
+$patientAnConsents = Api GET "$CONSU/by-patient/$($patientData[0].patientId)" $null $patientData[0].token
+$consentList = if ($patientAnConsents.data) { $patientAnConsents.data } elseif ($patientAnConsents -is [array]) { $patientAnConsents } else { @() }
+$researchConsent = $consentList | Where-Object { $_.purpose -eq "RESEARCH" -and $_.status -ne "REVOKED" } | Select-Object -First 1
+if ($researchConsent) {
+    $revokeId = $researchConsent.consentId
+    Api POST "$CONSU/$revokeId/revoke" @{
+        revokeReason = "Benh nhan thay doi y dinh, khong muon tham gia nghien cuu nua."
+    } $patientData[0].token | Out-Null
+    Write-Host "  Revoked: $($patientData[0].name) revoked RESEARCH consent to $($doctorData[1].name) | consentId=$revokeId"
+} else {
+    Write-Host "  SKIP: No RESEARCH consent found to revoke" -ForegroundColor Yellow
+}
 
 # =============================================================================
 # 12. AUDIT LOGS (comprehensive - all fields filled)
@@ -917,11 +1232,140 @@ foreach ($n in $notifications) {
 Write-Host "  Created $($notifications.Count) notifications (all fields populated)"
 
 # =============================================================================
+# 13b. NOTIFICATION PREFERENCES (user notification settings)
+# =============================================================================
+Write-Host "`n--- 13b. Notification Preferences ---" -ForegroundColor Green
+
+$PREF = "$BASE/api/v1/notifications/preferences"
+
+# Patient An: enable all, set quiet hours
+Api PUT "$PREF/by-user/$($patientData[0].did)" @{
+    ehrAccessEnabled            = $true
+    consentRequestEnabled       = $true
+    ehrUpdateEnabled            = $true
+    appointmentReminderEnabled  = $true
+    securityAlertEnabled        = $true
+    systemNotificationEnabled   = $true
+    pushEnabled                 = $true
+    emailEnabled                = $true
+    smsEnabled                  = $false
+    quietHoursEnabled           = $true
+    quietHoursStart             = 2200
+    quietHoursEnd               = 700
+} $patientData[0].token | Out-Null
+Write-Host "  Preferences: $($patientData[0].name) - all ON, quiet 22:00-07:00"
+
+# Patient Binh: disable push, keep email
+Api PUT "$PREF/by-user/$($patientData[1].did)" @{
+    ehrAccessEnabled            = $true
+    consentRequestEnabled       = $true
+    ehrUpdateEnabled            = $true
+    appointmentReminderEnabled  = $true
+    securityAlertEnabled        = $true
+    systemNotificationEnabled   = $true
+    pushEnabled                 = $false
+    emailEnabled                = $true
+    smsEnabled                  = $false
+    quietHoursEnabled           = $false
+} $patientData[1].token | Out-Null
+Write-Host "  Preferences: $($patientData[1].name) - push OFF, email ON"
+
+# Dr Hieu: all on, quiet hours during surgery
+Api PUT "$PREF/by-user/$($doctorData[0].did)" @{
+    ehrAccessEnabled            = $true
+    consentRequestEnabled       = $true
+    ehrUpdateEnabled            = $true
+    appointmentReminderEnabled  = $true
+    securityAlertEnabled        = $true
+    systemNotificationEnabled   = $true
+    pushEnabled                 = $true
+    emailEnabled                = $true
+    smsEnabled                  = $true
+    quietHoursEnabled           = $true
+    quietHoursStart             = 2300
+    quietHoursEnd               = 600
+} $doctorData[0].token | Out-Null
+Write-Host "  Preferences: $($doctorData[0].name) - all ON + SMS, quiet 23:00-06:00"
+
+# Dr Lan: minimal notifications
+Api PUT "$PREF/by-user/$($doctorData[1].did)" @{
+    ehrAccessEnabled            = $true
+    consentRequestEnabled       = $true
+    ehrUpdateEnabled            = $false
+    appointmentReminderEnabled  = $true
+    securityAlertEnabled        = $true
+    systemNotificationEnabled   = $false
+    pushEnabled                 = $true
+    emailEnabled                = $false
+    smsEnabled                  = $false
+    quietHoursEnabled           = $false
+} $doctorData[1].token | Out-Null
+Write-Host "  Preferences: $($doctorData[1].name) - essential only"
+
+# =============================================================================
+# 13c. DEVICE TOKENS (push notification devices)
+# =============================================================================
+Write-Host "`n--- 13c. Device Tokens ---" -ForegroundColor Green
+
+$DEVICE = "$BASE/api/v1/notifications/device-tokens"
+
+$deviceTokens = @(
+    @{ userDid = $patientData[0].did; userId = $patientData[0].userId; token = $patientData[0].token; fcmToken = "fcm_patient_an_android_$(Get-Date -Format 'yyyyMMdd')";  deviceType = "Android"; deviceName = "Samsung Galaxy S24";  osVersion = "Android 14";     appVersion = "2.1.0" },
+    @{ userDid = $patientData[0].did; userId = $patientData[0].userId; token = $patientData[0].token; fcmToken = "fcm_patient_an_web_$(Get-Date -Format 'yyyyMMdd')";      deviceType = "Web";     deviceName = "Chrome Desktop";     osVersion = "Windows 11";     appVersion = "2.1.0" },
+    @{ userDid = $patientData[1].did; userId = $patientData[1].userId; token = $patientData[1].token; fcmToken = "fcm_patient_binh_ios_$(Get-Date -Format 'yyyyMMdd')";   deviceType = "iOS";     deviceName = "iPhone 15 Pro";      osVersion = "iOS 17.4";       appVersion = "2.1.0" },
+    @{ userDid = $doctorData[0].did;  userId = $doctorData[0].userId;  token = $doctorData[0].token;  fcmToken = "fcm_dr_hieu_ipad_$(Get-Date -Format 'yyyyMMdd')";       deviceType = "iOS";     deviceName = "iPad Pro 12.9";      osVersion = "iPadOS 17.4";    appVersion = "2.1.0" },
+    @{ userDid = $doctorData[0].did;  userId = $doctorData[0].userId;  token = $doctorData[0].token;  fcmToken = "fcm_dr_hieu_macbook_$(Get-Date -Format 'yyyyMMdd')";    deviceType = "Web";     deviceName = "Safari MacBook Pro"; osVersion = "macOS 14 Sonoma"; appVersion = "2.1.0" },
+    @{ userDid = $staffData[0].did;   userId = $staffData[0].userId;   token = $staffData[0].token;   fcmToken = "fcm_nurse_hoa_android_$(Get-Date -Format 'yyyyMMdd')"; deviceType = "Android"; deviceName = "Nursing Station Tab"; osVersion = "Android 13";    appVersion = "2.0.5" }
+)
+
+foreach ($dt in $deviceTokens) {
+    Api POST $DEVICE @{
+        userDid    = $dt.userDid
+        userId     = $dt.userId
+        fcmToken   = $dt.fcmToken
+        deviceType = $dt.deviceType
+        deviceName = $dt.deviceName
+        osVersion  = $dt.osVersion
+        appVersion = $dt.appVersion
+    } $dt.token | Out-Null
+}
+Write-Host "  Registered $($deviceTokens.Count) device tokens"
+
+# =============================================================================
+# 13d. BROADCAST NOTIFICATION (admin system-wide announcement)
+# =============================================================================
+Write-Host "`n--- 13d. Broadcast Notification ---" -ForegroundColor Green
+
+$allDids = @()
+$allDids += $patientData | ForEach-Object { $_.did }
+$allDids += $doctorData  | ForEach-Object { $_.did }
+$allDids += $staffData   | ForEach-Object { $_.did }
+
+Api POST "$NOTIF/broadcast" @{
+    recipientDids = $allDids
+    title         = "Thong bao bao tri he thong"
+    body          = "He thong DBH-EHR se duoc bao tri vao Chu Nhat 23:00-01:00. Trong thoi gian nay, mot so tinh nang co the tam ngung hoat dong. Vui long luu cong viec truoc 23:00. Xin cam on."
+    type          = "System"
+    priority      = "High"
+} $adminToken | Out-Null
+Write-Host "  Broadcast: System maintenance notice -> $($allDids.Count) recipients"
+
+Api POST "$NOTIF/broadcast" @{
+    recipientDids = ($doctorData | ForEach-Object { $_.did })
+    title         = "Cap nhat huong dan lam sang moi"
+    body          = "Bo Y te da ban hanh huong dan lam sang moi ve dieu tri tang huyet ap 2024. Vui long xem tai muc Tai lieu -> Huong dan lam sang."
+    type          = "System"
+    priority      = "Normal"
+} $adminToken | Out-Null
+Write-Host "  Broadcast: Clinical guidelines update -> $($doctorData.Count) doctors"
+
+# =============================================================================
 # 14. INVOICES (for both hospitals - NO PayOS config needed for cash payments)
 # =============================================================================
 Write-Host "`n--- 14. Invoices ---" -ForegroundColor Green
 
 # Invoice at Hospital A (by Dr Hieu for Patient An)
+if ($hospitalAId -and $doctorData[0].token -and $patientData[0].patientId) {
 $inv1 = Api POST $INVOICE @{
     patientId = "$($patientData[0].patientId)"
     orgId     = "$hospitalAId"
@@ -933,10 +1377,12 @@ $inv1 = Api POST $INVOICE @{
         @{ description = "Thuoc Amoxicillin 500mg x 21v";  quantity = 1; amount = 63000 }
     )
 } $doctorData[0].token
+} else { $inv1 = $null }
 $inv1Id = if ($inv1.data.invoiceId) { $inv1.data.invoiceId } elseif ($inv1.invoiceId) { $inv1.invoiceId } else { $null }
 Write-Host "  Invoice 1 (Hospital A): $($patientData[0].name) | 593,000 VND | id=$inv1Id"
 
 # Invoice at Hospital A (by Dr Lan for Patient Binh)
+if ($hospitalAId -and $doctorData[1].token -and $patientData[1].patientId) {
 $inv2 = Api POST $INVOICE @{
     patientId = "$($patientData[1].patientId)"
     orgId     = "$hospitalAId"
@@ -948,10 +1394,12 @@ $inv2 = Api POST $INVOICE @{
         @{ description = "Thuoc Amlodipine 5mg x 30v";     quantity = 1; amount = 90000 }
     )
 } $doctorData[1].token
+} else { $inv2 = $null }
 $inv2Id = if ($inv2.data.invoiceId) { $inv2.data.invoiceId } elseif ($inv2.invoiceId) { $inv2.invoiceId } else { $null }
 Write-Host "  Invoice 2 (Hospital A): $($patientData[1].name) | 1,140,000 VND | id=$inv2Id"
 
 # Invoice at Hospital B (by Dr Phuoc for Patient Cuong)
+if ($hospitalBId -and $doctorData[2].token -and $patientData[2].patientId) {
 $inv3 = Api POST $INVOICE @{
     patientId = "$($patientData[2].patientId)"
     orgId     = "$hospitalBId"
@@ -963,10 +1411,12 @@ $inv3 = Api POST $INVOICE @{
         @{ description = "Thuoc ho Dextromethorphan";       quantity = 1; amount = 45000 }
     )
 } $doctorData[2].token
+} else { $inv3 = $null }
 $inv3Id = if ($inv3.data.invoiceId) { $inv3.data.invoiceId } elseif ($inv3.invoiceId) { $inv3.invoiceId } else { $null }
 Write-Host "  Invoice 3 (Hospital B): $($patientData[2].name) | 625,000 VND | id=$inv3Id"
 
 # Invoice at Hospital B (by Dr Tuan for Patient Em)
+if ($hospitalBId -and $doctorData[3].token -and $patientData[4].patientId) {
 $inv4 = Api POST $INVOICE @{
     patientId = "$($patientData[4].patientId)"
     orgId     = "$hospitalBId"
@@ -979,6 +1429,7 @@ $inv4 = Api POST $INVOICE @{
         @{ description = "Chup X-quang nguc";              quantity = 1; amount = 180000 }
     )
 } $doctorData[3].token
+} else { $inv4 = $null }
 $inv4Id = if ($inv4.data.invoiceId) { $inv4.data.invoiceId } elseif ($inv4.invoiceId) { $inv4.invoiceId } else { $null }
 Write-Host "  Invoice 4 (Hospital B): $($patientData[4].name) | 1,130,000 VND | id=$inv4Id"
 
@@ -990,8 +1441,38 @@ if ($inv1Id) {
     Write-Host "  Paid Invoice 1 (CASH): $inv1Id"
 }
 
-# Leave invoices 2, 3, 4 UNPAID for testing PayOS checkout later
-Write-Host "  Invoices 2,3,4 left UNPAID (for PayOS testing)"
+# Invoice at Clinic (by Dr Hieu part-time for Patient Dung)
+if ($clinicId -and $doctorData[0].token -and $patientData[3].patientId) {
+$inv5 = Api POST $INVOICE @{
+    patientId = "$($patientData[3].patientId)"
+    orgId     = "$clinicId"
+    notes     = "Hoa don kham Da lieu - Benh nhan Pham Thi Dung"
+    items     = @(
+        @{ description = "Phi kham Da lieu";               quantity = 1; amount = 300000 },
+        @{ description = "Soi da bang dermoscopy";          quantity = 1; amount = 200000 },
+        @{ description = "Thuoc boi da Tretinoin 0.05%";    quantity = 1; amount = 85000 }
+    )
+} $doctorData[0].token
+} else { $inv5 = $null }
+$inv5Id = if ($inv5.data.invoiceId) { $inv5.data.invoiceId } elseif ($inv5.invoiceId) { $inv5.invoiceId } else { $null }
+Write-Host "  Invoice 5 (Clinic): $($patientData[3].name) | 585,000 VND | id=$inv5Id"
+
+# Pay Invoice 5 with CASH
+if ($inv5Id) {
+    Api POST "$INVOICE/$inv5Id/pay-cash" @{
+        transactionRef = "CASH-PKDLSG-$(Get-Date -Format 'yyyyMMdd')-001"
+    } $adminToken | Out-Null
+    Write-Host "  Paid Invoice 5 (CASH): $inv5Id"
+}
+
+# Cancel Invoice 4 (patient cancelled appointment)
+if ($inv4Id) {
+    Api POST "$INVOICE/$inv4Id/cancel" $null $adminToken | Out-Null
+    Write-Host "  Cancelled Invoice 4: $inv4Id (patient cancelled appointment)"
+}
+
+# Leave invoices 2, 3 UNPAID for testing PayOS checkout later
+Write-Host "  Invoices 2,3 left UNPAID (for PayOS testing)"
 
 # =============================================================================
 # SUMMARY
@@ -1000,20 +1481,23 @@ Write-Host "`n====== FULL SEED DATA COMPLETE ======" -ForegroundColor Cyan
 Write-Host "  Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  === Data Summary ===" -ForegroundColor Yellow
-Write-Host "  Admin:          1"
-Write-Host "  Patients:       $($patientData.Count)"
-Write-Host "  Doctors:        $($doctorData.Count)"
-Write-Host "  Staff:          $($staffData.Count) (2 nurses, 1 receptionist, 1 pharmacist, 1 labtech)"
-Write-Host "  Organizations:  $($orgData.Count) (2 hospitals, 1 clinic)"
-Write-Host "  Departments:    $($deptData.Count) (5 HospA + 3 HospB + 2 Clinic)"
-Write-Host "  Memberships:    9 (5 HospA + 4 HospB)"
-Write-Host "  Appointments:   $($appointmentData.Count) (7 future + 3 past)"
-Write-Host "  Encounters:     $($encounterData.Count) (completed with EHR)"
-Write-Host "  EHR Records:    $($ehrIds.Count) (standalone)"
-Write-Host "  Consents:       7"
-Write-Host "  Audit Logs:     $($auditLogs.Count)"
-Write-Host "  Notifications:  $($notifications.Count)"
-Write-Host "  Invoices:       4 (1 PAID cash, 3 UNPAID for PayOS test)"
+Write-Host "  Admin:               1"
+Write-Host "  Patients:            $($patientData.Count)"
+Write-Host "  Doctors:             $($doctorData.Count)"
+Write-Host "  Staff:               $($staffData.Count) (2 nurses, 1 receptionist, 1 pharmacist, 1 labtech)"
+Write-Host "  Organizations:       $($orgData.Count) (2 hospitals, 1 clinic)"
+Write-Host "  Departments:         $($deptData.Count) (5 HospA + 3 HospB + 2 Clinic)"
+Write-Host "  Memberships:         11 (5 HospA + 4 HospB + 2 Clinic)"
+Write-Host "  Appointments:        $($appointmentData.Count) (9 future + 3 past, incl 1 rejected + 1 cancelled + 1 rescheduled)"
+Write-Host "  Encounters:          $($encounterData.Count) (completed with EHR)"
+Write-Host "  EHR Records:         $($ehrIds.Count) standalone + EHR version updates"
+Write-Host "  Consents:            7 (incl 1 REVOKED)"
+Write-Host "  Access Requests:     3 (2 approved, 1 denied)"
+Write-Host "  Audit Logs:          $($auditLogs.Count)"
+Write-Host "  Notifications:       $($notifications.Count) + 2 broadcasts"
+Write-Host "  Notif Preferences:   4 users configured"
+Write-Host "  Device Tokens:       $($deviceTokens.Count)"
+Write-Host "  Invoices:            5 (2 PAID cash, 1 CANCELLED, 2 UNPAID for PayOS)"
 Write-Host ""
 Write-Host "  === Test Accounts ===" -ForegroundColor Yellow
 Write-Host "  Admin:         admin@dbh.vn              / Admin@123456"
@@ -1022,13 +1506,13 @@ Write-Host "  Patient 2:     patient.binh@dbh.vn       / Patient@123"
 Write-Host "  Patient 3:     patient.cuong@dbh.vn      / Patient@123"
 Write-Host "  Patient 4:     patient.dung@dbh.vn       / Patient@123"
 Write-Host "  Patient 5:     patient.em@dbh.vn         / Patient@123"
-Write-Host "  Doctor 1:      dr.hieu@dbh.vn            / Doctor@123  (Noi khoa, Hospital A)"
+Write-Host "  Doctor 1:      dr.hieu@dbh.vn            / Doctor@123  (Noi khoa, Hospital A + Clinic)"
 Write-Host "  Doctor 2:      dr.lan@dbh.vn             / Doctor@123  (Tim mach, Hospital A)"
 Write-Host "  Doctor 3:      dr.phuoc@dbh.vn           / Doctor@123  (Nhi khoa, Hospital B)"
 Write-Host "  Doctor 4:      dr.tuan@dbh.vn            / Doctor@123  (Ngoai khoa, Hospital B)"
 Write-Host "  Nurse 1:       nurse.hoa@dbh.vn          / Staff@123   (Hospital A)"
 Write-Host "  Nurse 2:       nurse.khanh@dbh.vn        / Staff@123   (Hospital B)"
-Write-Host "  Receptionist:  receptionist.minh@dbh.vn  / Staff@123   (Hospital A)"
+Write-Host "  Receptionist:  receptionist.minh@dbh.vn  / Staff@123   (Hospital A + Clinic)"
 Write-Host "  Pharmacist:    pharmacist.oanh@dbh.vn    / Staff@123   (Hospital A)"
 Write-Host "  LabTech:       labtech.tuan@dbh.vn       / Staff@123   (Hospital B)"
 Write-Host ""
@@ -1051,5 +1535,11 @@ Write-Host ""
 Write-Host "  === Unpaid Invoices (for PayOS testing) ===" -ForegroundColor Yellow
 Write-Host "  Invoice 2 (Hospital A): $inv2Id | 1,140,000 VND"
 Write-Host "  Invoice 3 (Hospital B): $inv3Id | 625,000 VND"
-Write-Host "  Invoice 4 (Hospital B): $inv4Id | 1,130,000 VND"
+Write-Host ""
+Write-Host "  === Cancelled Invoice ===" -ForegroundColor Yellow
+Write-Host "  Invoice 4 (Hospital B): $inv4Id | 1,130,000 VND (CANCELLED)"
+Write-Host ""
+Write-Host "  === Paid Invoices ===" -ForegroundColor Yellow
+Write-Host "  Invoice 1 (Hospital A): $inv1Id | 593,000 VND (CASH)"
+Write-Host "  Invoice 5 (Clinic):     $inv5Id | 585,000 VND (CASH)"
 Write-Host ""
