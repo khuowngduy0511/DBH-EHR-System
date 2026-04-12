@@ -2,6 +2,7 @@ using DBH.Auth.Service.DTOs;
 using DBH.Auth.Service.Models.Entities;
 using DBH.Auth.Service.Models.Enums;
 using DBH.Auth.Service.Repositories;
+using DBH.Auth.Service.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,24 +16,33 @@ public class PatientsController : ControllerBase
     private readonly IUserRepository _userRepository;
     private readonly IGenericRepository<Role> _roleRepository;
     private readonly IGenericRepository<UserRole> _userRoleRepository;
+    private readonly IAuthService _authService;
 
     public PatientsController(
         IGenericRepository<Patient> patientRepository,
         IUserRepository userRepository,
         IGenericRepository<Role> roleRepository,
-        IGenericRepository<UserRole> userRoleRepository)
+        IGenericRepository<UserRole> userRoleRepository,
+        IAuthService authService)
     {
         _patientRepository = patientRepository;
         _userRepository = userRepository;
         _roleRepository = roleRepository;
         _userRoleRepository = userRoleRepository;
+        _authService = authService;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] GetAllUsersQuery query)
     {
-        var patients = await _patientRepository.GetAllAsync();
-        return Ok(patients.Select(p => MapToResponse(p)));
+        query.Role = RoleName.Patient.ToString();
+        var result = await _authService.GetAllUsersAsync(query, User.IsInRole("Admin"));
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 
     [HttpGet("{patientId:guid}")]
