@@ -1,6 +1,7 @@
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Services;
+using DBH.Shared.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,21 +19,65 @@ builder.Logging.AddSimpleConsole(options =>
 
 builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("src/DBH.Chaincode.Tester/appsettings.json", optional: true, reloadOnChange: true)
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
     .AddEnvironmentVariables(prefix: "CHAINCODE_TESTER_");
 
 builder.Services.Configure<FabricOptions>(builder.Configuration.GetSection(FabricOptions.SectionName));
 builder.Services.Configure<TestDataOptions>(builder.Configuration.GetSection(TestDataOptions.SectionName));
-builder.Services.AddSingleton<IFabricGateway, FabricGatewayClient>();
-builder.Services.AddSingleton<IEhrBlockchainService, EhrBlockchainService>();
-builder.Services.AddSingleton<IConsentBlockchainService, ConsentBlockchainService>();
-builder.Services.AddSingleton<IAuditBlockchainService, AuditBlockchainService>();
+builder.Services.PostConfigure<FabricOptions>(options =>
+{
+    options.CertificatePath = ResolvePath(options.CertificatePath, expectDirectory: false);
+    options.PrivateKeyPath = ResolvePath(options.PrivateKeyPath, expectDirectory: false);
+    options.PrivateKeyDirectory = ResolvePath(options.PrivateKeyDirectory, expectDirectory: true);
+    options.TlsCertificatePath = ResolvePath(options.TlsCertificatePath, expectDirectory: false);
+});
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IFabricRuntimeIdentityResolver, FabricRuntimeIdentityResolver>();
+builder.Services.AddScoped<IFabricGateway, FabricGatewayClient>();
+builder.Services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();
+builder.Services.AddScoped<IConsentBlockchainService, ConsentBlockchainService>();
+builder.Services.AddScoped<IAuditBlockchainService, AuditBlockchainService>();
 builder.Services.AddSingleton<ChaincodeTestRunner>();
 
 var host = builder.Build();
 await using var scope = host.Services.CreateAsyncScope();
 var runner = scope.ServiceProvider.GetRequiredService<ChaincodeTestRunner>();
 await runner.RunAsync(args);
+
+static string ResolvePath(string? value, bool expectDirectory)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return value ?? string.Empty;
+    }
+
+    bool Exists(string path) => expectDirectory ? Directory.Exists(path) : File.Exists(path);
+
+    if (Path.IsPathRooted(value))
+    {
+        return Exists(value) ? value : value;
+    }
+
+    var currentDir = Directory.GetCurrentDirectory();
+    var projectDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
+    var candidatePaths = new[]
+    {
+        Path.GetFullPath(Path.Combine(currentDir, value)),
+        Path.GetFullPath(Path.Combine(projectDir, value))
+    };
+
+    foreach (var candidate in candidatePaths)
+    {
+        if (Exists(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    return value;
+}
 
 internal sealed class ChaincodeTestRunner
 {
