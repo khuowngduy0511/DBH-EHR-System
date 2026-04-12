@@ -56,7 +56,8 @@ $services = @(
     @{ name = "Consent";       url = "http://localhost:5004/health" },
     @{ name = "Audit";         url = "http://localhost:5005/health" },
     @{ name = "Notification";  url = "http://localhost:5006/health" },
-    @{ name = "Appointment";   url = "http://localhost:5007/health" }
+    @{ name = "Appointment";   url = "http://localhost:5007/health" },
+    @{ name = "Payment";       url = "http://localhost:5008/health" }
 )
 foreach ($s in $services) { Test "Health: $($s.name)" "GET" $s.url }
 
@@ -307,6 +308,72 @@ Test "Notif: List by DID" "GET" "$BASE/api/v1/notifications/by-user/$patDid" -to
 Test "Notif: Unread Count" "GET" "$BASE/api/v1/notifications/by-user/$patDid/unread-count" -token $patToken
 
 # =============================================================================
+Write-Host "`n=== PAYMENT SERVICE ===" -ForegroundColor Cyan
+# =============================================================================
+
+# Create invoice (doctor)
+$invoiceBody = @{
+    patientId = "$patPatientId"
+    orgId     = "$hospitalOrgId"
+    notes     = "System test invoice"
+    items     = @(
+        @{ description = "Phi kham benh"; quantity = 1; amount = 150000 }
+    )
+}
+$invResult = Test "Payment: Create Invoice" "POST" "$BASE/api/v1/invoices" $invoiceBody $docToken -expected 201
+$testInvoiceId = if ($invResult.data) { $invResult.data.invoiceId } else { $invResult.invoiceId }
+Write-Host "  InvoiceId=$testInvoiceId" -ForegroundColor DarkGray
+
+# Get invoice
+if ($testInvoiceId) {
+    Test "Payment: Get Invoice" "GET" "$BASE/api/v1/invoices/$testInvoiceId" -token $docToken
+}
+
+# List invoices by patient (path param)
+Test "Payment: List Invoices (patient)" "GET" "$BASE/api/v1/invoices/patient/$patPatientId" -token $docToken
+
+# List invoices by org (path param)
+Test "Payment: List Invoices (org)" "GET" "$BASE/api/v1/invoices/org/$hospitalOrgId" -token $adminToken
+
+# Pay cash (admin)
+if ($testInvoiceId) {
+    $cashResult = Test "Payment: Pay Cash" "POST" "$BASE/api/v1/invoices/$testInvoiceId/pay-cash" @{ transactionRef = "CASH-SYSXTEST-001" } $adminToken
+    $testPaymentId = if ($cashResult.data) { $cashResult.data.paymentId } else { $cashResult.paymentId }
+    Write-Host "  PaymentId=$testPaymentId" -ForegroundColor DarkGray
+}
+
+# Get payment
+if ($testPaymentId) {
+    Test "Payment: Get Payment" "GET" "$BASE/api/v1/payments/$testPaymentId" -token $adminToken
+}
+
+# Checkout on already-paid invoice should fail
+if ($testInvoiceId) {
+    Test "Payment: Checkout on PAID Invoice (400)" "POST" "$BASE/api/v1/invoices/$testInvoiceId/checkout" @{ returnUrl="https://google.com"; cancelUrl="https://google.com" } $docToken -expected 400
+}
+
+# Create a second invoice for checkout test (NOT paying it — just create link)
+$invBody2 = @{
+    patientId = "$patPatientId"
+    orgId     = "$hospitalOrgId"
+    notes     = "System test checkout invoice"
+    items     = @(
+        @{ description = "Test checkout"; quantity = 1; amount = 200000 }
+    )
+}
+$invResult2 = Test "Payment: Create Invoice2 (for checkout)" "POST" "$BASE/api/v1/invoices" $invBody2 $docToken -expected 201
+$testInvoiceId2 = if ($invResult2.data) { $invResult2.data.invoiceId } else { $invResult2.invoiceId }
+Write-Host "  InvoiceId2=$testInvoiceId2" -ForegroundColor DarkGray
+
+# Verify payment endpoint — PAID cash payment returns 200 "Already paid"
+if ($testPaymentId) {
+    Test "Payment: Verify (already paid → 200)" "POST" "$BASE/api/v1/payments/$testPaymentId/verify" -token $adminToken -expected 200
+}
+
+# Payment not found
+Test "Payment: Get Invoice 404" "GET" "$BASE/api/v1/invoices/$([guid]::NewGuid())" -token $adminToken -expected 404
+
+# =============================================================================
 Write-Host "`n=== GATEWAY ROUTING ===" -ForegroundColor Cyan
 # =============================================================================
 
@@ -316,6 +383,7 @@ Test "Gateway: Org via GW" "GET" "$BASE/api/v1/organizations" -token $adminToken
 Test "Gateway: EHR via GW" "GET" "$BASE/api/v1/ehr/records/patient/$patPatientId" -token $docToken
 Test "Gateway: Consent via GW" "GET" "$BASE/api/v1/consents/by-patient/$patPatientId" -token $patToken
 Test "Gateway: Audit via GW" "GET" "$BASE/api/v1/audit/search" -token $adminToken
+Test "Gateway: Payment via GW" "GET" "$BASE/api/v1/invoices/org/$hospitalOrgId" -token $adminToken
 
 # =============================================================================
 # SUMMARY

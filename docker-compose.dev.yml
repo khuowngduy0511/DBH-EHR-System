@@ -455,7 +455,7 @@ services:
       - "4001:4001"
       - "4001:4001/udp"
       - "5001:5001"
-      - "8080:8080"
+      - "8880:8080"
     environment:
       - IPFS_PROFILE=server
       - IPFS_PATH=/data/ipfs
