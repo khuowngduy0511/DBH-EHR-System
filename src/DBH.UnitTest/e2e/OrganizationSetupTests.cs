@@ -12,7 +12,13 @@ namespace DBH.UnitTest.E2E;
 /// </summary>
 public class OrganizationSetupTests : Shared.ApiTestBase
 {
-    [Fact]
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "OrganizationService"
+    };
+
+    [SkippableFact]
     public async Task FullOrgSetup_CreateToMembership_ShouldSucceed()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
@@ -32,7 +38,7 @@ public class OrganizationSetupTests : Shared.ApiTestBase
             timezone = "Asia/Ho_Chi_Minh"
         };
 
-        var orgResponse = await OrganizationClient.PostAsJsonAsync(Shared.ApiEndpoints.Organizations.Create, orgRequest);
+        var orgResponse = await PostAsJsonWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Organizations.Create, orgRequest);
         var orgJson = await ReadJsonResponseAsync(orgResponse);
         Assert.False(string.IsNullOrEmpty(orgJson.GetProperty("message").GetString()));
 
@@ -44,7 +50,7 @@ public class OrganizationSetupTests : Shared.ApiTestBase
             // =================================================================
             // STEP 2: Get org and verify data matches
             // =================================================================
-            var getOrgResponse = await OrganizationClient.GetAsync(Shared.ApiEndpoints.Organizations.GetById(orgId));
+            var getOrgResponse = await GetWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Organizations.GetById(orgId));
             Assert.Equal(HttpStatusCode.OK, getOrgResponse.StatusCode);
             var getOrgJson = await ReadJsonResponseAsync(getOrgResponse);
             Assert.Equal(orgRequest.orgCode, getOrgJson.GetProperty("data").GetProperty("orgCode").GetString());
@@ -52,7 +58,7 @@ public class OrganizationSetupTests : Shared.ApiTestBase
             // =================================================================
             // STEP 3: Verify the organization
             // =================================================================
-            var verifyResponse = await OrganizationClient.PostAsync(
+            var verifyResponse = await PostWithRetryAsync(OrganizationClient, 
                 Shared.ApiEndpoints.Organizations.Verify(orgId, Shared.TestSeedData.AdminUserId), null);
             var verifyJson = await ReadJsonResponseAsync(verifyResponse);
             Assert.False(string.IsNullOrEmpty(verifyJson.GetProperty("message").GetString()));
@@ -71,7 +77,7 @@ public class OrganizationSetupTests : Shared.ApiTestBase
                 phoneExtension = "3001"
             };
 
-            var deptResponse = await OrganizationClient.PostAsJsonAsync(Shared.ApiEndpoints.Departments.Create, deptRequest);
+            var deptResponse = await PostAsJsonWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Departments.Create, deptRequest);
             var deptJson = await ReadJsonResponseAsync(deptResponse);
             Assert.False(string.IsNullOrEmpty(deptJson.GetProperty("message").GetString()));
 
@@ -93,14 +99,14 @@ public class OrganizationSetupTests : Shared.ApiTestBase
                     specialty = "E2E Cardiology",
                     startDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")
                 };
-                var memberResponse = await OrganizationClient.PostAsJsonAsync(Shared.ApiEndpoints.Memberships.Create, memberRequest);
+                var memberResponse = await PostAsJsonWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Memberships.Create, memberRequest);
                 var memberJson = await ReadJsonResponseAsync(memberResponse);
                 Assert.False(string.IsNullOrEmpty(memberJson.GetProperty("message").GetString()));
 
                 // =============================================================
                 // STEP 6: Verify dept shows up in org listing
                 // =============================================================
-                var deptListResponse = await OrganizationClient.GetAsync(
+                var deptListResponse = await GetWithRetryAsync(OrganizationClient, 
                     $"{Shared.ApiEndpoints.Departments.ByOrganization(orgId)}?page=1&pageSize=10");
                 Assert.Equal(HttpStatusCode.OK, deptListResponse.StatusCode);
                 var deptListJson = await ReadJsonResponseAsync(deptListResponse);
@@ -109,33 +115,33 @@ public class OrganizationSetupTests : Shared.ApiTestBase
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task VerifySeedOrganization_ThenListDepartmentsAndMemberships()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
 
         // STEP 1: Get Hospital A — verify name and status
-        var orgResponse = await OrganizationClient.GetAsync(Shared.ApiEndpoints.Organizations.GetById(Shared.TestSeedData.HospitalAOrgId));
+        var orgResponse = await GetWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Organizations.GetById(Shared.TestSeedData.HospitalAOrgId));
         Assert.Equal(HttpStatusCode.OK, orgResponse.StatusCode);
         var orgJson = await ReadJsonResponseAsync(orgResponse);
         Assert.Equal(Shared.TestSeedData.HospitalAName, orgJson.GetProperty("data").GetProperty("orgName").GetString());
 
         // STEP 2: List departments — should contain Cardiology, Pharmacy, Reception
-        var deptResponse = await OrganizationClient.GetAsync(
+        var deptResponse = await GetWithRetryAsync(OrganizationClient, 
             $"{Shared.ApiEndpoints.Departments.ByOrganization(Shared.TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
         Assert.Equal(HttpStatusCode.OK, deptResponse.StatusCode);
         var deptJson = await ReadJsonResponseAsync(deptResponse);
         Assert.True(deptJson.GetProperty("data").GetArrayLength() >= 3, "Hospital A should have ≥3 departments");
 
         // STEP 3: List memberships — should contain admin, doctor, pharmacist, receptionist
-        var memberResponse = await OrganizationClient.GetAsync(
+        var memberResponse = await GetWithRetryAsync(OrganizationClient, 
             $"{Shared.ApiEndpoints.Memberships.ByOrganization(Shared.TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
         Assert.Equal(HttpStatusCode.OK, memberResponse.StatusCode);
         var memberJson = await ReadJsonResponseAsync(memberResponse);
         Assert.True(memberJson.GetProperty("data").GetArrayLength() >= 4, "Hospital A should have ≥4 memberships");
 
         // STEP 4: Get doctor membership — verify job title
-        var doctorMemberResponse = await OrganizationClient.GetAsync(Shared.ApiEndpoints.Memberships.GetById(Shared.TestSeedData.DoctorMembershipId));
+        var doctorMemberResponse = await GetWithRetryAsync(OrganizationClient, Shared.ApiEndpoints.Memberships.GetById(Shared.TestSeedData.DoctorMembershipId));
         Assert.Equal(HttpStatusCode.OK, doctorMemberResponse.StatusCode);
         var doctorMemberJson = await ReadJsonResponseAsync(doctorMemberResponse);
         Assert.Contains("Tim mach", doctorMemberJson.GetProperty("data").GetProperty("jobTitle").GetString());

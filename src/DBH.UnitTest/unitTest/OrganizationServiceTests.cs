@@ -12,15 +12,21 @@ namespace DBH.UnitTest.UnitTests;
 /// </summary>
 public class OrganizationServiceTests : ApiTestBase
 {
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "OrganizationService"
+    };
+
     // =========================================================================
     // ORGANIZATIONS - GET with known seed data
     // =========================================================================
 
-    [Fact]
+    [SkippableFact]
     public async Task GetOrganizations_AsAdmin_ShouldReturnSeedOrganizations()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync($"{ApiEndpoints.Organizations.GetAll}?page=1&pageSize=10");
+        var response = await GetWithRetryAsync(OrganizationClient, $"{ApiEndpoints.Organizations.GetAll}?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -29,11 +35,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.True(data.GetArrayLength() >= 3, "Should contain at least 3 seed organizations");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetOrganization_HospitalA_ShouldReturnCorrectData()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Organizations.GetById(TestSeedData.HospitalAOrgId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.GetById(TestSeedData.HospitalAOrgId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -42,11 +48,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.Equal(TestSeedData.HospitalAName, data.GetProperty("orgName").GetString());
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetOrganization_Clinic_ShouldReturnCorrectData()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Organizations.GetById(TestSeedData.ClinicOrgId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.GetById(TestSeedData.ClinicOrgId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -55,42 +61,42 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.Equal(TestSeedData.ClinicName, data.GetProperty("orgName").GetString());
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetOrganization_WithFakeId_ShouldReturnNotFound()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Organizations.GetById(Guid.NewGuid()));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.GetById(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CreateOrganization_WithAdminAuth_ShouldReturnSuccess()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
         var request = new { name = "Test Hospital", address = "123 Test St", phone = "0900000001", email = "test@hospital.com", type = "Hospital" };
-        var response = await OrganizationClient.PostAsJsonAsync(ApiEndpoints.Organizations.Create, request);
+        var response = await PostAsJsonWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.Create, request);
 
         Assert.True(response.StatusCode == HttpStatusCode.Created || response.StatusCode == HttpStatusCode.BadRequest);
         var json = await ReadJsonResponseAsync(response);
         Assert.True(json.ValueKind == JsonValueKind.Object);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateOrganization_WithFakeId_ShouldReturnNotFound()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
         var request = new { name = "Updated Hospital" };
-        var response = await OrganizationClient.PutAsJsonAsync(ApiEndpoints.Organizations.Update(Guid.NewGuid()), request);
+        var response = await PutAsJsonWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.Update(Guid.NewGuid()), request);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task VerifyOrganization_WithSeedOrg_ShouldReturnResult()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.PostAsync(ApiEndpoints.Organizations.Verify(TestSeedData.HospitalAOrgId, TestSeedData.AdminUserId), null);
+        var response = await PostWithRetryAsync(OrganizationClient, ApiEndpoints.Organizations.Verify(TestSeedData.HospitalAOrgId, TestSeedData.AdminUserId), null);
 
         var json = await ReadJsonResponseAsync(response);
         Assert.True(json.ValueKind == JsonValueKind.Object);
@@ -100,11 +106,11 @@ public class OrganizationServiceTests : ApiTestBase
     // DEPARTMENTS - Verify against seed data
     // =========================================================================
 
-    [Fact]
+    [SkippableFact]
     public async Task GetDepartmentsByOrg_HospitalA_ShouldReturnSeedDepartments()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync($"{ApiEndpoints.Departments.ByOrganization(TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
+        var response = await GetWithRetryAsync(OrganizationClient, $"{ApiEndpoints.Departments.ByOrganization(TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -114,11 +120,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.True(data.GetArrayLength() >= 3, "Hospital A should have at least 3 departments");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetDepartment_CardiologyDept_ShouldReturnCorrectData()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Departments.GetById(TestSeedData.CardiologyDeptId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Departments.GetById(TestSeedData.CardiologyDeptId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -127,11 +133,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.Equal("Khoa Tim mach", data.GetProperty("departmentName").GetString());
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetDepartment_WithFakeId_ShouldReturnNotFound()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Departments.GetById(Guid.NewGuid()));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Departments.GetById(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -140,11 +146,11 @@ public class OrganizationServiceTests : ApiTestBase
     // MEMBERSHIPS - Verify against seed data
     // =========================================================================
 
-    [Fact]
+    [SkippableFact]
     public async Task GetMembershipsByOrg_HospitalA_ShouldReturnSeedMemberships()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync($"{ApiEndpoints.Memberships.ByOrganization(TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
+        var response = await GetWithRetryAsync(OrganizationClient, $"{ApiEndpoints.Memberships.ByOrganization(TestSeedData.HospitalAOrgId)}?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -154,11 +160,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.True(data.GetArrayLength() >= 4, "Hospital A should have at least 4 memberships");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetMembership_DoctorMembership_ShouldReturnCorrectData()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Memberships.GetById(TestSeedData.DoctorMembershipId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Memberships.GetById(TestSeedData.DoctorMembershipId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -167,11 +173,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.True(data.ValueKind == JsonValueKind.Object);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetMembershipsByUser_DoctorUser_ShouldReturnMemberships()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync($"{ApiEndpoints.Memberships.ByUser(TestSeedData.DoctorUserId)}?page=1&pageSize=10");
+        var response = await GetWithRetryAsync(OrganizationClient, $"{ApiEndpoints.Memberships.ByUser(TestSeedData.DoctorUserId)}?page=1&pageSize=10");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -180,11 +186,11 @@ public class OrganizationServiceTests : ApiTestBase
         Assert.True(data.GetArrayLength() >= 1, "Doctor should have at least 1 membership");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetMembership_WithFakeId_ShouldReturnNotFound()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Memberships.GetById(Guid.NewGuid()));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Memberships.GetById(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -193,11 +199,11 @@ public class OrganizationServiceTests : ApiTestBase
     // PAYMENT CONFIG - Verify flow
     // =========================================================================
 
-    [Fact]
+    [SkippableFact]
     public async Task GetPaymentConfigStatus_ForSeedOrg_ShouldReturnResult()
     {
         await AuthenticateAsAdminAsync(OrganizationClient);
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.PaymentConfig.GetStatus(TestSeedData.HospitalAOrgId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.PaymentConfig.GetStatus(TestSeedData.HospitalAOrgId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
@@ -208,11 +214,11 @@ public class OrganizationServiceTests : ApiTestBase
     // INTERNAL API
     // =========================================================================
 
-    [Fact]
+    [SkippableFact]
     public async Task GetPaymentKeys_WithInternalApiKey_ShouldReturnResult()
     {
         OrganizationClient.DefaultRequestHeaders.Add("X-Internal-Api-Key", "dbh-internal-s2s-secret-key-2026!");
-        var response = await OrganizationClient.GetAsync(ApiEndpoints.Internal.GetPaymentKeys(TestSeedData.HospitalAOrgId));
+        var response = await GetWithRetryAsync(OrganizationClient, ApiEndpoints.Internal.GetPaymentKeys(TestSeedData.HospitalAOrgId));
 
         Assert.True(response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.NotFound);
         OrganizationClient.DefaultRequestHeaders.Remove("X-Internal-Api-Key");

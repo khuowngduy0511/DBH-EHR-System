@@ -13,7 +13,13 @@ namespace DBH.UnitTest.E2E;
 /// </summary>
 public class PatientJourneyTests : Shared.ApiTestBase
 {
-    [Fact]
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "AppointmentService"
+    };
+
+    [SkippableFact]
     public async Task FullPatientJourney_RegisterToDeactivateToReRegister()
     {
         // =====================================================================
@@ -23,7 +29,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         var phone = $"09{Random.Shared.Next(10000000, 99999999)}";
         var registerRequest = new { fullName = "E2E Test Patient", email, password = "E2ETest@123", phone, gender = "Male", dateOfBirth = "1995-03-15" };
 
-        var registerResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Register, registerRequest);
+        var registerResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Register, registerRequest);
         Assert.Equal(HttpStatusCode.OK, registerResponse.StatusCode);
         var registerJson = await ReadJsonResponseAsync(registerResponse);
         Assert.True(registerJson.GetProperty("success").GetBoolean(), $"Register failed: {registerJson.GetProperty("message").GetString()}");
@@ -34,7 +40,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         // STEP 2: Login with the new patient
         // =====================================================================
         var loginRequest = new { email, password = "E2ETest@123" };
-        var loginResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Login, loginRequest);
+        var loginResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Login, loginRequest);
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         var loginJson = await ReadJsonResponseAsync(loginResponse);
         Assert.True(loginJson.GetProperty("success").GetBoolean(), "Login failed after registration");
@@ -46,7 +52,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         // STEP 3: Verify profile matches registration data
         // =====================================================================
         AuthClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-        var profileResponse = await AuthClient.GetAsync(Shared.ApiEndpoints.Auth.Me);
+        var profileResponse = await GetWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Me);
         Assert.Equal(HttpStatusCode.OK, profileResponse.StatusCode);
         var profileJson = await ReadJsonResponseAsync(profileResponse);
         Assert.Equal(email, profileJson.GetProperty("email").GetString());
@@ -68,7 +74,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
             notes = "Created by E2E test"
         };
 
-        var appointmentResponse = await AppointmentClient.PostAsJsonAsync(Shared.ApiEndpoints.Appointments.Create, appointmentRequest);
+        var appointmentResponse = await PostAsJsonWithRetryAsync(AppointmentClient, Shared.ApiEndpoints.Appointments.Create, appointmentRequest);
         var appointmentJson = await ReadJsonResponseAsync(appointmentResponse);
         Assert.False(string.IsNullOrEmpty(appointmentJson.GetProperty("message").GetString()));
 
@@ -78,11 +84,11 @@ public class PatientJourneyTests : Shared.ApiTestBase
             var appointmentId = Guid.Parse(appointmentJson.GetProperty("data").GetProperty("appointmentId").GetString()!);
 
             // STEP 5: Confirm appointment
-            var confirmResponse = await AppointmentClient.PutAsync(Shared.ApiEndpoints.Appointments.Confirm(appointmentId), null);
+            var confirmResponse = await PutWithRetryAsync(AppointmentClient, Shared.ApiEndpoints.Appointments.Confirm(appointmentId), null);
             if (confirmResponse.StatusCode == HttpStatusCode.OK)
             {
                 // STEP 6: Check-in
-                var checkInResponse = await AppointmentClient.PutAsync(Shared.ApiEndpoints.Appointments.CheckIn(appointmentId), null);
+                var checkInResponse = await PutWithRetryAsync(AppointmentClient, Shared.ApiEndpoints.Appointments.CheckIn(appointmentId), null);
                 if (checkInResponse.StatusCode == HttpStatusCode.OK)
                 {
                     // STEP 7: Create encounter
@@ -93,7 +99,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
                         patientId = newPatientUserId,
                         notes = "E2E encounter notes"
                     };
-                    var encounterResponse = await AppointmentClient.PostAsJsonAsync(Shared.ApiEndpoints.Encounters.Create, encounterRequest);
+                    var encounterResponse = await PostAsJsonWithRetryAsync(AppointmentClient, Shared.ApiEndpoints.Encounters.Create, encounterRequest);
                     var encounterJson = await ReadJsonResponseAsync(encounterResponse);
                     Assert.False(string.IsNullOrEmpty(encounterJson.GetProperty("message").GetString()));
                 }
@@ -105,7 +111,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         // =====================================================================
         // Use the patient's own token to deactivate
         AuthClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-        var deactivateResponse = await AuthClient.DeleteAsync(Shared.ApiEndpoints.Auth.DeleteUser(newPatientUserId));
+        var deactivateResponse = await DeleteWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.DeleteUser(newPatientUserId));
         Assert.Equal(HttpStatusCode.OK, deactivateResponse.StatusCode);
         var deactivateJson = await ReadJsonResponseAsync(deactivateResponse);
         Assert.True(deactivateJson.GetProperty("success").GetBoolean(),
@@ -115,7 +121,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         // STEP 9: Verify login fails after deactivation
         // =====================================================================
         AuthClient.DefaultRequestHeaders.Authorization = null;
-        var failedLoginResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Login, loginRequest);
+        var failedLoginResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Login, loginRequest);
         Assert.Equal(HttpStatusCode.Unauthorized, failedLoginResponse.StatusCode);
         var failedLoginJson = await ReadJsonResponseAsync(failedLoginResponse);
         Assert.False(failedLoginJson.GetProperty("success").GetBoolean(),
@@ -127,7 +133,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         var newPhone = $"09{Random.Shared.Next(10000000, 99999999)}";
         var reRegisterRequest = new { fullName = "Reactivated Patient", email, password = "NewPass@456", phone = newPhone, gender = "Female", dateOfBirth = "2000-01-01" };
 
-        var reRegisterResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Register, reRegisterRequest);
+        var reRegisterResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Register, reRegisterRequest);
         Assert.Equal(HttpStatusCode.OK, reRegisterResponse.StatusCode);
         var reRegisterJson = await ReadJsonResponseAsync(reRegisterResponse);
         Assert.True(reRegisterJson.GetProperty("success").GetBoolean(),
@@ -137,7 +143,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         // STEP 11: Login with new password and verify clean profile
         // =====================================================================
         var newLoginRequest = new { email, password = "NewPass@456" };
-        var newLoginResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Login, newLoginRequest);
+        var newLoginResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Login, newLoginRequest);
         Assert.Equal(HttpStatusCode.OK, newLoginResponse.StatusCode);
         var newLoginJson = await ReadJsonResponseAsync(newLoginResponse);
         Assert.True(newLoginJson.GetProperty("success").GetBoolean(), "Login failed after reactivation");
@@ -147,7 +153,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
 
         // Verify profile has new data, NOT old data
         AuthClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", newToken);
-        var newProfileResponse = await AuthClient.GetAsync(Shared.ApiEndpoints.Auth.Me);
+        var newProfileResponse = await GetWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Me);
         Assert.Equal(HttpStatusCode.OK, newProfileResponse.StatusCode);
         var newProfileJson = await ReadJsonResponseAsync(newProfileResponse);
 
@@ -159,7 +165,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
         AuthClient.DefaultRequestHeaders.Authorization = null;
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task LoginAllSeedUsers_ShouldSucceed()
     {
         // Verify all seed accounts can log in successfully
@@ -175,7 +181,7 @@ public class PatientJourneyTests : Shared.ApiTestBase
 
         foreach (var (email, password, role) in credentials)
         {
-            var response = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Login, new { email, password });
+            var response = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Login, new { email, password });
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var json = await ReadJsonResponseAsync(response);
             Assert.True(json.GetProperty("success").GetBoolean(), $"{role} login failed: {json.GetProperty("message").GetString()}");
@@ -183,18 +189,18 @@ public class PatientJourneyTests : Shared.ApiTestBase
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RegisterDuplicate_ThenLoginOriginal_ShouldWork()
     {
         // STEP 1: Try to register with existing admin email — should fail
         var dupRequest = new { fullName = "Dup", email = Shared.TestSeedData.AdminEmail, password = "Test@123", phone = "0999999998", gender = "Male", dateOfBirth = "1990-01-01" };
-        var dupResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Register, dupRequest);
+        var dupResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Register, dupRequest);
         Assert.Equal(HttpStatusCode.BadRequest, dupResponse.StatusCode);
         var dupJson = await ReadJsonResponseAsync(dupResponse);
         Assert.False(dupJson.GetProperty("success").GetBoolean());
 
         // STEP 2: Original admin can still log in
-        var loginResponse = await AuthClient.PostAsJsonAsync(Shared.ApiEndpoints.Auth.Login, new { email = Shared.TestSeedData.AdminEmail, password = Shared.TestSeedData.AdminPassword });
+        var loginResponse = await PostAsJsonWithRetryAsync(AuthClient, Shared.ApiEndpoints.Auth.Login, new { email = Shared.TestSeedData.AdminEmail, password = Shared.TestSeedData.AdminPassword });
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         var loginJson = await ReadJsonResponseAsync(loginResponse);
         Assert.True(loginJson.GetProperty("success").GetBoolean());

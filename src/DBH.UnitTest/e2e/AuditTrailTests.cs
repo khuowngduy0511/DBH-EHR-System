@@ -12,9 +12,16 @@ namespace DBH.UnitTest.E2E;
 /// </summary>
 public class AuditTrailTests : Shared.ApiTestBase
 {
-    [Fact]
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "AuditService"
+    };
+
+    [SkippableFact]
     public async Task AuditLogCreation_ThenSearchByActor_ShouldFindLog()
     {
+        await AuthenticateAsAdminAsync(AuditClient);
         // =====================================================================
         // STEP 1: Create an audit log entry for a known action
         // =====================================================================
@@ -28,7 +35,7 @@ public class AuditTrailTests : Shared.ApiTestBase
             organizationId = Shared.TestSeedData.HospitalAOrgId
         };
 
-        var createResponse = await AuditClient.PostAsJsonAsync(Shared.ApiEndpoints.Audit.Create, auditRequest);
+        var createResponse = await PostAsJsonWithRetryAsync(AuditClient, Shared.ApiEndpoints.Audit.Create, auditRequest);
         var createJson = await ReadJsonResponseAsync(createResponse);
 
         if (createResponse.StatusCode == HttpStatusCode.OK)
@@ -40,7 +47,7 @@ public class AuditTrailTests : Shared.ApiTestBase
             // =================================================================
             await AuthenticateAsAdminAsync(AuditClient);
 
-            var byActorResponse = await AuditClient.GetAsync(
+            var byActorResponse = await GetWithRetryAsync(AuditClient,
                 $"{Shared.ApiEndpoints.Audit.ByActor(Shared.TestSeedData.DoctorUserId)}?page=1&pageSize=50");
             Assert.Equal(HttpStatusCode.OK, byActorResponse.StatusCode);
             var byActorJson = await ReadJsonResponseAsync(byActorResponse);
@@ -50,7 +57,7 @@ public class AuditTrailTests : Shared.ApiTestBase
             // =================================================================
             // STEP 3: Search by target (patient)
             // =================================================================
-            var byTargetResponse = await AuditClient.GetAsync(
+            var byTargetResponse = await GetWithRetryAsync(AuditClient,
                 $"{Shared.ApiEndpoints.Audit.ByTarget(Shared.TestSeedData.PatientUserId)}?targetType=Patient&page=1&pageSize=50");
             Assert.Equal(HttpStatusCode.OK, byTargetResponse.StatusCode);
             var byTargetJson = await ReadJsonResponseAsync(byTargetResponse);
@@ -59,26 +66,26 @@ public class AuditTrailTests : Shared.ApiTestBase
             // =================================================================
             // STEP 4: Check overall audit stats
             // =================================================================
-            var statsResponse = await AuditClient.GetAsync(Shared.ApiEndpoints.Audit.Stats);
+            var statsResponse = await GetWithRetryAsync(AuditClient, Shared.ApiEndpoints.Audit.Stats);
             Assert.Equal(HttpStatusCode.OK, statsResponse.StatusCode);
             var statsJson = await ReadJsonResponseAsync(statsResponse);
             Assert.True(statsJson.TryGetProperty("data", out _));
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AuditSearchFlow_EmptyAndPagination()
     {
         await AuthenticateAsAdminAsync(AuditClient);
 
         // STEP 1: Search all audit logs — should return paginated result
-        var searchResponse = await AuditClient.GetAsync($"{Shared.ApiEndpoints.Audit.Search}?page=1&pageSize=5");
+        var searchResponse = await GetWithRetryAsync(AuditClient, $"{Shared.ApiEndpoints.Audit.Search}?page=1&pageSize=5");
         Assert.Equal(HttpStatusCode.OK, searchResponse.StatusCode);
         var searchJson = await ReadJsonResponseAsync(searchResponse);
         Assert.True(searchJson.TryGetProperty("data", out _));
 
         // STEP 2: Search by a non-existent actor — should return empty page
-        var emptyResponse = await AuditClient.GetAsync(
+        var emptyResponse = await GetWithRetryAsync(AuditClient,
             $"{Shared.ApiEndpoints.Audit.ByActor(Guid.NewGuid())}?page=1&pageSize=10");
         Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
         var emptyJson = await ReadJsonResponseAsync(emptyResponse);
@@ -86,14 +93,15 @@ public class AuditTrailTests : Shared.ApiTestBase
         Assert.Equal(0, emptyJson.GetProperty("data").GetArrayLength());
 
         // STEP 3: Search by patient — known patient should have some logs
-        var byPatientResponse = await AuditClient.GetAsync(
+        var byPatientResponse = await GetWithRetryAsync(AuditClient,
             $"{Shared.ApiEndpoints.Audit.ByPatient(Shared.TestSeedData.PatientUserId)}?page=1&pageSize=50");
         Assert.Equal(HttpStatusCode.OK, byPatientResponse.StatusCode);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MultipleAuditLogs_ThenVerifyCount()
     {
+        await AuthenticateAsAdminAsync(AuditClient);
         // Create 3 audit log entries
         for (int i = 0; i < 3; i++)
         {
@@ -106,13 +114,13 @@ public class AuditTrailTests : Shared.ApiTestBase
                 description = $"E2E batch audit log #{i}",
                 organizationId = Shared.TestSeedData.HospitalAOrgId
             };
-            var response = await AuditClient.PostAsJsonAsync(Shared.ApiEndpoints.Audit.Create, request);
+            var response = await PostAsJsonWithRetryAsync(AuditClient, Shared.ApiEndpoints.Audit.Create, request);
             Assert.True(response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.BadRequest);
         }
 
         // Verify admin's audit logs increased
         await AuthenticateAsAdminAsync(AuditClient);
-        var listResponse = await AuditClient.GetAsync(
+        var listResponse = await GetWithRetryAsync(AuditClient,
             $"{Shared.ApiEndpoints.Audit.ByActor(Shared.TestSeedData.AdminUserId)}?page=1&pageSize=50");
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         var listJson = await ReadJsonResponseAsync(listResponse);
