@@ -4,6 +4,7 @@ using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -87,7 +88,7 @@ builder.Services.AddHttpContextAccessor();
 // ============================================================================
 // Blockchain Services (Hyperledger Fabric)
 // ============================================================================
-builder.Services.AddHyperledgerFabric(builder.Configuration);
+builder.Services.AddHyperledgerFabric(builder.Configuration, "Ehr", new[] { BlockchainSyncJobType.EhrHash });
 
 // ============================================================================
 // HTTP Client for inter-service calls (Consent verification)

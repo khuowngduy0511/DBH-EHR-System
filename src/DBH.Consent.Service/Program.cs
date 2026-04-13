@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.Services;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
@@ -93,7 +94,7 @@ builder.Services.AddHttpClient("EhrService", client =>
 // ============================================================================
 // Blockchain Services (Hyperledger Fabric)
 // ============================================================================
-builder.Services.AddHyperledgerFabric(builder.Configuration);
+builder.Services.AddHyperledgerFabric(builder.Configuration, "Consent", new[] { BlockchainSyncJobType.ConsentGrant, BlockchainSyncJobType.ConsentRevoke });
 
 // ============================================================================
 // Notification Client

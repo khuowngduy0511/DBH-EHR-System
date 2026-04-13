@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DBH.Audit.Service.DbContext;
 using DBH.Audit.Service.Services;
 using DBH.Shared.Infrastructure;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -76,7 +77,7 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 // ============================================================================
 // Hyperledger Fabric Blockchain Integration
 // ============================================================================
-builder.Services.AddHyperledgerFabric(builder.Configuration);
+builder.Services.AddHyperledgerFabric(builder.Configuration, "Audit", new[] { BlockchainSyncJobType.AuditLog });
 
 // ============================================================================
 // JWT Authentication

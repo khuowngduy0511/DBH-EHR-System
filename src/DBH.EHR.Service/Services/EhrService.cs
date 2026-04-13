@@ -184,7 +184,7 @@ public class EhrService : IEhrService
                     Version = 1,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
-                    Timestamp = DateTime.UtcNow.ToString("o"),
+                    Timestamp = GetLocalTime().ToString("o"),
                     EncryptedAesKey = encryptedAesKey
                 };
 
@@ -351,67 +351,101 @@ public class EhrService : IEhrService
 
         var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
 
-        byte[]? blueKeyBytes = null;
+        byte[]? consentDerivedKey = null;
+        byte[]? patientDerivedKey = null;
 
         if (isPatientOwner)
         {
-           var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
-           if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
-           {
-               blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, privateKey);
-           }
+            var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
+            if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
+            {
+                patientDerivedKey = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, privateKey);
+            }
         }
         else 
         {
 
-             if (_consentBlockchainService != null) {
-                   var blockchainConsentId = await ResolveBlockchainConsentIdAsync(consentCheckResult.ConsentId!) ?? consentCheckResult.ConsentId!;
-                   var consentRecord = await _consentBlockchainService.GetConsentAsync(blockchainConsentId);
-                  if (consentRecord != null && !string.IsNullOrEmpty(consentRecord.EncryptedAesKey))
-                  {
-                       blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(consentRecord.EncryptedAesKey, privateKey);
-                  }
-                   else
-                   {
-                       _logger.LogWarning("Unable to load encrypted consent key from blockchain for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentCheckResult.ConsentId, blockchainConsentId);
+            if (_consentBlockchainService != null)
+            {
+                var blockchainConsentId = await ResolveBlockchainConsentIdAsync(consentCheckResult.ConsentId!) ?? consentCheckResult.ConsentId!;
+                var consentRecord = await _consentBlockchainService.GetConsentAsync(blockchainConsentId);
+                if (consentRecord != null && !string.IsNullOrEmpty(consentRecord.EncryptedAesKey))
+                {
+                    try
+                    {
+                        consentDerivedKey = AsymmetricEncryptionService.UnwrapKey(consentRecord.EncryptedAesKey, privateKey);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Unable to unwrap consent key for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentCheckResult.ConsentId, blockchainConsentId);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Unable to load encrypted consent key from blockchain for ConsentId={ConsentId}, BlockchainConsentId={BlockchainConsentId}", consentCheckResult.ConsentId, blockchainConsentId);
+                }
+            }
 
-                       // Fallback: derive AES key via patient's wrapped key on EHR hash ledger,
-                       // after consent has already been verified.
-                       var patientKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedPatientId}/keys", bearerToken);
-                       if (patientKeyRes.IsSuccessStatusCode && _blockchainService != null)
-                       {
-                           var patientKeyJson = await patientKeyRes.Content.ReadAsStringAsync();
-                           var patientKeys = JsonSerializer.Deserialize<AuthUserKeysDto>(patientKeyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            // Always prepare fallback from latest EHR key because consent key can become stale after EHR update,
+            // and consent blockchain service may be unavailable in some environments.
+            var patientKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedPatientId}/keys", bearerToken);
+            if (patientKeyRes.IsSuccessStatusCode && _blockchainService != null)
+            {
+                var patientKeyJson = await patientKeyRes.Content.ReadAsStringAsync();
+                var patientKeys = JsonSerializer.Deserialize<AuthUserKeysDto>(patientKeyJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                           if (patientKeys != null && !string.IsNullOrEmpty(patientKeys.EncryptedPrivateKey))
-                           {
-                               var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
-                               var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
-                               if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
-                               {
-                                   blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, patientPrivateKey);
-                               }
-                           }
-                       }
-                   }
-             }
+                if (patientKeys != null && !string.IsNullOrEmpty(patientKeys.EncryptedPrivateKey))
+                {
+                    var patientPrivateKey = MasterKeyEncryptionService.Decrypt(patientKeys.EncryptedPrivateKey);
+                    var latestEhrEncryptedKey = await GetLatestEhrEncryptedAesKeyWithRetryAsync(ehrId);
+                    if (!string.IsNullOrEmpty(latestEhrEncryptedKey))
+                    {
+                        try
+                        {
+                            patientDerivedKey = AsymmetricEncryptionService.UnwrapKey(latestEhrEncryptedKey, patientPrivateKey);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Unable to unwrap latest EHR key for fallback on EhrId={EhrId}", ehrId);
+                        }
+                    }
+                }
+            }
         }
 
-        if (blueKeyBytes == null)
+        var candidateKeys = new List<byte[]>();
+        if (consentDerivedKey != null)
+        {
+            candidateKeys.Add(consentDerivedKey);
+        }
+        if (patientDerivedKey != null)
+        {
+            candidateKeys.Add(patientDerivedKey);
+        }
+
+        if (candidateKeys.Count == 0)
             return (null, false, "Unable to extract AES wrapper key from ledgers");
 
-        try {
-            var decryptedPayload = SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
-            
-            // Tự động Audit Log
-            EnqueueEhrAuditLog("VIEW", ehrId, record.PatientId, record.OrgId);
+        Exception? lastDecryptError = null;
+        foreach (var candidateKey in candidateKeys)
+        {
+            try
+            {
+                var decryptedPayload = SymmetricEncryptionService.DecryptString(encryptedText, candidateKey);
 
-            return (decryptedPayload, false, null);
+                // Tự động Audit Log
+                EnqueueEhrAuditLog("VIEW", ehrId, record.PatientId, record.OrgId);
+
+                return (decryptedPayload, false, null);
+            }
+            catch (Exception ex)
+            {
+                lastDecryptError = ex;
+            }
         }
-        catch (Exception ex) {
-            _logger.LogError(ex, "Failed to decrypt document payload for EHR {EhrId}", ehrId);
-            return (null, false, "Decryption failed due to invalid key or corrupted payload.");
-        }
+
+        _logger.LogError(lastDecryptError, "Failed to decrypt document payload for EHR {EhrId}", ehrId);
+        return (null, false, "Decryption failed due to invalid key or corrupted payload.");
     }
 
     public async Task<(string? DecryptedData, bool Forbidden, string? Message)> GetEhrDocumentForCurrentUserAsync(Guid ehrId)
@@ -685,12 +719,17 @@ public class EhrService : IEhrService
         };
         await _ehrRecordRepo.CreateVersionAsync(version);
 
-        // Wrap AES key with Patient's Public Key and commit to Blockchain
-        string encryptedAesKey = string.Empty;
+        // Wrap AES key for Patient and Requester/Doctor
+        string encryptedAesKeyForPatient = string.Empty;
+        string encryptedAesKeyForRequester = string.Empty;
+        Guid? requesterUserId = GetCurrentUserIdFromContext();
+
         try
         {
             var authClient = _httpClientFactory.CreateClient("AuthService");
             var bearerToken = GetBearerTokenFromContext();
+            
+            // 1. Wrap for Patient (Owner)
             var patientUserId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken);
             if (patientUserId.HasValue)
             {
@@ -701,27 +740,43 @@ public class EhrService : IEhrService
                     var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
                     {
-                        encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                        encryptedAesKeyForPatient = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
                         _logger.LogInformation("Successfully wrapped AES key for patient {PatientId} in EHR update", record.PatientId);
                     }
-                    else
-                    {
-                        _logger.LogWarning("Patient {PatientId} has no public key available for encryption on update", record.PatientId);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Auth Service returned status {StatusCode} when fetching keys for userId {UserId} during update", keyRes.StatusCode, patientUserId.Value);
                 }
             }
-            else
+
+            // 2. Wrap for Requester (Doctor/Operator) if different from patient
+            if (requesterUserId.HasValue && requesterUserId.Value != patientUserId)
             {
-                _logger.LogWarning("Failed to resolve patient user ID for key wrapping. PatientId={PatientId}", record.PatientId);
+                var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{requesterUserId.Value}/keys", bearerToken);
+                if (keyRes.IsSuccessStatusCode)
+                {
+                    var keysJson = await keyRes.Content.ReadAsStringAsync();
+                    var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                    {
+                        encryptedAesKeyForRequester = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+                        
+                        // Update current requester's consent if they have one
+                        if (_consentBlockchainService != null)
+                        {
+                            var consentRes = await _consentBlockchainService.GetConsentAsync($"{record.PatientId}_{requesterUserId.Value}");
+                            if (consentRes != null)
+                            {
+                                consentRes.EncryptedAesKey = encryptedAesKeyForRequester;
+                                consentRes.Timestamp = GetLocalTime().ToString("o");
+                                _blockchainSyncService.EnqueueConsentGrant(consentRes);
+                                _logger.LogInformation("Enqueued update for requester's consent with new AES key. RequesterUserId={UserId}", requesterUserId.Value);
+                            }
+                        }
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Auth Service for patient keys during EHR update for EHR {EhrId}", ehrId);
+            _logger.LogError(ex, "Error re-wrapping keys during EHR update for EHR {EhrId}", ehrId);
         }
 
         // Blockchain: Commit updated hash
@@ -738,8 +793,8 @@ public class EhrService : IEhrService
                     Version = newVersionNumber,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
-                    Timestamp = DateTime.UtcNow.ToString("o"),
-                    EncryptedAesKey = encryptedAesKey
+                    Timestamp = GetLocalTime().ToString("o"),
+                    EncryptedAesKey = encryptedAesKeyForPatient
                 };
 
                 _blockchainSyncService.EnqueueEhrHash(
@@ -1086,7 +1141,7 @@ public class EhrService : IEhrService
             PatientDid = patientId.ToString(),
             OrganizationId = orgId?.ToString(),
             Result = result,
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = GetLocalTime().ToString("o")
         };
 
         _blockchainSyncService.EnqueueAuditEntry(
@@ -1218,6 +1273,29 @@ public class EhrService : IEhrService
         using var sha256 = SHA256.Create();
         var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private DateTime GetLocalTime()
+    {
+        try
+        {
+            // Windows ID: SE Asia Standard Time, Linux ID: Asia/Ho_Chi_Minh
+            TimeZoneInfo tz;
+            try
+            {
+                tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            }
+            catch
+            {
+                tz = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+            }
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to resolve UTC+7 timezone via IDs, using manual offset.");
+            return DateTime.UtcNow.AddHours(7);
+        }
     }
 
     private static EhrRecordResponseDto MapToEhrRecordResponse(EhrRecord record)

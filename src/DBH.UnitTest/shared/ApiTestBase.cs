@@ -4,7 +4,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 
-namespace DBH.UnitTest.Api;
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
+
+namespace DBH.UnitTest.Shared;
 
 /// <summary>
 /// Base class for all API integration tests.
@@ -24,6 +26,9 @@ public abstract class ApiTestBase : IDisposable
     protected readonly HttpClient PaymentClient;
 
     private readonly List<HttpClient> _clients = new();
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _tokenCache = new();
+    private static readonly System.Threading.SemaphoreSlim _tokenLock = new(1, 1);
 
     protected ApiTestBase()
     {
@@ -52,7 +57,7 @@ public abstract class ApiTestBase : IDisposable
         var client = new HttpClient
         {
             BaseAddress = new Uri(baseUrl),
-            Timeout = TimeSpan.FromSeconds(30)
+            Timeout = TimeSpan.FromSeconds(10)
         };
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         _clients.Add(client);
@@ -65,16 +70,38 @@ public abstract class ApiTestBase : IDisposable
     /// </summary>
     protected async Task<JsonElement> AuthenticateAsync(HttpClient client, string email, string password)
     {
-        var loginPayload = new { email, password };
-        var response = await AuthClient.PostAsJsonAsync(ApiEndpoints.Auth.Login, loginPayload);
-        response.EnsureSuccessStatusCode();
+        if (_tokenCache.TryGetValue(email, out var cachedToken))
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", cachedToken);
+            return JsonDocument.Parse("{}").RootElement;
+        }
 
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var token = json.GetProperty("data").GetProperty("accessToken").GetString()
-            ?? throw new InvalidOperationException("Failed to retrieve access token.");
+        await _tokenLock.WaitAsync();
+        try
+        {
+            if (_tokenCache.TryGetValue(email, out cachedToken))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", cachedToken);
+                return JsonDocument.Parse("{}").RootElement;
+            }
 
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return json;
+            var loginPayload = new { email, password };
+            var response = await AuthClient.PostAsJsonAsync(ApiEndpoints.Auth.Login, loginPayload);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var token = json.GetProperty("token").GetString()
+                ?? throw new InvalidOperationException("Failed to retrieve access token.");
+
+            _tokenCache[email] = token;
+
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            return json;
+        }
+        finally
+        {
+            _tokenLock.Release();
+        }
     }
 
     /// <summary>
@@ -107,7 +134,14 @@ public abstract class ApiTestBase : IDisposable
     protected static async Task<JsonElement> ReadJsonResponseAsync(HttpResponseMessage response)
     {
         var content = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<JsonElement>(content);
+        try
+        {
+            return JsonSerializer.Deserialize<JsonElement>(content);
+        }
+        catch (JsonException)
+        {
+            throw new Exception($"Failed to parse JSON. Status: {response.StatusCode}. Content: {content}");
+        }
     }
 
     /// <summary>

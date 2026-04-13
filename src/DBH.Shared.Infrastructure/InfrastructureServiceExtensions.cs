@@ -10,6 +10,9 @@ using MassTransit;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System.Collections.Generic;
 
 namespace DBH.Shared.Infrastructure;
 
@@ -192,8 +195,10 @@ public static class InfrastructureServiceExtensions
     /// Đăng ký Hyperledger Fabric Blockchain Services
     /// </summary>
     public static IServiceCollection AddHyperledgerFabric(
-        this IServiceCollection services,
-        IConfiguration configuration)
+        this IServiceCollection services, 
+        IConfiguration configuration,
+        string? serviceName = null,
+        IEnumerable<BlockchainSyncJobType>? allowedJobTypes = null)
     {
         var fabricSection = configuration.GetSection(FabricOptions.SectionName);
         var rabbitSection = configuration.GetSection(RabbitMQOptions.SectionName);
@@ -207,7 +212,19 @@ public static class InfrastructureServiceExtensions
         services.AddHttpContextAccessor();
         services.AddHttpClient();
         services.AddScoped<IFabricRuntimeIdentityResolver, FabricRuntimeIdentityResolver>();
-        services.AddSingleton<BlockchainSyncQueue>();
+        services.AddScoped<IFabricCaService, FabricCaService>();
+        
+        // Register Queue with service-specific name if provided
+        var queueName = string.IsNullOrEmpty(serviceName) 
+            ? "dbh.blockchain.sync.queue" 
+            : $"dbh.blockchain.sync.{serviceName.ToLower()}.queue";
+            
+        services.AddSingleton(sp => new BlockchainSyncQueue(
+            sp.GetRequiredService<IOptions<RabbitMQOptions>>(),
+            sp.GetRequiredService<ILogger<BlockchainSyncQueue>>(),
+            queueName,
+            allowedJobTypes));
+            
         services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
         services.AddHostedService<BlockchainSyncBackgroundService>();
 
