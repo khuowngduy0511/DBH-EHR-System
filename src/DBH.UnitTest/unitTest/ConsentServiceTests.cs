@@ -26,7 +26,17 @@ public class ConsentServiceTests : ApiTestBase
     public async Task GrantConsent_WithSeedUsers_ShouldReturnSuccessMessage()
     {
         await AuthenticateAsPatientAsync(ConsentClient);
-        var request = new { patientId = TestSeedData.PatientUserId, granteeId = TestSeedData.DoctorUserId, granteeType = "Doctor", scope = "read", expiresAt = DateTime.UtcNow.AddDays(30).ToString("o") };
+        var request = new
+        {
+            patientId = TestSeedData.PatientUserId,
+            patientDid = $"did:dbh:user:{TestSeedData.PatientUserId}",
+            granteeId = TestSeedData.DoctorUserId,
+            granteeDid = $"did:dbh:user:{TestSeedData.DoctorUserId}",
+            granteeType = "DOCTOR",
+            permission = "READ",
+            purpose = "TREATMENT",
+            durationDays = 30
+        };
         var response = await PostAsJsonWithRetryAsync(ConsentClient, ApiEndpoints.Consents.Grant, request);
 
         Assert.True(response.StatusCode == HttpStatusCode.Created || response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.BadRequest);
@@ -100,7 +110,7 @@ public class ConsentServiceTests : ApiTestBase
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await ReadJsonResponseAsync(response);
         // Should return whether consent is valid or not
-        Assert.True(json.TryGetProperty("data", out _) || json.TryGetProperty("isValid", out _) || json.TryGetProperty("success", out _));
+        Assert.True(json.TryGetProperty("hasAccess", out _) || json.TryGetProperty("message", out _) || json.TryGetProperty("consentId", out _));
     }
 
     [SkippableFact]
@@ -121,7 +131,18 @@ public class ConsentServiceTests : ApiTestBase
     public async Task CreateAccessRequest_DoctorToPatient_ShouldReturnMessage()
     {
         await AuthenticateAsDoctorAsync(ConsentClient);
-        var request = new { requesterId = TestSeedData.DoctorUserId, patientId = TestSeedData.PatientUserId, purpose = "Treatment", scope = "read", requestedDuration = 7 };
+        var request = new
+        {
+            requesterId = TestSeedData.DoctorUserId,
+            requesterDid = $"did:dbh:user:{TestSeedData.DoctorUserId}",
+            requesterType = "DOCTOR",
+            patientId = TestSeedData.PatientUserId,
+            patientDid = $"did:dbh:user:{TestSeedData.PatientUserId}",
+            permission = "READ",
+            purpose = "TREATMENT",
+            reason = "Treatment",
+            requestedDurationDays = 7
+        };
         var response = await PostAsJsonWithRetryAsync(ConsentClient, ApiEndpoints.AccessRequests.Create, request);
 
         Assert.True(response.StatusCode == HttpStatusCode.Created || response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.BadRequest);

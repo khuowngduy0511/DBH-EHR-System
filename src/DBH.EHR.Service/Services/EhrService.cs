@@ -184,7 +184,7 @@ public class EhrService : IEhrService
                     Version = 1,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
-                    Timestamp = GetLocalTime().ToString("o"),
+                    Timestamp = BlockchainTime.NowIsoString,
                     EncryptedAesKey = encryptedAesKey
                 };
 
@@ -765,7 +765,6 @@ public class EhrService : IEhrService
                             if (consentRes != null)
                             {
                                 consentRes.EncryptedAesKey = encryptedAesKeyForRequester;
-                                consentRes.Timestamp = GetLocalTime().ToString("o");
                                 _blockchainSyncService.EnqueueConsentGrant(consentRes);
                                 _logger.LogInformation("Enqueued update for requester's consent with new AES key. RequesterUserId={UserId}", requesterUserId.Value);
                             }
@@ -793,7 +792,7 @@ public class EhrService : IEhrService
                     Version = newVersionNumber,
                     ContentHash = $"sha256:{dataHash}",
                     FileHash = $"sha256:{dataHash}",
-                    Timestamp = GetLocalTime().ToString("o"),
+                    Timestamp = BlockchainTime.NowIsoString,
                     EncryptedAesKey = encryptedAesKeyForPatient
                 };
 
@@ -1141,7 +1140,7 @@ public class EhrService : IEhrService
             PatientDid = patientId.ToString(),
             OrganizationId = orgId?.ToString(),
             Result = result,
-            Timestamp = GetLocalTime().ToString("o")
+            Timestamp = BlockchainTime.NowIsoString
         };
 
         _blockchainSyncService.EnqueueAuditEntry(

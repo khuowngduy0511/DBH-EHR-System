@@ -99,7 +99,6 @@ public class AuthService : IAuthService
 
         if (existingUser != null)
         {
-            // If the existing user is Inactive (deactivated), reactivate with fresh data
             if (existingUser.Status == Models.Enums.UserStatus.Inactive)
             {
                 _logger.LogInformation("Reactivating deactivated account for: {Email}", request.Email);

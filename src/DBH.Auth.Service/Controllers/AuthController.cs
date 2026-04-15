@@ -24,8 +24,6 @@ public class AuthController : ControllerBase
     /// <returns></returns>
     [HttpPost("register")]
     // [Authorize(Roles = "Admin, Receptionist")]
-    // Cái organizationId sẽ được lấy từ tài khoản của staff
-    // Một là FE tự truyền xuong, hai là BE lấy từ claim của staff đang đăng nhập
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var response = await _authService.RegisterAsync(request);
