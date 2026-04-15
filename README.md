@@ -33,22 +33,21 @@ chmod +x network.sh \
 
 ---
 
-## PHASE 2 — Khởi động Blockchain
-
-```bash
-cd /d/DBH-EHR-Backend/src/DBH.Blockchain.Network
-
-./network.sh up -s couchdb
-```
-
----
-
-## PHASE 3 — Khởi động Infrastructure 
+## PHASE 2 — Khởi động Infrastructure 
 
 ```bash
 cd /d/DBH-EHR-Backend
 
 COMPOSE_PARALLEL_LIMIT=2 docker compose -f docker-compose.dev.yml up -d --build
+```
+---
+
+## PHASE 3 — Khởi động Blockchain
+
+```bash
+cd /d/DBH-EHR-Backend/src/DBH.Blockchain.Network
+
+./network.sh up -s couchdb
 ```
 
 ---
