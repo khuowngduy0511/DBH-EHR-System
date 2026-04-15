@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DBH.Auth.Service.Models.Enums;
 
 namespace DBH.Auth.Service.DTOs;
 
@@ -82,4 +83,26 @@ public class UserProfileResponse
     public string? Status { get; set; }
     public IEnumerable<string> Roles { get; set; } = new List<string>();
     public Dictionary<string, object?> Profiles { get; set; } = new();
+}
+
+public class GetAllUsersQuery
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+    public string? Gender { get; set; }
+    public string? OrganizationId { get; set; }
+    public string? Status { get; set; }
+    public string? Role { get; set; }
+    public string? Specialty { get; set; }
+}
+
+public class PagedResponse<T>
+{
+    public bool Success { get; set; } = true;
+    public string Message { get; set; } = string.Empty;
+    public List<T> Data { get; set; } = new();
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalPages => PageSize <= 0 ? 0 : (int)Math.Ceiling((double)TotalCount / PageSize);
 }

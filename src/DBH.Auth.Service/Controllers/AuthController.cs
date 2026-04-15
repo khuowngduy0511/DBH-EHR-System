@@ -152,6 +152,25 @@ public class AuthController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("users")]
+    public async Task<IActionResult> GetAllUsers([FromQuery] GetAllUsersQuery query)
+    {
+        var result = await _authService.GetAllUsersAsync(query, User.IsInRole("Admin"));
+        if (!result.Success)
+        {
+            if (string.Equals(result.Message, "Only admin can search admin users.", StringComparison.OrdinalIgnoreCase))
+            {
+                return Forbid();
+            }
+
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+
+    [Authorize]
     [HttpGet("users/by-contact")]
     public async Task<IActionResult> GetUserProfileByContact([FromQuery] string? email, [FromQuery] string? phone)
     {

@@ -16,4 +16,5 @@ public interface IAuthService
     Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);
     Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId);
     Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
+    Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor);
 }

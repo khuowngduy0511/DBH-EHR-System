@@ -1,4 +1,5 @@
 using DBH.Auth.Service.Repositories;
+using DBH.Auth.Service.DbContext;
 using DBH.Auth.Service.DTOs;
 using DBH.Auth.Service.Models.Entities;
 using DBH.Auth.Service.Models.Enums;
@@ -27,6 +28,7 @@ public class AuthService : IAuthService
     private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IOrganizationServiceClient _organizationServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly AuthDbContext _dbContext;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -41,7 +43,8 @@ public class AuthService : IAuthService
         ITokenService tokenService,
         IBlockchainSyncService blockchainSyncService,
         IOrganizationServiceClient organizationServiceClient,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        AuthDbContext dbContext)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -56,6 +59,7 @@ public class AuthService : IAuthService
         _blockchainSyncService = blockchainSyncService;
         _organizationServiceClient = organizationServiceClient;
         _httpContextAccessor = httpContextAccessor;
+        _dbContext = dbContext;
     }
 
 
@@ -581,6 +585,156 @@ public class AuthService : IAuthService
             EncryptedPrivateKey = privateCredential.CredentialValue
         };
     }
+
+    public async Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor)
+    {
+        var page = query.Page <= 0 ? 1 : query.Page;
+        var pageSize = query.PageSize <= 0 ? 10 : Math.Min(query.PageSize, 100);
+
+        var normalizedGender = string.IsNullOrWhiteSpace(query.Gender) ? null : query.Gender.Trim();
+        var normalizedOrganizationId = string.IsNullOrWhiteSpace(query.OrganizationId) ? null : query.OrganizationId.Trim();
+        var normalizedStatus = string.IsNullOrWhiteSpace(query.Status) ? null : query.Status.Trim();
+        var normalizedRole = query.Role?.ToString();
+        var normalizedSpecialty = string.IsNullOrWhiteSpace(query.Specialty) ? null : query.Specialty.Trim();
+
+        RoleName? requestedRole = null;
+        var roleIsStaffBucket = false;
+
+        if (!string.IsNullOrWhiteSpace(normalizedRole))
+        {
+            if (string.Equals(normalizedRole, "Staff", StringComparison.OrdinalIgnoreCase))
+            {
+                roleIsStaffBucket = true;
+            }
+            else if (!Enum.TryParse<RoleName>(normalizedRole, true, out var parsedRole))
+            {
+                return new PagedResponse<UserProfileResponse>
+                {
+                    Success = false,
+                    Message = $"Role '{normalizedRole}' is invalid.",
+                    Page = page,
+                    PageSize = pageSize
+                };
+            }
+            else
+            {
+                var roleExists = await _roleRepository.ExistsAsync(r => r.RoleName == parsedRole);
+                if (!roleExists)
+                {
+                    return new PagedResponse<UserProfileResponse>
+                    {
+                        Success = false,
+                        Message = $"Role '{normalizedRole}' does not exist in role data.",
+                        Page = page,
+                        PageSize = pageSize
+                    };
+                }
+
+                if (parsedRole == RoleName.Admin && !isAdminActor)
+                {
+                    return new PagedResponse<UserProfileResponse>
+                    {
+                        Success = false,
+                        Message = "Only admin can search admin users.",
+                        Page = page,
+                        PageSize = pageSize
+                    };
+                }
+
+                requestedRole = parsedRole;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedStatus) && !Enum.TryParse<UserStatus>(normalizedStatus, true, out var parsedStatus))
+        {
+            return new PagedResponse<UserProfileResponse>
+            {
+                Success = false,
+                Message = $"Status '{normalizedStatus}' is invalid.",
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+
+        var userQuery = _dbContext.Users
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(normalizedGender))
+        {
+            userQuery = userQuery.Where(u => u.Gender != null && EF.Functions.ILike(u.Gender, normalizedGender));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedOrganizationId))
+        {
+            userQuery = userQuery.Where(u => u.OrganizationId != null && EF.Functions.ILike(u.OrganizationId, normalizedOrganizationId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedStatus))
+        {
+            var parsedStatusR = Enum.Parse<UserStatus>(normalizedStatus, true);
+            userQuery = userQuery.Where(u => u.Status == parsedStatusR);
+        }
+
+        if (roleIsStaffBucket)
+        {
+            userQuery = userQuery.Where(u => u.UserRoles.Any(ur =>
+                ur.Role.RoleName == RoleName.Nurse ||
+                ur.Role.RoleName == RoleName.Pharmacist ||
+                ur.Role.RoleName == RoleName.Receptionist ||
+                ur.Role.RoleName == RoleName.LabTech));
+        }
+        else if (requestedRole.HasValue)
+        {
+            var roleFilter = requestedRole.Value;
+            userQuery = userQuery.Where(u => u.UserRoles.Any(ur => ur.Role.RoleName == roleFilter));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedSpecialty))
+        {
+            var canUseDoctorSpecialty = requestedRole == RoleName.Doctor;
+            var canUseStaffSpecialty = roleIsStaffBucket || requestedRole is RoleName.Nurse or RoleName.Pharmacist or RoleName.Receptionist or RoleName.LabTech;
+
+            if (canUseDoctorSpecialty)
+            {
+                userQuery = userQuery.Where(u => u.DoctorProfile != null && u.DoctorProfile.Specialty != null && EF.Functions.ILike(u.DoctorProfile.Specialty, $"%{normalizedSpecialty}%"));
+            }
+            else if (canUseStaffSpecialty)
+            {
+                userQuery = userQuery.Where(u => u.StaffProfile != null && u.StaffProfile.Specialty != null && EF.Functions.ILike(u.StaffProfile.Specialty, $"%{normalizedSpecialty}%"));
+            }
+        }
+
+        var totalCount = await userQuery.CountAsync();
+        var userIds = await userQuery
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => u.UserId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var users = new List<UserProfileResponse>(userIds.Count);
+        foreach (var userId in userIds)
+        {
+            var profile = await GetMyProfileAsync(userId);
+            if (profile != null)
+            {
+                users.Add(profile);
+            }
+        }
+
+        return new PagedResponse<UserProfileResponse>
+        {
+            Success = true,
+            Message = "Users fetched successfully.",
+            Data = users,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
+    }
+
+
 
     private async Task<AuthResponse> GenerateAuthResponseAsync(User user)
     {
