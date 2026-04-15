@@ -91,6 +91,12 @@ builder.Services.AddHttpClient("EhrService", client =>
     client.BaseAddress = new Uri(ehrUrl);
 });
 
+builder.Services.AddHttpClient("AuditService", client =>
+{
+    var auditUrl = builder.Configuration["ServiceUrls:AuditService"] ?? "http://localhost:5005";
+    client.BaseAddress = new Uri(auditUrl);
+});
+
 // ============================================================================
 // Blockchain Services (Hyperledger Fabric)
 // ============================================================================

@@ -916,6 +916,9 @@ public class EhrService : IEhrService
 
         _logger.LogInformation("Added file {FileId} to EHR {EhrId}, IPFS CID: {IpfsCid}", savedFile.FileId, ehrId, ipfsCid ?? "fallback");
 
+        // Audit log for file addition
+        EnqueueEhrAuditLog("CREATE", ehrId, record.PatientId, record.OrgId);
+
         // Notify patient about new file
         if (_notificationClient != null)
         {
@@ -943,6 +946,14 @@ public class EhrService : IEhrService
 
         await _ehrRecordRepo.DeleteFileAsync(file);
         _logger.LogInformation("Deleted file {FileId} from EHR {EhrId}", fileId, ehrId);
+
+        // Audit log for file deletion
+        var record = await _ehrRecordRepo.GetByIdAsync(ehrId);
+        if (record != null)
+        {
+            EnqueueEhrAuditLog("DELETE", ehrId, record.PatientId, record.OrgId);
+        }
+
         return true;
     }
 
@@ -1127,12 +1138,26 @@ public class EhrService : IEhrService
         return null;
     }
 
+    private string GetCurrentActorType()
+    {
+        var role = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Role)?.Value
+            ?? _httpContextAccessor.HttpContext?.User?.FindFirst("role")?.Value;
+        return role?.ToUpperInvariant() switch
+        {
+            "PATIENT" => "PATIENT",
+            "NURSE" => "NURSE",
+            "ADMIN" => "ADMIN",
+            _ => "DOCTOR"
+        };
+    }
+
     private void EnqueueEhrAuditLog(string action, Guid targetId, Guid patientId, Guid? orgId = null, string result = "SUCCESS")
     {
+        var currentUserId = GetCurrentUserIdFromContext();
         var auditEntry = new AuditEntry
         {
             AuditId = Guid.NewGuid().ToString(),
-            ActorDid = GetCurrentUserIdFromContext()?.ToString() ?? orgId?.ToString() ?? "SYSTEM",
+            ActorDid = currentUserId?.ToString() ?? orgId?.ToString() ?? "SYSTEM",
             ActorType = "USER",
             Action = action,
             TargetType = "EHR",
@@ -1150,6 +1175,62 @@ public class EhrService : IEhrService
                 _logger.LogWarning("Queued blockchain audit log failed for EHR {EhrId}: {Error}", targetId, error);
                 return Task.CompletedTask;
             });
+
+        // Also POST to Audit Service API so audit logs are queryable in the local DB
+        _ = PostAuditLogToServiceAsync(action, targetId, patientId, orgId, currentUserId, result);
+    }
+
+    /// <summary>
+    /// POST audit log to the Audit Service HTTP API so it gets stored in PostgreSQL
+    /// for querying by both patient and actor (doctor).
+    /// </summary>
+    private async Task PostAuditLogToServiceAsync(string action, Guid targetId, Guid patientId, Guid? orgId, Guid? actorUserId, string result)
+    {
+        try
+        {
+            var auditClient = _httpClientFactory.CreateClient("AuditService");
+            var bearerToken = GetBearerTokenFromContext();
+
+            var auditPayload = new
+            {
+                actorDid = actorUserId?.ToString() ?? orgId?.ToString() ?? "SYSTEM",
+                actorUserId = actorUserId,
+                actorType = actorUserId.HasValue ? GetCurrentActorType() : "SYSTEM",
+                action = action,
+                targetType = "EHR",
+                targetId = targetId,
+                patientDid = patientId.ToString(),
+                patientId = patientId,
+                organizationId = orgId,
+                result = result,
+                ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString(),
+                userAgent = _httpContextAccessor.HttpContext?.Request.Headers["User-Agent"].ToString()
+            };
+
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "api/v1/audit")
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(auditPayload),
+                    Encoding.UTF8,
+                    "application/json")
+            };
+
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+            {
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            }
+
+            var response = await auditClient.SendAsync(requestMessage);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Audit Service returned {StatusCode} for audit log POST (EHR {EhrId}, Action={Action})",
+                    response.StatusCode, targetId, action);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to POST audit log to Audit Service for EHR {EhrId}, Action={Action}", targetId, action);
+        }
     }
 
     private async Task<(Guid? UserId, AuthUserProfileDetailDto? Profile)> GetPatientUserProfileAsync(Guid patientId)

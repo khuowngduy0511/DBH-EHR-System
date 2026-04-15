@@ -96,24 +96,21 @@ cat > "$PROFILE_PATH" <<CONN_EOF
     "channels": {
         "consent-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": {},
-                "peer0.hospital2.ehr.com": {},
-                "peer0.clinic.ehr.com": {}
-            }
+                "peer0.hospital1.ehr.com": { "discover": true }
+            },
+            "orderers": ["orderer.ehr.com"]
         },
         "audit-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": {},
-                "peer0.hospital2.ehr.com": {},
-                "peer0.clinic.ehr.com": {}
-            }
+                "peer0.hospital1.ehr.com": { "discover": true }
+            },
+            "orderers": ["orderer.ehr.com"]
         },
         "ehr-hash-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": {},
-                "peer0.hospital2.ehr.com": {},
-                "peer0.clinic.ehr.com": {}
-            }
+                "peer0.hospital1.ehr.com": { "discover": true }
+            },
+            "orderers": ["orderer.ehr.com"]
         }
     },
     "organizations": {
@@ -174,6 +171,17 @@ cat > "$PROFILE_PATH" <<CONN_EOF
             },
             "grpcOptions": {
                 "ssl-target-name-override": "peer0.clinic.ehr.com"
+            }
+        }
+    },
+    "orderers": {
+        "orderer.ehr.com": {
+            "url": "grpcs://orderer.ehr.com:7050",
+            "tlsCACerts": {
+                "path": "/tmp/crypto/ordererOrganizations/ehr.com/orderers/orderer.ehr.com/tls/ca.crt"
+            },
+            "grpcOptions": {
+                "ssl-target-name-override": "orderer.ehr.com"
             }
         }
     }

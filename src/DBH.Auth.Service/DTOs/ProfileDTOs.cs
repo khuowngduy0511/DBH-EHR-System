@@ -49,10 +49,12 @@ public class DoctorResponse
 {
     public Guid DoctorId { get; set; }
     public Guid UserId { get; set; }
+    public string? FullName { get; set; }
     public string? Specialty { get; set; }
     public string? LicenseNumber { get; set; }
     public string? LicenseImage { get; set; }
     public VerificationStatus VerifiedStatus { get; set; }
+    public DateTime? CreatedAt { get; set; }
 }
 
 public class DoctorBasicInfoResponse

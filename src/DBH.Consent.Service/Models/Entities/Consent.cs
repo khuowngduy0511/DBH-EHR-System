@@ -71,12 +71,6 @@ public class Consent
     [MaxLength(30)]
     public ConsentPurpose Purpose { get; set; }
 
-    /// <summary>
-    /// Điều kiện bổ sung (report types được phép, etc.)
-    /// </summary>
-    [Column("conditions", TypeName = "jsonb")]
-    public string? Conditions { get; set; }
-
     [Column("granted_at")]
     public DateTime GrantedAt { get; set; } = DateTime.UtcNow;
 
