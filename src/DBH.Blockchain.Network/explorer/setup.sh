@@ -96,19 +96,25 @@ cat > "$PROFILE_PATH" <<CONN_EOF
     "channels": {
         "consent-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": { "discover": true }
+                "peer0.hospital1.ehr.com": { "discover": true },
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
             },
             "orderers": ["orderer.ehr.com"]
         },
         "audit-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": { "discover": true }
+                "peer0.hospital1.ehr.com": { "discover": true },
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
             },
             "orderers": ["orderer.ehr.com"]
         },
         "ehr-hash-channel": {
             "peers": {
-                "peer0.hospital1.ehr.com": { "discover": true }
+                "peer0.hospital1.ehr.com": { "discover": true },
+                "peer0.hospital2.ehr.com": {},
+                "peer0.clinic.ehr.com": {}
             },
             "orderers": ["orderer.ehr.com"]
         }
