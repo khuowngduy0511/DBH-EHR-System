@@ -105,6 +105,12 @@ builder.Services.AddHttpClient("AuthService", client =>
     client.BaseAddress = new Uri(authUrl);
 });
 
+builder.Services.AddHttpClient("AuditService", client =>
+{
+    var auditUrl = builder.Configuration["ServiceUrls:AuditService"] ?? "http://localhost:5005";
+    client.BaseAddress = new Uri(auditUrl);
+});
+
 // ============================================================================
 // Notification Client  
 // ============================================================================
