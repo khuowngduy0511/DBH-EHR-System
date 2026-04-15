@@ -7,12 +7,25 @@ namespace DBH.UnitTest.Shared;
 public static class ApiEndpoints
 {
     // =========================================================================
+    // COMMON
+    // =========================================================================
+    public static class Health
+    {
+        public const string Check = "/health";
+    }
+
+    // =========================================================================
     // AUTH SERVICE
     // =========================================================================
     public static class Auth
     {
         public const string Register = "/api/v1/auth/register";
+        public const string RegisterDoctor = "/api/v1/auth/register-doctor";
+        public const string RegisterStaff = "/api/v1/auth/register-staff";
         public const string RegisterStaffDoctor = "/api/v1/auth/registerStaffDoctor";
+        public const string UpdateUser = "/api/v1/auth/users/{userId}";
+        public const string ChangeMyPassword = "/api/v1/auth/me/change-password";
+        public const string AdminChangePassword = "/api/v1/auth/users/{userId}/change-password";
         public const string Login = "/api/v1/auth/login";
         public const string RefreshToken = "/api/v1/auth/refresh-token";
         public const string RevokeToken = "/api/v1/auth/revoke-token";
@@ -151,6 +164,7 @@ public static class ApiEndpoints
         public static string Versions(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/versions";
         public static string VersionById(Guid ehrId, Guid versionId) => $"/api/v1/ehr/records/{ehrId}/versions/{versionId}";
         public static string Files(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/files";
+        public static string AddFile(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/files";
         public static string DeleteFile(Guid ehrId, Guid fileId) => $"/api/v1/ehr/records/{ehrId}/files/{fileId}";
         public static string DownloadIpfsRaw(string cid) => $"/api/v1/ehr/ipfs/{cid}/download";
         public static string DownloadLatestIpfs(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/ipfs/download";

@@ -194,107 +194,104 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<AuthResponse> RegisterDoctorAsync(RegisterDoctorRequest request)
+    {
+        return await RegisterProfileAsync(
+            request,
+            RoleName.Doctor,
+            async user =>
+            {
+                if (await _doctorRepository.ExistsAsync(d => d.UserId == user.UserId))
+                {
+                    return;
+                }
+
+                await _doctorRepository.AddAsync(new Doctor
+                {
+                    UserId = user.UserId,
+                    Specialty = request.Specialty,
+                    LicenseNumber = request.LicenseNumber,
+                    LicenseImage = request.LicenseImage,
+                    VerifiedStatus = request.VerifiedStatus
+                });
+            },
+            "Đăng ký tài khoản bác sĩ thành công.");
+    }
+
+    public async Task<AuthResponse> RegisterStaffAsync(RegisterStaffRequest request)
+    {
+        var roleName = request.Role switch
+        {
+            StaffRole.Nurse => RoleName.Nurse,
+            StaffRole.Pharmacist => RoleName.Pharmacist,
+            StaffRole.Receptionist => RoleName.Receptionist,
+            StaffRole.LabTech => RoleName.LabTech,
+            _ => throw new InvalidOperationException($"Unsupported staff role '{request.Role}'.")
+        };
+
+        return await RegisterProfileAsync(
+            request,
+            roleName,
+            async user =>
+            {
+                if (await _staffRepository.ExistsAsync(s => s.UserId == user.UserId))
+                {
+                    return;
+                }
+
+                await _staffRepository.AddAsync(new Staff
+                {
+                    UserId = user.UserId,
+                    Role = request.Role,
+                    LicenseNumber = request.LicenseNumber,
+                    Specialty = request.Specialty,
+                    VerifiedStatus = request.VerifiedStatus
+                });
+            },
+            "Đăng ký tài khoản nhân sự thành công.");
+    }
+
     public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
-        var actorUserId = GetCurrentActorId();
-
-        if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
+        if (Enum.TryParse<RoleName>(request.Role, true, out var roleName) && roleName == RoleName.Doctor)
         {
-            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Phone))
-        {
-            var normalizedPhone = request.Phone.Trim();
-            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            return await RegisterDoctorAsync(new RegisterDoctorRequest
             {
-                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
-            }
-
-            request.Phone = normalizedPhone;
-        }
-
-        if (!Enum.TryParse<RoleName>(request.Role, true, out var roleName))
-        {
-            return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
-        }
-
-        var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
-
-        var user = new User
-        {
-            FullName = request.FullName,
-            Email = request.Email,
-            Phone = request.Phone,
-            Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth.HasValue
-                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
-                : null,
-            Address = request.Address,
-            OrganizationId = request.OrganizationId,
-            Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Status = Models.Enums.UserStatus.Active,
-            PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
-            UpdatedBy = actorUserId
-        };
-        
-        await _userRepository.AddAsync(user);
-
-        var assignedRole = await _roleRepository.FindAsync(r => r.RoleName == roleName);
-        if (assignedRole != null)
-        {
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = assignedRole.RoleId
+                FullName = request.FullName,
+                Email = request.Email,
+                Password = request.Password,
+                Phone = request.Phone,
+                Gender = request.Gender,
+                DateOfBirth = request.DateOfBirth,
+                Address = request.Address,
+                OrganizationId = request.OrganizationId,
+                Specialty = request.Specialty,
+                LicenseNumber = request.LicenseNumber,
+                LicenseImage = request.LicenseImage,
+                VerifiedStatus = request.VerifiedStatus
             });
-
-            await EnsureRoleProfileAsync(user.UserId, assignedRole.RoleName);
         }
 
-        var security = new UserSecurity
+        if (Enum.TryParse<StaffRole>(request.Role, true, out var staffRole))
         {
-            UserId = user.UserId,
-            MfaEnabled = false
-        };
-        await _securityRepository.AddAsync(security);
-
-        var encryptedPrivateKey = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-        await _credentialRepository.AddAsync(new UserCredential
-        {
-            UserId = user.UserId,
-            Provider = ProviderType.EncryptedPrivateKey,            
-            CredentialValue= encryptedPrivateKey,
-            CreatedAt = DateTime.UtcNow,            
-        });
-
-        var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
-
-        // Enqueue Fabric CA enrollment for async processing via RabbitMQ
-        var enrollRoleName = assignedRole?.RoleName.ToString() ?? request.Role;
-        _blockchainSyncService.EnqueueFabricCaEnrollment(
-            enrollmentId: user.UserId.ToString(),
-            username: user.FullName ?? user.Email ?? user.UserId.ToString(),
-            role: enrollRoleName,
-            onFailure: error =>
+            return await RegisterStaffAsync(new RegisterStaffRequest
             {
-                _logger.LogWarning(
-                    "Blockchain enrollment failed for staff/doctor user {UserId}: {Error}",
-                    user.UserId, error);
-                return Task.CompletedTask;
+                FullName = request.FullName,
+                Email = request.Email,
+                Password = request.Password,
+                Phone = request.Phone,
+                Gender = request.Gender,
+                DateOfBirth = request.DateOfBirth,
+                Address = request.Address,
+                OrganizationId = request.OrganizationId,
+                Role = staffRole,
+                LicenseNumber = request.LicenseNumber,
+                Specialty = request.Specialty,
+                VerifiedStatus = request.VerifiedStatus
             });
+        }
 
-        return new AuthResponse
-        {
-            Success = true,
-            Message = string.IsNullOrEmpty(organizationWarning)
-                ? "Đăng ký tài khoản nhân sự thành công."
-                : $"Admin/User registered successfully with the specified role. {organizationWarning}",
-            UserId = user.UserId,
-        };
+        return new AuthResponse { Success = false, Message = "Quyền (Role) không hợp lệ." };
     }
 
     public async Task<AuthResponse> UpdateRoleAsync(UpdateRoleRequest request)
@@ -489,6 +486,101 @@ public class AuthService : IAuthService
         };
     }
 
+    private async Task<AuthResponse> RegisterProfileAsync<TRequest>(
+        TRequest request,
+        RoleName roleName,
+        Func<User, Task> profileFactory,
+        string successMessage)
+        where TRequest : RegisterProfileBaseRequest
+    {
+        var actorUserId = GetCurrentActorId();
+        var normalizedEmail = request.Email.Trim();
+
+        if (await _userRepository.ExistsAsync(u => u.Email == normalizedEmail))
+        {
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+        }
+
+        var normalizedPhone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+        if (!string.IsNullOrWhiteSpace(normalizedPhone) && await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+        {
+            return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+        }
+
+        var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
+        var user = new User
+        {
+            FullName = request.FullName,
+            Email = normalizedEmail,
+            Phone = normalizedPhone,
+            Gender = request.Gender,
+            DateOfBirth = request.DateOfBirth.HasValue
+                ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc)
+                : null,
+            Address = request.Address,
+            OrganizationId = string.IsNullOrWhiteSpace(request.OrganizationId) ? null : request.OrganizationId.Trim(),
+            Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Status = Models.Enums.UserStatus.Active,
+            PublicKey = keyPair.PublicKey,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = actorUserId,
+            UpdatedAt = DateTime.UtcNow,
+            UpdatedBy = actorUserId
+        };
+
+        await _userRepository.AddAsync(user);
+
+        var assignedRole = await _roleRepository.FindAsync(r => r.RoleName == roleName);
+        if (assignedRole != null)
+        {
+            await _userRoleRepository.AddAsync(new UserRole
+            {
+                UserId = user.UserId,
+                RoleId = assignedRole.RoleId
+            });
+        }
+
+        await profileFactory(user);
+
+        var security = new UserSecurity
+        {
+            UserId = user.UserId,
+            MfaEnabled = false
+        };
+        await _securityRepository.AddAsync(security);
+
+        await _credentialRepository.AddAsync(new UserCredential
+        {
+            UserId = user.UserId,
+            Provider = ProviderType.EncryptedPrivateKey,
+            CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey),
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        var organizationWarning = await HandleOrganizationMembershipAsync(user, user.OrganizationId, null);
+
+        _blockchainSyncService.EnqueueFabricCaEnrollment(
+            enrollmentId: user.UserId.ToString(),
+            username: user.FullName ?? user.Email ?? user.UserId.ToString(),
+            role: assignedRole?.RoleName.ToString() ?? roleName.ToString(),
+            onFailure: error =>
+            {
+                _logger.LogWarning(
+                    "Blockchain enrollment failed for staff/doctor user {UserId}: {Error}",
+                    user.UserId, error);
+                return Task.CompletedTask;
+            });
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = string.IsNullOrEmpty(organizationWarning)
+                ? successMessage
+                : $"{successMessage} {organizationWarning}",
+            UserId = user.UserId,
+        };
+    }
+
     public async Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
     {
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
@@ -553,6 +645,159 @@ public class AuthService : IAuthService
         }
 
         return new AuthResponse { Success = true, Message = "Cập nhật hồ sơ cá nhân thành công." };
+    }
+
+    public async Task<AuthResponse> UpdateUserAsync(Guid userId, AdminUpdateUserRequest request)
+    {
+        var user = await _userRepository.GetByIdWithProfileAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        var hasChanges = false;
+
+        if (!string.IsNullOrWhiteSpace(request.FullName) && !string.Equals(user.FullName, request.FullName, StringComparison.Ordinal))
+        {
+            user.FullName = request.FullName;
+            hasChanges = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            var normalizedEmail = request.Email.Trim();
+            if (!string.Equals(user.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var emailExists = await _userRepository.ExistsAsync(u => u.Email == normalizedEmail && u.UserId != userId);
+                if (emailExists)
+                {
+                    return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+                }
+
+                user.Email = normalizedEmail;
+                hasChanges = true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (!string.Equals(user.Phone, normalizedPhone, StringComparison.Ordinal))
+            {
+                var phoneExists = await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.UserId != userId);
+                if (phoneExists)
+                {
+                    return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+                }
+
+                user.Phone = normalizedPhone;
+                hasChanges = true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Gender) && !string.Equals(user.Gender, request.Gender, StringComparison.Ordinal))
+        {
+            user.Gender = request.Gender;
+            hasChanges = true;
+        }
+
+        if (request.DateOfBirth.HasValue && user.DateOfBirth != request.DateOfBirth.Value)
+        {
+            user.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            hasChanges = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Address) && !string.Equals(user.Address, request.Address, StringComparison.Ordinal))
+        {
+            user.Address = request.Address;
+            hasChanges = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.OrganizationId) && !string.Equals(user.OrganizationId, request.OrganizationId.Trim(), StringComparison.Ordinal))
+        {
+            user.OrganizationId = request.OrganizationId.Trim();
+            hasChanges = true;
+        }
+
+        if (request.Status.HasValue && user.Status != request.Status.Value)
+        {
+            user.Status = request.Status.Value;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedBy = GetCurrentActorId();
+            await _userRepository.UpdateAsync(user);
+        }
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = "Cập nhật người dùng thành công.",
+            UserId = user.UserId
+        };
+    }
+
+    public async Task<AuthResponse> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, bool isAdminOverride = false)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return new AuthResponse { Success = false, Message = "Mật khẩu mới không được để trống." };
+        }
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        if (!isAdminOverride)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword) || string.IsNullOrWhiteSpace(user.Password) || !BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.Password))
+            {
+                return new AuthResponse { Success = false, Message = "Mật khẩu hiện tại không chính xác." };
+            }
+        }
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = GetCurrentActorId();
+        await _userRepository.UpdateAsync(user);
+
+        var security = await _securityRepository.FindAsync(s => s.UserId == userId);
+        if (security == null)
+        {
+            await _securityRepository.AddAsync(new UserSecurity
+            {
+                UserId = userId,
+                MfaEnabled = false,
+                LastPasswordChange = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            security.LastPasswordChange = DateTime.UtcNow;
+            await _securityRepository.UpdateAsync(security);
+        }
+
+        await RevokeTokenAsync(userId);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = isAdminOverride ? "Cập nhật mật khẩu người dùng thành công." : "Đổi mật khẩu thành công."
+        };
+    }
+
+    public async Task<AuthResponse> AdminChangePasswordAsync(Guid userId, AdminChangePasswordRequest request)
+    {
+        return await ChangePasswordAsync(userId, new ChangePasswordRequest
+        {
+            CurrentPassword = string.Empty,
+            NewPassword = request.NewPassword
+        }, isAdminOverride: true);
     }
 
     public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
