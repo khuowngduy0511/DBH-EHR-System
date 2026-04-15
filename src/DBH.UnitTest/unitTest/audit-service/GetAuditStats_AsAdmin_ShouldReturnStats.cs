@@ -1,0 +1,25 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+public class AuditServiceTests_GetAuditStats_AsAdmin_ShouldReturnStats : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+    "AuthService",
+    "AuditService"
+    };
+
+    [SkippableFact]
+    public async Task GetAuditStats_AsAdmin_ShouldReturnStats()
+    {
+    await AuthenticateAsAdminAsync(AuditClient);
+    var response = await GetWithRetryAsync(AuditClient, ApiEndpoints.Audit.Stats);
+    
+    var json = await ReadJsonResponseAsync(response);
+    Assert.True(json.TryGetProperty("totalLogs", out _));
+    }
+}

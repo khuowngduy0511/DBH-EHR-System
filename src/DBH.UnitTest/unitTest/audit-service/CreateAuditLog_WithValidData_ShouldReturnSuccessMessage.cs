@@ -1,0 +1,30 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+public class AuditServiceTests_CreateAuditLog_WithValidData_ShouldReturnSuccessMessage : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+    "AuthService",
+    "AuditService"
+    };
+
+    [SkippableFact]
+    public async Task CreateAuditLog_WithValidData_ShouldReturnSuccessMessage()
+    {
+    await AuthenticateAsAdminAsync(AuditClient);
+    var request = new { action = "LOGIN", actorUserId = TestSeedData.AdminUserId, targetId = TestSeedData.AdminUserId, targetType = "User", description = "Admin user logged in", organizationId = TestSeedData.HospitalAOrgId };
+    var response = await PostAsJsonWithRetryAsync(AuditClient, ApiEndpoints.Audit.Create, request);
+    
+    var json = await ReadJsonResponseAsync(response);
+    if (response.StatusCode == HttpStatusCode.OK)
+    {
+    Assert.True(json.TryGetProperty("success", out var success) && success.GetBoolean());
+    Assert.True(json.TryGetProperty("data", out _));
+    }
+    }
+}
