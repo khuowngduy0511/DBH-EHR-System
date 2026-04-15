@@ -112,7 +112,7 @@ public class FabricGatewayClient : IFabricGateway
                 {
                     Success = false,
                     ErrorMessage = ex.Message,
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = BlockchainTime.NowDateTime
                 };
             }
         }
@@ -121,7 +121,7 @@ public class FabricGatewayClient : IFabricGateway
         {
             Success = false,
             ErrorMessage = $"Max retries ({_options.MaxRetries}) exceeded",
-            Timestamp = DateTime.UtcNow
+            Timestamp = BlockchainTime.NowDateTime
         };
     }
 
@@ -309,7 +309,7 @@ public class FabricGatewayClient : IFabricGateway
             {
                 Success = false,
                 ErrorMessage = "Endorsement failed: no prepared transaction returned",
-                Timestamp = DateTime.UtcNow
+                Timestamp = BlockchainTime.NowDateTime
             };
         }
 
@@ -364,7 +364,7 @@ public class FabricGatewayClient : IFabricGateway
             Success = commitResponse.Result == TxValidationCode.Valid,
             TxHash = txHash,
             BlockNumber = (long)commitResponse.BlockNumber,
-            Timestamp = DateTime.UtcNow,
+            Timestamp = BlockchainTime.NowDateTime,
             ErrorMessage = commitResponse.Result != TxValidationCode.Valid ? $"Commit status: {commitResponse.Result}" : null
         };
     }
@@ -429,7 +429,7 @@ public class FabricGatewayClient : IFabricGateway
             Success = true,
             TxHash = txHash,
             BlockNumber = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            Timestamp = DateTime.UtcNow
+            Timestamp = BlockchainTime.NowDateTime
         };
     }
 
@@ -693,7 +693,7 @@ public class FabricGatewayClient : IFabricGateway
             chaincodeName,
             functionName,
             args,
-            timestamp = DateTime.UtcNow,
+            timestamp = BlockchainTime.NowDateTime,
             nonce = Guid.NewGuid().ToString()
         });
 
@@ -940,7 +940,10 @@ internal class ProtoTimestamp
 
     public static ProtoTimestamp FromDateTime(DateTime utc)
     {
-        var dto = new DateTimeOffset(utc.ToUniversalTime());
+        var shiftedLocalTime = utc.Kind == DateTimeKind.Utc
+            ? utc.AddHours(7)
+            : DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7);
+        var dto = new DateTimeOffset(shiftedLocalTime, TimeSpan.Zero);
         var seconds = dto.ToUnixTimeSeconds();
         var nanos = (int)((dto - DateTimeOffset.FromUnixTimeSeconds(seconds)).Ticks * 100);
         return new ProtoTimestamp

@@ -24,8 +24,6 @@ public class AuthController : ControllerBase
     /// <returns></returns>
     [HttpPost("register")]
     // [Authorize(Roles = "Admin, Receptionist")]
-    // Cái organizationId sẽ được lấy từ tài khoản của staff
-    // Một là FE tự truyền xuong, hai là BE lấy từ claim của staff đang đăng nhập
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var response = await _authService.RegisterAsync(request);
@@ -205,6 +203,33 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new { UserId = userId.Value });
+    }
+
+    /// <summary>
+    /// Deactivate (soft-delete) a user account. Clears personal data, sets status to Inactive.
+    /// User can re-register with the same email later.
+    /// </summary>
+    [Authorize]
+    [HttpDelete("users/{userId:guid}")]
+    public async Task<IActionResult> DeactivateAccount(Guid userId)
+    {
+        // Only admins or the user themselves can deactivate
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (currentUserIdClaim == null || !Guid.TryParse(currentUserIdClaim.Value, out var currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        if (currentUserId != userId && !User.IsInRole("Admin"))
+        {
+            return Forbid();
+        }
+
+        var response = await _authService.DeactivateAccountAsync(userId);
+        if (!response.Success)
+            return BadRequest(response);
+
+        return Ok(response);
     }
 
     [Authorize]

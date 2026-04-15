@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$base = 'http://localhost:5000'
+$base = 'http://127.0.0.1:5000'
 $logFile = Join-Path $PSScriptRoot 'real-flow-api.log'
 
 if (Test-Path $logFile) {
@@ -190,6 +190,59 @@ $afterOk = [bool]$after.ehrId
 $afterDocument = ApiJson -Method 'GET' -Url "$base/api/v1/ehr/records/$ehrId/document" -Token $doctorToken -Headers @{'X-Requester-Id'=$doctorUserId.ToString()}
 $afterDocumentSuccess = $null -ne $afterDocument
 
+
+
+$updateDocumentSuccess = $false
+$updateDocumentStatus = ''
+$afterUpdateDocumentSuccess = $false
+$afterUpdateDocumentStatus = ''
+
+if ($afterDocumentSuccess) {
+    Write-FlowLog "Updating EHR record $ehrId"
+    $ehrUpdatePayload = @{
+        data = @{
+            resourceType='Bundle'
+            type='document'
+            entry=@(
+                @{ resource = @{ resourceType='Condition'; code=@{text="Updated treatment [$flowTimestamp]"}; clinicalStatus=@{coding=@(@{code='resolved'})} } }
+            )
+        }
+    }
+    try {
+        $null = ApiJson -Method 'PUT' -Url "$base/api/v1/ehr/records/$ehrId" -Token $doctorToken -Headers @{'X-Doctor-Id'=$doctorId.ToString()} -Body $ehrUpdatePayload
+        $updateDocumentSuccess = $true
+        $updateDocumentStatus = 200
+    }
+    catch {
+        $updateDocumentSuccess = $false
+        if ($_.Exception.Response) {
+            $updateDocumentStatus = $_.Exception.Response.StatusCode.value__
+        }
+        else {
+            $updateDocumentStatus = 'client-error'
+        }
+    }
+
+    if ($updateDocumentSuccess) {
+        Start-Sleep -Seconds 10
+        Write-FlowLog "Getting updated EHR document $ehrId"
+        try {
+            $updatedDocument = ApiJson -Method 'GET' -Url "$base/api/v1/ehr/records/$ehrId/document" -Token $doctorToken -Headers @{'X-Requester-Id'=$doctorUserId.ToString()}
+            $afterUpdateDocumentSuccess = $null -ne $updatedDocument
+            $afterUpdateDocumentStatus = 200
+        }
+        catch {
+            $afterUpdateDocumentSuccess = $false
+            if ($_.Exception.Response) {
+                $afterUpdateDocumentStatus = $_.Exception.Response.StatusCode.value__
+            }
+            else {
+                $afterUpdateDocumentStatus = 'client-error'
+            }
+        }
+    }
+}
+
 $result = [ordered]@{
     orgId = $orgId
     receptionEmail = $receptionEmail
@@ -197,9 +250,11 @@ $result = [ordered]@{
     doctorEmail = $doctorEmail
     doctorUserId = $doctorUserId
     doctorId = $doctorId
+    doctorToken = $doctorToken
     patientEmail = $patientEmail
     patientUserId = $patientUserId
     patientId = $patientId
+    patientToken = $patientToken
     patientResolvedUserId = $patientResolvedUserId
     appointmentId = $appointmentId
     ehrId = $ehrId
@@ -208,6 +263,10 @@ $result = [ordered]@{
     documentBeforeConsentStatus = $beforeDocumentStatus
     viewAfterConsentSuccess = $afterOk
     documentAfterConsentSuccess = $afterDocumentSuccess
+    updateDocumentStatus = $updateDocumentStatus
+    updateDocumentSuccess = $updateDocumentSuccess
+    documentAfterUpdateStatus = $afterUpdateDocumentStatus
+    documentAfterUpdateSuccess = $afterUpdateDocumentSuccess
 }
 
 $result | ConvertTo-Json -Depth 10 | Tee-Object -FilePath "$PSScriptRoot\..\real-flow-result.json"

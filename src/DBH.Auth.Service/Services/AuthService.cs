@@ -93,8 +93,18 @@ public class AuthService : IAuthService
     {
         var actorUserId = GetCurrentActorId();
 
-        if (await _userRepository.ExistsAsync(u => u.Email == request.Email))
+        // Check if user with this email already exists
+        var existingUser = await _dbContext.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (existingUser != null)
         {
+            if (existingUser.Status == Models.Enums.UserStatus.Inactive)
+            {
+                _logger.LogInformation("Reactivating deactivated account for: {Email}", request.Email);
+                return await ReactivateAccountAsync(existingUser, request, actorUserId);
+            }
+
             _logger.LogWarning("User with this email already exists: {Email}", request.Email);
             return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
         }
@@ -102,7 +112,7 @@ public class AuthService : IAuthService
         if (!string.IsNullOrWhiteSpace(request.Phone))
         {
             var normalizedPhone = request.Phone.Trim();
-            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.Status != Models.Enums.UserStatus.Inactive))
             {
                 _logger.LogWarning("User with this phone already exists: {Phone}", normalizedPhone);
                 return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
@@ -113,8 +123,6 @@ public class AuthService : IAuthService
 
         // Generate RSA/ECC Key Pair
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
-        // _logger.LogInformation("Generated key pair for PublicKey: {PublicKey}", keyPair.PublicKey);
-        // _logger.LogInformation("Generated key pair for PrivateKey: {Privatekey}", keyPair.PrivateKey);
         // Create User
         var user = new User
         {
@@ -735,6 +743,129 @@ public class AuthService : IAuthService
     }
 
 
+
+    /// <summary>
+    /// Reactivate a deactivated account: overwrite all personal fields with fresh data,
+    /// set status back to Active, regenerate keys, and clear old credentials.
+    /// </summary>
+    private async Task<AuthResponse> ReactivateAccountAsync(User existingUser, RegisterRequest request, Guid? actorUserId)
+    {
+        // Generate new RSA/ECC Key Pair
+        var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
+
+        // Overwrite all personal fields with fresh registration data
+        existingUser.FullName = request.FullName;
+        existingUser.Phone = !string.IsNullOrWhiteSpace(request.Phone) ? request.Phone.Trim() : null;
+        existingUser.Password = BCrypt.Net.BCrypt.HashPassword(request.Password);
+        existingUser.Gender = null;
+        existingUser.DateOfBirth = null;
+        existingUser.Address = null;
+        existingUser.Status = Models.Enums.UserStatus.Active;
+        existingUser.PublicKey = keyPair.PublicKey;
+        existingUser.UpdatedAt = DateTime.UtcNow;
+        existingUser.UpdatedBy = actorUserId;
+
+        await _userRepository.UpdateAsync(existingUser);
+
+        // Remove old encrypted private key and store new one
+        var oldPrivateKey = await _credentialRepository.FindAsync(c =>
+            c.UserId == existingUser.UserId && c.Provider == ProviderType.EncryptedPrivateKey);
+        if (oldPrivateKey != null)
+        {
+            oldPrivateKey.CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
+            oldPrivateKey.CreatedAt = DateTime.UtcNow;
+            await _credentialRepository.UpdateAsync(oldPrivateKey);
+        }
+        else
+        {
+            await _credentialRepository.AddAsync(new UserCredential
+            {
+                UserId = existingUser.UserId,
+                Provider = ProviderType.EncryptedPrivateKey,
+                CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey),
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
+        // Ensure Patient role and profile exist
+        var patientRole = await _roleRepository.FindAsync(r => r.RoleName == RoleName.Patient);
+        if (patientRole != null)
+        {
+            var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == existingUser.UserId);
+            if (existingUserRole == null)
+            {
+                await _userRoleRepository.AddAsync(new UserRole
+                {
+                    UserId = existingUser.UserId,
+                    RoleId = patientRole.RoleId
+                });
+            }
+
+            await EnsureRoleProfileAsync(existingUser.UserId, patientRole.RoleName);
+        }
+
+        // Ensure Security record exists
+        var existingSecurity = await _securityRepository.FindAsync(s => s.UserId == existingUser.UserId);
+        if (existingSecurity == null)
+        {
+            await _securityRepository.AddAsync(new UserSecurity
+            {
+                UserId = existingUser.UserId,
+                MfaEnabled = false
+            });
+        }
+
+        _logger.LogInformation("Account reactivated for user {UserId} ({Email})", existingUser.UserId, existingUser.Email);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = "Tài khoản đã được kích hoạt lại thành công.",
+            UserId = existingUser.UserId,
+        };
+    }
+
+    /// <summary>
+    /// Deactivate a user account: set status to Inactive, clear personal fields,
+    /// and revoke all tokens. The email is preserved so re-registration can find it.
+    /// </summary>
+    public async Task<AuthResponse> DeactivateAccountAsync(Guid userId)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        if (user.Status == Models.Enums.UserStatus.Inactive)
+        {
+            return new AuthResponse { Success = false, Message = "Tài khoản đã bị vô hiệu hóa trước đó." };
+        }
+
+        // Clear personal fields but keep email for re-registration lookup
+        user.FullName = null;
+        user.Phone = null;
+        user.Gender = null;
+        user.DateOfBirth = null;
+        user.Address = null;
+        user.Password = null;
+        user.Status = Models.Enums.UserStatus.Inactive;
+        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = userId;
+
+        await _userRepository.UpdateAsync(user);
+
+        // Revoke all refresh tokens
+        await RevokeTokenAsync(userId);
+
+        _logger.LogInformation("Account deactivated for user {UserId} ({Email})", userId, user.Email);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = "Tài khoản đã được vô hiệu hóa thành công.",
+        };
+    }
 
     private async Task<AuthResponse> GenerateAuthResponseAsync(User user)
     {

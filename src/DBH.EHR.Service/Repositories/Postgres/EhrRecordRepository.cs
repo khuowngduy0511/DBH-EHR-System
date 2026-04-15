@@ -21,7 +21,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrRecord> CreateAsync(EhrRecord record)
     {
-        record.CreatedAt = DateTime.UtcNow;
+        record.CreatedAt = DateTime.UtcNow.AddHours(7);
         
         _db.EhrRecords.Add(record);
         await _db.SaveChangesAsync();
@@ -35,7 +35,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrVersion> CreateVersionAsync(EhrVersion version)
     {
-        version.CreatedAt = DateTime.UtcNow;
+        version.CreatedAt = DateTime.UtcNow.AddHours(7);
         
         _db.EhrVersions.Add(version);
         await _db.SaveChangesAsync();
@@ -49,7 +49,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrFile> CreateFileAsync(EhrFile file)
     {
-        file.CreatedAt = DateTime.UtcNow;
+        file.CreatedAt = DateTime.UtcNow.AddHours(7);
         
         _db.EhrFiles.Add(file);
         await _db.SaveChangesAsync();

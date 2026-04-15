@@ -1,9 +1,9 @@
 param(
-    [string]$BaseUrl = 'http://localhost:5000',
-    [string]$DoctorEmail = 'doctor.20260407223316@dbh.vn',
-    [string]$DoctorPassword = 'Doctor@123',
-    [string]$PatientEmail = 'patient.20260407234050@dbh.vn',
-    [string]$PatientPassword = 'Patient@123'
+    [string]$BaseUrl = 'http://127.0.0.1:5000',
+    [string]$DoctorEmail = 'doctor@dbh.com',
+    [string]$DoctorPassword = 'doctor123',
+    [string]$PatientEmail = 'patient@dbh.com',
+    [string]$PatientPassword = 'patient123'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -75,7 +75,7 @@ Write-FlowLog ("DoctorEmail={0}; PatientEmail={1}" -f $DoctorEmail, $PatientEmai
 
 $flowTimestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
 
-$adminLogin = ApiJson -Method 'POST' -Url "$BaseUrl/api/v1/auth/login" -Body @{email='admin@dbh.vn';password='Admin@123456'}
+$adminLogin = ApiJson -Method 'POST' -Url "$BaseUrl/api/v1/auth/login" -Body @{email='admin@dbh.com';password='admin123'}
 $adminToken = $adminLogin.token
 
 $orgs = ApiJson -Method 'GET' -Url "$BaseUrl/api/v1/organizations?page=1&pageSize=50" -Token $adminToken
@@ -165,6 +165,46 @@ catch {
     $afterDocumentStatus = $_.Exception.Response.StatusCode.value__
 }
 
+$updateDocumentSuccess = $false
+$updateDocumentStatus = ''
+$afterUpdateDocumentSuccess = $false
+$afterUpdateDocumentStatus = ''
+
+if ($afterDocumentSuccess) {
+    Write-FlowLog "Updating EHR record $ehrId"
+    $ehrUpdatePayload = @{
+        data = @{
+            resourceType='Bundle'
+            type='document'
+            entry=@(
+                @{ resource = @{ resourceType='Condition'; code=@{text="Updated treatment [$flowTimestamp]"}; clinicalStatus=@{coding=@(@{code='resolved'})} } }
+            )
+        }
+    }
+    try {
+        $null = ApiJson -Method 'PUT' -Url "$BaseUrl/api/v1/ehr/records/$ehrId" -Token $doctorToken -Headers @{'X-Doctor-Id'=$doctorId.ToString()} -Body $ehrUpdatePayload
+        $updateDocumentSuccess = $true
+        $updateDocumentStatus = 200
+    }
+    catch {
+        $updateDocumentSuccess = $false
+        $updateDocumentStatus = $_.Exception.Response.StatusCode.value__
+    }
+
+    if ($updateDocumentSuccess) {
+        Write-FlowLog "Getting updated EHR document $ehrId"
+        try {
+            $updatedDocument = ApiJson -Method 'GET' -Url "$BaseUrl/api/v1/ehr/records/$ehrId/document" -Token $doctorToken -Headers @{'X-Requester-Id'=$doctorUserId.ToString()}
+            $afterUpdateDocumentSuccess = $null -ne $updatedDocument
+            $afterUpdateDocumentStatus = 200
+        }
+        catch {
+            $afterUpdateDocumentSuccess = $false
+            $afterUpdateDocumentStatus = $_.Exception.Response.StatusCode.value__
+        }
+    }
+}
+
 $result = [ordered]@{
     orgId = $orgId
     doctorEmail = $DoctorEmail
@@ -181,6 +221,10 @@ $result = [ordered]@{
     viewAfterConsentSuccess = $afterOk
     documentAfterConsentStatus = $afterDocumentStatus
     documentAfterConsentSuccess = $afterDocumentSuccess
+    updateDocumentStatus = $updateDocumentStatus
+    updateDocumentSuccess = $updateDocumentSuccess
+    documentAfterUpdateStatus = $afterUpdateDocumentStatus
+    documentAfterUpdateSuccess = $afterUpdateDocumentSuccess
 }
 
 $result | ConvertTo-Json -Depth 10 | Tee-Object -FilePath $resultFile

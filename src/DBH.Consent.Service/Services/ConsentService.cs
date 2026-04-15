@@ -141,9 +141,9 @@ public class ConsentService : IConsentService
                 Permission = request.Permission.ToString(),
                 Purpose = request.Purpose.ToString(),
                 EhrId = request.EhrId?.ToString(),
-                GrantedAt = DateTime.UtcNow.ToString("o"),
+                GrantedAt = BlockchainTime.NowIsoString,
                 ExpiresAt = request.DurationDays.HasValue
-                    ? DateTime.UtcNow.AddDays(request.DurationDays.Value).ToString("o")
+                    ? BlockchainTime.Now.AddDays(request.DurationDays.Value).ToString("o")
                     : null,
                 Status = "ACTIVE",
                 EncryptedAesKey = wrappedKeyForGrantee
@@ -201,7 +201,7 @@ public class ConsentService : IConsentService
             PatientDid = request.PatientDid,
             ConsentId = consent.ConsentId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = BlockchainTime.NowIsoString
         };
 
         _blockchainSyncService.EnqueueAuditEntry(
@@ -331,7 +331,7 @@ public class ConsentService : IConsentService
         {
             _blockchainSyncService.EnqueueConsentRevoke(
                 consent.BlockchainConsentId,
-                DateTime.UtcNow.ToString("o"),
+                BlockchainTime.NowIsoString,
                 request.RevokeReason,
                 onFailure: error =>
                 {

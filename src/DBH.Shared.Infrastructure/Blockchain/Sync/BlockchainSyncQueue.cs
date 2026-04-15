@@ -1,8 +1,9 @@
-using DBH.Shared.Infrastructure.Messaging;
+ using DBH.Shared.Infrastructure.Messaging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 
@@ -31,15 +32,19 @@ public class BlockchainSyncQueue
     private readonly IConnection? _connection;
     private readonly IModel? _channel;
 
-    /// <summary>
-    /// Creates the queue transport and prepares RabbitMQ exchanges/queues.
-    /// </summary>
+    private readonly string _queueName;
+    private readonly IEnumerable<BlockchainSyncJobType>? _allowedJobTypes;
+
     public BlockchainSyncQueue(
         IOptions<RabbitMQOptions> rabbitOptions,
-        ILogger<BlockchainSyncQueue> logger)
+        ILogger<BlockchainSyncQueue> logger,
+        string queueName = MainQueue,
+        IEnumerable<BlockchainSyncJobType>? allowedJobTypes = null)
     {
         _rabbitOptions = rabbitOptions.Value;
         _logger = logger;
+        _queueName = queueName;
+        _allowedJobTypes = allowedJobTypes;
 
         if (!_rabbitOptions.Enabled)
         {
@@ -67,7 +72,7 @@ public class BlockchainSyncQueue
             _channel.ExchangeDeclare(DlqExchange, ExchangeType.Direct, durable: true);
 
             _channel.QueueDeclare(
-                queue: MainQueue,
+                queue: _queueName,
                 durable: true,
                 exclusive: false,
                 autoDelete: false,
@@ -84,7 +89,21 @@ public class BlockchainSyncQueue
                 autoDelete: false,
                 arguments: null);
 
-            _channel.QueueBind(MainQueue, MainExchange, MainRoutingKey);
+            // Bind to specific job types if specified, otherwise bind to legacy routing key
+            if (_allowedJobTypes != null && _allowedJobTypes.Any())
+            {
+                foreach (var jobType in _allowedJobTypes)
+                {
+                    var routingKey = GetRoutingKey(jobType);
+                    _channel.QueueBind(_queueName, MainExchange, routingKey);
+                    _logger.LogInformation("Bound queue {Queue} to routing key {Key}", _queueName, routingKey);
+                }
+            }
+            else
+            {
+                _channel.QueueBind(_queueName, MainExchange, MainRoutingKey);
+            }
+
             _channel.QueueBind(DlqQueue, DlqExchange, DlqRoutingKey);
             _channel.BasicQos(0, 1, false);
         }
@@ -93,6 +112,8 @@ public class BlockchainSyncQueue
             _logger.LogError(ex, "Failed to initialize RabbitMQ for blockchain sync queue. Falling back to in-memory queue.");
         }
     }
+
+    private static string GetRoutingKey(BlockchainSyncJobType jobType) => $"dbh.blockchain.sync.{jobType.ToString().ToLower()}";
 
     /// <summary>
     /// Publishes a blockchain job to the main queue.
@@ -114,7 +135,8 @@ public class BlockchainSyncQueue
             [RetryHeader] = 0
         };
 
-        _channel.BasicPublish(MainExchange, MainRoutingKey, props, body);
+        var routingKey = GetRoutingKey(job.JobType);
+        _channel.BasicPublish(MainExchange, routingKey, props, body);
     }
 
     /// <summary>
@@ -137,7 +159,7 @@ public class BlockchainSyncQueue
 
         while (!ct.IsCancellationRequested)
         {
-            var result = _channel.BasicGet(MainQueue, autoAck: false);
+            var result = _channel.BasicGet(_queueName, autoAck: false);
             if (result != null)
             {
                 var bodyJson = Encoding.UTF8.GetString(result.Body.ToArray());
@@ -195,7 +217,8 @@ public class BlockchainSyncQueue
             [RetryHeader] = dequeued.RetryCount + 1
         };
 
-        _channel.BasicPublish(MainExchange, MainRoutingKey, props, body);
+        var routingKey = GetRoutingKey(job.JobType);
+        _channel.BasicPublish(MainExchange, routingKey, props, body);
         _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
 
         return Task.CompletedTask;
@@ -242,7 +265,7 @@ public class BlockchainSyncQueue
                 return _fallbackQueue.Count;
             }
 
-            return (int)_channel.MessageCount(MainQueue);
+            return (int)_channel.MessageCount(_queueName);
         }
     }
 

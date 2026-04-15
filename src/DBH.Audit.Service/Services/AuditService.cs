@@ -75,7 +75,7 @@ public class AuditService : IAuditService
                         ConsentId = auditLog.ConsentId?.ToString(),
                         OrganizationId = auditLog.OrganizationId?.ToString(),
                         Result = auditLog.Result.ToString(),
-                        Timestamp = DateTime.UtcNow.ToString("o"),
+                        Timestamp = BlockchainTime.NowIsoString,
                         IpAddress = auditLog.IpAddress,
                         Metadata = auditLog.Metadata
                     };

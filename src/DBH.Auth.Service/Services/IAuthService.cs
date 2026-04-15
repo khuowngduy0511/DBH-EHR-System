@@ -17,4 +17,5 @@ public interface IAuthService
     Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId);
     Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
     Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor);
+    Task<AuthResponse> DeactivateAccountAsync(Guid userId);
 }
