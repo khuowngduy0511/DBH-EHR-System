@@ -68,10 +68,13 @@ public class UpdateMembershipRequest
 
 public class SearchDoctorsRequest
 {
-    [Required]
-    public Guid OrgId { get; set; }
+    public Guid? OrgId { get; set; }
 
     public Guid? DepartmentId { get; set; }
+
+    public string? Specialty { get; set; }
+
+    public string? DateOfBirth { get; set; }
 
     [Range(1, int.MaxValue)]
     public int Page { get; set; } = 1;

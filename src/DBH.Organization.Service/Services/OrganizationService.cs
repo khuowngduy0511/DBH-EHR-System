@@ -1,4 +1,4 @@
-﻿using DBH.Organization.Service.DbContext;
+using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
@@ -468,8 +468,17 @@ public class OrganizationService : IOrganizationService
         var query = _context.Memberships
             .Include(m => m.Organization)
             .Include(m => m.Department)
-            .Where(m => m.OrgId == request.OrgId)
             .Where(m => m.Status == MembershipStatus.ACTIVE);
+
+        if (request.OrgId.HasValue && request.OrgId.Value != Guid.Empty)
+        {
+            query = query.Where(m => m.OrgId == request.OrgId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Specialty))
+        {
+            query = query.Where(m => m.Specialty != null && m.Specialty.Contains(request.Specialty));
+        }
 
         if (request.DepartmentId.HasValue)
         {
@@ -479,44 +488,60 @@ public class OrganizationService : IOrganizationService
         var candidates = await query
             .OrderByDescending(m => m.CreatedAt)
             .ToListAsync();
-        _logger.LogInformation("Found {Count} doctor memberships in organization {OrgId}", candidates.Count, request.OrgId);
+        
+        _logger.LogInformation("Found {Count} candidates for doctor search", candidates.Count);
 
-        var totalCount = candidates.Count;
-        var items = candidates
+        var allMapped = await Task.WhenAll(candidates.Select(async m =>
+        {
+            var response = MapToResponse(m);
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, m.OrgId, m.UserId);
+                if (userInfo != null)
+                {
+                    var userProfile = await _authUserClient.GetUserProfileDetailAsync(token, userInfo.UserId);
+                    response.User = new MembershipUserResponse
+                    {
+                        UserId = userInfo.UserId,
+                        UserProfile = userProfile,
+                        FullName = userInfo.FullName,
+                        Gender = userInfo.Gender,
+                        Email = userInfo.Email,
+                        Phone = userInfo.Phone,
+                        DateOfBirth = userInfo.DateOfBirth,
+                        Address = userInfo.Address,
+                        AvatarUrl = userInfo.AvatarUrl,
+                        OrganizationId = userInfo.OrganizationId,
+                        Status = userInfo.Status
+                    };
+                }
+            }
+            return response;
+        }));
+
+        var filteredResults = allMapped.ToList();
+
+        // Filter by DateOfBirth if requested (DateOfBirth is in Auth User, so we filter after mapping)
+        if (!string.IsNullOrWhiteSpace(request.DateOfBirth))
+        {
+            if (DateTime.TryParse(request.DateOfBirth, out var searchDob))
+            {
+                filteredResults = filteredResults.Where(r => 
+                    r.User != null && 
+                    r.User.DateOfBirth.HasValue && 
+                    r.User.DateOfBirth.Value.Date == searchDob.Date).ToList();
+            }
+        }
+
+        var totalCount = filteredResults.Count;
+        var paginatedItems = filteredResults
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .ToList();
 
         return new PagedResponse<MembershipResponse>
         {
-            Data = (await Task.WhenAll(items.Select(async m =>
-            {
-                var response = MapToResponse(m);
-                if (!string.IsNullOrWhiteSpace(token))
-                {
-                    var userInfo = await _authUserClient.GetDoctorByUserIdInMyOrganizationAsync(token, m.OrgId, m.UserId);
-                    if (userInfo != null)
-                    {
-                        var userProfile = await _authUserClient.GetUserProfileDetailAsync(token, userInfo.UserId);
-                        response.User = new MembershipUserResponse
-                        {
-                            UserId = userInfo.UserId,
-                            UserProfile = userProfile,
-                            FullName = userInfo.FullName,
-                            Gender = userInfo.Gender,
-                            Email = userInfo.Email,
-                            Phone = userInfo.Phone,
-                            DateOfBirth = userInfo.DateOfBirth,
-                            Address = userInfo.Address,
-                            AvatarUrl = userInfo.AvatarUrl,
-                            OrganizationId = userInfo.OrganizationId,
-                            Status = userInfo.Status
-                        };
-                    }
-                }
-
-                return response;
-            }))).Where(r => r != null).Cast<MembershipResponse>().ToList(),
+            Data = paginatedItems,
             Page = request.Page,
             PageSize = request.PageSize,
             TotalCount = totalCount
