@@ -1015,5 +1015,24 @@ public class AuthService : IAuthService
 
         return Guid.TryParse(claimValue, out var userId) ? userId : null;
     }
-}
 
+    public async Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status)
+    {
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+            return new AuthResponse { Success = false, Message = "Không tìm thấy người dùng." };
+
+        if (!Enum.TryParse<Models.Enums.UserStatus>(status, true, out var parsedStatus))
+        {
+            return new AuthResponse { Success = false, Message = "Trạng thái không hợp lệ." };
+        }
+
+        user.Status = parsedStatus;
+        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = GetCurrentActorId();
+
+        await _userRepository.UpdateAsync(user);
+
+        return new AuthResponse { Success = true, Message = "Cập nhật trạng thái thành công." };
+    }
+}
