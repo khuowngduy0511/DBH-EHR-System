@@ -523,9 +523,9 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = VietnamTimeHelper.Now, 
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
 
@@ -555,7 +555,7 @@ public class AuthService : IAuthService
             UserId = user.UserId,
             Provider = ProviderType.EncryptedPrivateKey,
             CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey),
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = VietnamTimeHelper.Now,
         });
 
         var organizationWarning = await HandleOrganizationMembershipAsync(user, user.OrganizationId, null);
