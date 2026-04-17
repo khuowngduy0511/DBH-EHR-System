@@ -93,6 +93,7 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/services/notification/swagger/v1/swagger.json", "Notification Service API v1");
     c.SwaggerEndpoint("/services/appointment/swagger/v1/swagger.json", "Appointment Service API v1");
     c.SwaggerEndpoint("/services/payment/swagger/v1/swagger.json", "Payment Service API v1");
+    c.SwaggerEndpoint("/services/blockchain/swagger/v1/swagger.json", "Blockchain Service API v1");
     
     // Gateway's own swagger
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Gateway API v1");
@@ -136,7 +137,8 @@ app.MapGet("/", () => Results.Ok(new
         Appointments = "/api/v1/appointments/*",
         Encounters = "/api/v1/encounters/*",
         Invoices = "/api/v1/invoices/*",
-        Payments = "/api/v1/payments/*"
+        Payments = "/api/v1/payments/*",
+        Blockchain = "/api/v1/blockchain/*"
     }
 }));
 
