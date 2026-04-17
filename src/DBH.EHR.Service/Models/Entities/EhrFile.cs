@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using DBH.Shared.Contracts;
 
 namespace DBH.EHR.Service.Models.Entities;
 
@@ -47,7 +48,7 @@ public class EhrFile
     public string? EncryptedFallbackData { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     // Navigation
     [ForeignKey("EhrId")]

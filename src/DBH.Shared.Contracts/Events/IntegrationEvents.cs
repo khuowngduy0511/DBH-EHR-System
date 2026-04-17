@@ -6,7 +6,7 @@ namespace DBH.Shared.Contracts.Events;
 public abstract class IntegrationEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();
-    public DateTime OccurredAt { get; init; } = DateTime.UtcNow;
+    public DateTime OccurredAt { get; init; } = VietnamTimeHelper.Now;
     public string EventType => GetType().Name;
     public string? CorrelationId { get; init; }
     public string? CausationId { get; init; }

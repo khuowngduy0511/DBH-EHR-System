@@ -1,6 +1,7 @@
 using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.cryptography;
@@ -177,9 +178,9 @@ public class ConsentService : IConsentService
             EhrId = request.EhrId,
             Permission = request.Permission,
             Purpose = request.Purpose,
-            GrantedAt = DateTime.UtcNow,
+            GrantedAt = VietnamTimeHelper.Now,
             ExpiresAt = request.DurationDays.HasValue 
-                ? DateTime.UtcNow.AddDays(request.DurationDays.Value) 
+                ? VietnamTimeHelper.Now.AddDays(request.DurationDays.Value) 
                 : null,
             Status = ConsentStatus.ACTIVE,
             GrantTxHash = txHash
@@ -349,7 +350,7 @@ public class ConsentService : IConsentService
         }
 
         consent.Status = ConsentStatus.REVOKED;
-        consent.RevokedAt = DateTime.UtcNow;
+        consent.RevokedAt = VietnamTimeHelper.Now;
         consent.RevokeReason = request.RevokeReason;
         consent.RevokeTxHash = txHash;
 
@@ -367,7 +368,7 @@ public class ConsentService : IConsentService
             PatientDid = consent.PatientDid,
             ConsentId = consent.ConsentId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
         };
 
         _blockchainSyncService.EnqueueAuditEntry(
@@ -427,7 +428,7 @@ public class ConsentService : IConsentService
             patientCandidates.Contains(c.PatientId) &&
             granteeCandidates.Contains(c.GranteeId) &&
             c.Status == ConsentStatus.ACTIVE &&
-            (c.ExpiresAt == null || c.ExpiresAt > DateTime.UtcNow));
+            (c.ExpiresAt == null || c.ExpiresAt > VietnamTimeHelper.Now));
 
         // If specific EHR ID requested, check for it or null (all records)
         if (request.EhrId.HasValue)
@@ -485,7 +486,7 @@ public class ConsentService : IConsentService
                 // Update local cache from blockchain data
                 consent.Status = Enum.TryParse<ConsentStatus>(bcConsent.Status, true, out var status) 
                     ? status : consent.Status;
-                consent.LastSyncedAt = DateTime.UtcNow;
+                consent.LastSyncedAt = VietnamTimeHelper.Now;
                 await _context.SaveChangesAsync();
 
                 return new ApiResponse<ConsentResponse>
@@ -506,7 +507,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        consent.LastSyncedAt = DateTime.UtcNow;
+        consent.LastSyncedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<ConsentResponse>
@@ -567,7 +568,7 @@ public class ConsentService : IConsentService
             Reason = request.Reason,
             RequestedDurationDays = request.RequestedDurationDays,
             Status = AccessRequestStatus.PENDING,
-            ExpiresAt = DateTime.UtcNow.AddDays(7) // Request expires in 7 days
+            ExpiresAt = VietnamTimeHelper.Now.AddDays(7) // Request expires in 7 days
         };
 
         _context.AccessRequests.Add(accessRequest);
@@ -587,7 +588,7 @@ public class ConsentService : IConsentService
             TargetId = accessRequest.RequestId.ToString(),
             PatientDid = accessRequest.PatientId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
         };
         _blockchainSyncService.EnqueueAuditEntry(
             auditEntry,
@@ -698,7 +699,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        request.RespondedAt = DateTime.UtcNow;
+        request.RespondedAt = VietnamTimeHelper.Now;
         request.ResponseReason = response.ResponseReason;
 
         if (response.Approve)
@@ -752,7 +753,7 @@ public class ConsentService : IConsentService
             TargetId = request.RequestId.ToString(),
             PatientDid = request.PatientId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
         };
         _blockchainSyncService.EnqueueAuditEntry(
             respondAuditEntry,
@@ -821,7 +822,7 @@ public class ConsentService : IConsentService
             TargetId = request.RequestId.ToString(),
             PatientDid = request.PatientId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
         };
         _blockchainSyncService.EnqueueAuditEntry(
             cancelAuditEntry,

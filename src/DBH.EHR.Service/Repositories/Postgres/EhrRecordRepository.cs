@@ -1,5 +1,6 @@
 using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Models.Entities;
+using DBH.Shared.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace DBH.EHR.Service.Repositories.Postgres;
@@ -21,7 +22,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrRecord> CreateAsync(EhrRecord record)
     {
-        record.CreatedAt = DateTime.UtcNow.AddHours(7);
+        record.CreatedAt = VietnamTimeHelper.Now;
         
         _db.EhrRecords.Add(record);
         await _db.SaveChangesAsync();
@@ -35,7 +36,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrVersion> CreateVersionAsync(EhrVersion version)
     {
-        version.CreatedAt = DateTime.UtcNow.AddHours(7);
+        version.CreatedAt = VietnamTimeHelper.Now;
         
         _db.EhrVersions.Add(version);
         await _db.SaveChangesAsync();
@@ -49,7 +50,7 @@ public class EhrRecordRepository : IEhrRecordRepository
 
     public async Task<EhrFile> CreateFileAsync(EhrFile file)
     {
-        file.CreatedAt = DateTime.UtcNow.AddHours(7);
+        file.CreatedAt = VietnamTimeHelper.Now;
         
         _db.EhrFiles.Add(file);
         await _db.SaveChangesAsync();

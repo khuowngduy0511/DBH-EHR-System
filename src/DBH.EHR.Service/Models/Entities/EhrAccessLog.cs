@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.EHR.Service.Models.Enums;
+using DBH.Shared.Contracts;
 
 namespace DBH.EHR.Service.Models.Entities;
 
@@ -43,7 +44,7 @@ public class EhrAccessLog
     public VerifyStatus VerifyStatus { get; set; }
 
     [Column("accessed_at")]
-    public DateTime AccessedAt { get; set; } = DateTime.UtcNow;
+    public DateTime AccessedAt { get; set; } = VietnamTimeHelper.Now;
 
     // Navigation
     [ForeignKey("EhrId")]

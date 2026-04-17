@@ -8,6 +8,7 @@ using System.Security.Claims;
 using BCrypt.Net;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 
 namespace DBH.Auth.Service.Services;
@@ -132,9 +133,9 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = VietnamTimeHelper.Now,
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
         
@@ -169,7 +170,7 @@ public class AuthService : IAuthService
             UserId = user.UserId,
             Provider = ProviderType.EncryptedPrivateKey,
             CredentialValue = encryptedPrivateKey,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = VietnamTimeHelper.Now,
         });
 
         // Enqueue Fabric CA enrollment for async processing via RabbitMQ.
@@ -235,9 +236,9 @@ public class AuthService : IAuthService
             Password = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Status = Models.Enums.UserStatus.Active,
             PublicKey = keyPair.PublicKey,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = VietnamTimeHelper.Now,
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
         
@@ -268,7 +269,7 @@ public class AuthService : IAuthService
             UserId = user.UserId,
             Provider = ProviderType.EncryptedPrivateKey,            
             CredentialValue= encryptedPrivateKey,
-            CreatedAt = DateTime.UtcNow,            
+            CreatedAt = VietnamTimeHelper.Now,            
         });
 
         var organizationWarning = await HandleOrganizationMembershipAsync(user, request.OrganizationId, null);
@@ -536,7 +537,7 @@ public class AuthService : IAuthService
 
         if (isUpdated)
         {
-            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = VietnamTimeHelper.Now;
             user.UpdatedBy = userId;
             await _userRepository.UpdateAsync(user);
 
@@ -762,7 +763,7 @@ public class AuthService : IAuthService
         existingUser.Address = null;
         existingUser.Status = Models.Enums.UserStatus.Active;
         existingUser.PublicKey = keyPair.PublicKey;
-        existingUser.UpdatedAt = DateTime.UtcNow;
+        existingUser.UpdatedAt = VietnamTimeHelper.Now;
         existingUser.UpdatedBy = actorUserId;
 
         await _userRepository.UpdateAsync(existingUser);
@@ -773,7 +774,7 @@ public class AuthService : IAuthService
         if (oldPrivateKey != null)
         {
             oldPrivateKey.CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey);
-            oldPrivateKey.CreatedAt = DateTime.UtcNow;
+            oldPrivateKey.CreatedAt = VietnamTimeHelper.Now;
             await _credentialRepository.UpdateAsync(oldPrivateKey);
         }
         else
@@ -783,7 +784,7 @@ public class AuthService : IAuthService
                 UserId = existingUser.UserId,
                 Provider = ProviderType.EncryptedPrivateKey,
                 CredentialValue = MasterKeyEncryptionService.Encrypt(keyPair.PrivateKey),
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = VietnamTimeHelper.Now,
             });
         }
 
@@ -850,7 +851,7 @@ public class AuthService : IAuthService
         user.Address = null;
         user.Password = null;
         user.Status = Models.Enums.UserStatus.Inactive;
-        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedAt = VietnamTimeHelper.Now;
         user.UpdatedBy = userId;
 
         await _userRepository.UpdateAsync(user);
@@ -877,7 +878,7 @@ public class AuthService : IAuthService
         if (existingCredential != null)
         {
             existingCredential.CredentialValue = refreshToken;
-            existingCredential.CreatedAt = DateTime.UtcNow;
+            existingCredential.CreatedAt = VietnamTimeHelper.Now;
             await _credentialRepository.UpdateAsync(existingCredential);
         }
         else
@@ -887,7 +888,7 @@ public class AuthService : IAuthService
                 UserId = user.UserId,
                 Provider = Models.Enums.ProviderType.RefreshToken,
                 CredentialValue = refreshToken,
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = VietnamTimeHelper.Now,
             });
         }
 

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using DBH.Shared.Contracts;
 
 namespace DBH.EHR.Service.Models.Entities;
 
@@ -43,7 +44,7 @@ public class EhrVersion
     public string? DataHash { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     // Navigation
     [ForeignKey("EhrId")]

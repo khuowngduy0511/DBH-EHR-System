@@ -2,6 +2,7 @@ using System.Text;
 using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -112,7 +113,7 @@ app.MapGet("/health", () => Results.Ok(new
 { 
     Status = "healthy", 
     Service = "DBH.Gateway",
-    Timestamp = DateTime.UtcNow 
+    Timestamp = VietnamTimeHelper.Now 
 }));
 
 // Gateway info endpoint
