@@ -46,6 +46,12 @@ public static class ChaincodeFunctions
     public const string GetAuditsByPatient = "GetAuditsByPatient";
     public const string GetAuditsByActor = "GetAuditsByActor";
     public const string GetAuditsByTarget = "GetAuditsByTarget";
+
+    // === Emergency Contract ===
+    public const string EmergencyAccess = "EmergencyAccess";
+    public const string GetEmergencyAccessByRecord = "GetEmergencyAccessByRecord";
+    public const string GetEmergencyAccessByAccessor = "GetEmergencyAccessByAccessor";
+    public const string GetAllEmergencyAccess = "GetAllEmergencyAccess";
 }
 
 // ============================================================================
@@ -140,6 +146,19 @@ public class AuditEntry
     public string Timestamp { get; set; } = string.Empty;         // ISO 8601
     public string? IpAddress { get; set; }
     public string? Metadata { get; set; }                         // JSON string
+}
+
+/// <summary>
+/// Emergency access log stored on the ehr chaincode.
+/// </summary>
+public class EmergencyAccessRecord
+{
+    public string LogId { get; set; } = string.Empty;
+    public string TargetRecordDid { get; set; } = string.Empty;
+    public string AccessorDid { get; set; } = string.Empty;
+    public string AccessorOrg { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string Timestamp { get; set; } = string.Empty;
 }
 
 // ============================================================================

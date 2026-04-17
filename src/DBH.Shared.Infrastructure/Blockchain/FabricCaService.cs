@@ -46,12 +46,18 @@ public sealed class FabricCaService : IFabricCaService
     // Public API
     // ========================================================================
 
-    public async Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role)
+    public async Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null)
     {
         if (!_options.Enabled)
         {
             _logger.LogDebug("Fabric CA enrollment is disabled – skipping for user {EnrollmentId}", enrollmentId);
-            return new FabricEnrollResult { Success = true };
+            return new FabricEnrollResult
+            {
+                Success = true,
+                EnrollmentId = enrollmentId,
+                EnrollmentSecret = secret,
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId)
+            };
         }
 
         try
@@ -69,16 +75,15 @@ public sealed class FabricCaService : IFabricCaService
             // ----------------------------------------------------------------
             // Step 1: Register the identity on the CA
             // ----------------------------------------------------------------
-            var secret = GenerateSecret();
-            await RegisterAsync(runtimeIdentity, enrollmentId, username, role, secret);
+            var enrollmentSecret = string.IsNullOrWhiteSpace(secret) ? GenerateSecret() : secret;
+            await RegisterAsync(runtimeIdentity, enrollmentId, username, role, enrollmentSecret);
 
             // ----------------------------------------------------------------
             // Step 2: Generate a local EC key + CSR, then enroll
             // ----------------------------------------------------------------
             using var userKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             var csrPem = CreateCsrPem(enrollmentId, userKey);
-            var certPem = await DoEnrollAsync(runtimeIdentity, enrollmentId, secret, csrPem);
-
+            var certPem = await DoEnrollAsync(runtimeIdentity, enrollmentId, enrollmentSecret, csrPem);
             _logger.LogInformation(
                 "Fabric CA enrollment succeeded for identity {EnrollmentId} (role={Role})",
                 enrollmentId, role);
@@ -86,6 +91,9 @@ public sealed class FabricCaService : IFabricCaService
             return new FabricEnrollResult
             {
                 Success = true,
+                EnrollmentId = enrollmentId,
+                EnrollmentSecret = enrollmentSecret,
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId),
                 Certificate = certPem,
                 PrivateKeyPem = ExportPrivateKeyPem(userKey),
             };
@@ -97,7 +105,13 @@ public sealed class FabricCaService : IFabricCaService
                 "Fabric CA is unreachable for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
                 enrollmentId);
 
-            return new FabricEnrollResult { Success = true };
+            return new FabricEnrollResult
+            {
+                Success = true,
+                EnrollmentId = enrollmentId,
+                EnrollmentSecret = secret,
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId)
+            };
         }
         catch (TaskCanceledException ex)
         {
@@ -106,12 +120,25 @@ public sealed class FabricCaService : IFabricCaService
                 "Fabric CA request timed out for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
                 enrollmentId);
 
-            return new FabricEnrollResult { Success = true };
+            return new FabricEnrollResult
+            {
+                Success = true,
+                EnrollmentId = enrollmentId,
+                EnrollmentSecret = secret,
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId)
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fabric CA enrollment failed for identity {EnrollmentId}", enrollmentId);
-            return new FabricEnrollResult { Success = false, ErrorMessage = ex.Message };
+            return new FabricEnrollResult
+            {
+                Success = false,
+                EnrollmentId = enrollmentId,
+                EnrollmentSecret = secret,
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId),
+                ErrorMessage = ex.Message
+            };
         }
     }
 
@@ -326,6 +353,19 @@ public sealed class FabricCaService : IFabricCaService
     private static string ExportPrivateKeyPem(ECDsa key)
     {
         return key.ExportECPrivateKeyPem();
+    }
+
+    private string BuildAccountStoragePath(string enrollmentId)
+    {
+        var domain = _options.CaName switch
+        {
+            "ca-hospital1" => "hospital1.ehr.com",
+            "ca-hospital2" => "hospital2.ehr.com",
+            "ca-clinic" => "clinic.ehr.com",
+            _ => "hospital1.ehr.com"
+        };
+
+        return $"/tmp/fabric-crypto/peerOrganizations/{domain}/users/{enrollmentId}@{domain}/msp";
     }
 
     private static byte[] ExtractDerFromPem(string pem, string label)

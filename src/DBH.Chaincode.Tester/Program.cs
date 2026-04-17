@@ -36,9 +36,11 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IFabricRuntimeIdentityResolver, FabricRuntimeIdentityResolver>();
 builder.Services.AddScoped<IFabricGateway, FabricGatewayClient>();
+builder.Services.AddScoped<IFabricCaService, FabricCaService>();
 builder.Services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();
 builder.Services.AddScoped<IConsentBlockchainService, ConsentBlockchainService>();
 builder.Services.AddScoped<IAuditBlockchainService, AuditBlockchainService>();
+builder.Services.AddScoped<IEmergencyBlockchainService, EmergencyBlockchainService>();
 builder.Services.AddSingleton<ChaincodeTestRunner>();
 
 var host = builder.Build();
@@ -84,6 +86,8 @@ internal sealed class ChaincodeTestRunner
     private readonly IEhrBlockchainService _ehr;
     private readonly IConsentBlockchainService _consent;
     private readonly IAuditBlockchainService _audit;
+    private readonly IEmergencyBlockchainService _emergency;
+    private readonly IFabricCaService _fabricCa;
     private readonly IFabricGateway _gateway;
     private readonly FabricOptions _fabric;
     private readonly ILogger<ChaincodeTestRunner> _logger;
@@ -93,6 +97,8 @@ internal sealed class ChaincodeTestRunner
         IEhrBlockchainService ehr,
         IConsentBlockchainService consent,
         IAuditBlockchainService audit,
+        IEmergencyBlockchainService emergency,
+        IFabricCaService fabricCa,
         IFabricGateway gateway,
         IOptions<FabricOptions> fabricOptions,
         IOptions<TestDataOptions> testDataOptions,
@@ -101,6 +107,8 @@ internal sealed class ChaincodeTestRunner
         _ehr = ehr;
         _consent = consent;
         _audit = audit;
+        _emergency = emergency;
+        _fabricCa = fabricCa;
         _gateway = gateway;
         _fabric = fabricOptions.Value;
         _testData = testDataOptions.Value;
@@ -175,6 +183,24 @@ internal sealed class ChaincodeTestRunner
                 case "audit-by-actor":
                     await GetAuditsByActorAsync(commandArgs);
                     break;
+                case "emergency-access":
+                    await EmergencyAccessAsync(commandArgs);
+                    break;
+                case "emergency-by-record":
+                    await GetEmergencyByRecordAsync(commandArgs);
+                    break;
+                case "emergency-by-accessor":
+                    await GetEmergencyByAccessorAsync(commandArgs);
+                    break;
+                case "emergency-all":
+                    await GetAllEmergencyAsync();
+                    break;
+                case "account-register":
+                    await RegisterAccountAsync(commandArgs);
+                    break;
+                case "account-login":
+                    await LoginAccountAsync(commandArgs);
+                    break;
                 default:
                     Console.WriteLine($"Unknown command '{command}'. Type 'help'.");
                     break;
@@ -213,6 +239,12 @@ internal sealed class ChaincodeTestRunner
         Console.WriteLine("  audit-get [id]     -> Get audit entry");
         Console.WriteLine("  audit-by-patient [did] -> Audits by patient");
         Console.WriteLine("  audit-by-actor [did] -> Audits by actor");
+        Console.WriteLine("  emergency-access [recordDid] [accessorDid] [reason] -> Log emergency access");
+        Console.WriteLine("  emergency-by-record [recordDid] -> Query emergency access by record");
+        Console.WriteLine("  emergency-by-accessor [accessorDid] -> Query emergency access by accessor");
+        Console.WriteLine("  emergency-all -> Query all emergency access logs");
+        Console.WriteLine("  account-register [enrollmentId] [username] [role] -> Register and enroll a Fabric CA account");
+        Console.WriteLine("  account-login [enrollmentId] [username] [role] [secret] -> Re-enroll with an existing secret");
         Console.WriteLine();
     }
 
@@ -364,6 +396,100 @@ internal sealed class ChaincodeTestRunner
         var actorDid = args.Count > 0 ? args[0] : Prompt("Actor DID", _testData.Audit.ActorDid);
         var audits = await _audit.GetAuditsByActorAsync(actorDid);
         Console.WriteLine(audits.Count == 0 ? "No audits" : JsonSerialize(audits));
+    }
+
+    private async Task EmergencyAccessAsync(IReadOnlyList<string> args)
+    {
+        var recordDid = args.Count > 0 ? args[0] : Prompt("Record DID", _testData.Ehr.EhrId);
+        var accessorDid = args.Count > 1 ? args[1] : Prompt("Accessor DID", _testData.Audit.ActorDid);
+        var reason = args.Count > 2 ? args[2] : Prompt("Reason", "Emergency treatment");
+
+        var record = new EmergencyAccessRecord
+        {
+            LogId = $"emergency-{ShortGuid()}",
+            TargetRecordDid = recordDid,
+            AccessorDid = accessorDid,
+            AccessorOrg = _fabric.MspId,
+            Reason = reason,
+            Timestamp = DateTime.UtcNow.ToString("o")
+        };
+
+        var result = await _emergency.EmergencyAccessAsync(record);
+        PrintTxResult(result);
+    }
+
+    private async Task GetEmergencyByRecordAsync(IReadOnlyList<string> args)
+    {
+        var recordDid = args.Count > 0 ? args[0] : Prompt("Record DID", _testData.Ehr.EhrId);
+        var logs = await _emergency.GetEmergencyAccessByRecordAsync(recordDid);
+        Console.WriteLine(logs.Count == 0 ? "No emergency logs" : JsonSerialize(logs));
+    }
+
+    private async Task GetEmergencyByAccessorAsync(IReadOnlyList<string> args)
+    {
+        var accessorDid = args.Count > 0 ? args[0] : Prompt("Accessor DID", _testData.Audit.ActorDid);
+        var logs = await _emergency.GetEmergencyAccessByAccessorAsync(accessorDid);
+        Console.WriteLine(logs.Count == 0 ? "No emergency logs" : JsonSerialize(logs));
+    }
+
+    private async Task GetAllEmergencyAsync()
+    {
+        var logs = await _emergency.GetAllEmergencyAccessAsync();
+        Console.WriteLine(logs.Count == 0 ? "No emergency logs" : JsonSerialize(logs));
+    }
+
+    private async Task RegisterAccountAsync(IReadOnlyList<string> args)
+    {
+        var enrollmentId = args.Count > 0 ? args[0] : Prompt("Enrollment ID", $"user-{ShortGuid()}");
+        var username = args.Count > 1 ? args[1] : Prompt("Username", enrollmentId);
+        var role = args.Count > 2 ? args[2] : Prompt("Role", "client");
+
+        var result = await _fabricCa.EnrollUserAsync(enrollmentId, username, role);
+        PrintEnrollmentResult(result);
+    }
+
+    private async Task LoginAccountAsync(IReadOnlyList<string> args)
+    {
+        var enrollmentId = args.Count > 0 ? args[0] : Prompt("Enrollment ID", $"user-{ShortGuid()}");
+        var username = args.Count > 1 ? args[1] : Prompt("Username", enrollmentId);
+        var role = args.Count > 2 ? args[2] : Prompt("Role", "client");
+        var secret = args.Count > 3 ? args[3] : Prompt("Secret", string.Empty);
+
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            Console.WriteLine("Secret is required for login/re-enrollment.");
+            return;
+        }
+
+        var result = await _fabricCa.EnrollUserAsync(enrollmentId, username, role, secret);
+        PrintEnrollmentResult(result);
+    }
+
+    private static void PrintEnrollmentResult(FabricEnrollResult result)
+    {
+        if (!result.Success)
+        {
+            var error = string.IsNullOrWhiteSpace(result.ErrorMessage) ? "Unknown error" : result.ErrorMessage;
+            Console.WriteLine($"  FAILED | {error}");
+            return;
+        }
+
+        Console.WriteLine($"  Success | EnrollmentId={result.EnrollmentId}");
+
+        if (!string.IsNullOrWhiteSpace(result.EnrollmentSecret))
+        {
+            Console.WriteLine($"  Secret={result.EnrollmentSecret}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.AccountStoragePath))
+        {
+            Console.WriteLine($"  MSPPath={result.AccountStoragePath}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.Certificate))
+        {
+            Console.WriteLine($"  CertificateBytes={result.Certificate.Length}");
+        }
     }
 
     private EhrHashRecord BuildEhrRecord()

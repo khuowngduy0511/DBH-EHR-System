@@ -290,22 +290,219 @@
 					]
 				}
 			}
+		},
+		{
+			"name": "8. Blockchain - Get Current User Encryption Keys",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"user_public_key\", jsonData.publicKey);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{blockchain_url}}/api/v1/blockchain/ipfs/keys/current",
+					"host": [
+						"{{blockchain_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"blockchain",
+						"ipfs",
+						"keys",
+						"current"
+					]
+				}
+			}
+		},
+		{
+			"name": "9. Blockchain - Encrypt to IPFS (JSON)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"pm.environment.set(\"ipfs_cid\", jsonData.cid);",
+							"pm.environment.set(\"wrapped_key\", jsonData.wrappedKey);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"payload\": \"{\n    \\\"testData\\\": \\\"This is test data to encrypt\\\",\n    \\\"timestamp\\\": \\\"2024-03-01T00:00:00Z\\\"\n  }\"\n}"
+				},
+				"url": {
+					"raw": "{{blockchain_url}}/api/v1/blockchain/ipfs/encrypt",
+					"host": [
+						"{{blockchain_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"blockchain",
+						"ipfs",
+						"encrypt"
+					]
+				}
+			}
+		},
+		{
+			"name": "10. Blockchain - Decrypt from IPFS (JSON)",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"cid\": \"{{ipfs_cid}}\",\n  \"wrappedKey\": \"{{wrapped_key}}\"\n}"
+				},
+				"url": {
+					"raw": "{{blockchain_url}}/api/v1/blockchain/ipfs/decrypt",
+					"host": [
+						"{{blockchain_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"blockchain",
+						"ipfs",
+						"decrypt"
+					]
+				}
+			}
+		},
+		{
+			"name": "11. Blockchain - Download Raw IPFS File",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{blockchain_url}}/api/v1/blockchain/ipfs/{{ipfs_cid}}/download",
+					"host": [
+						"{{blockchain_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"blockchain",
+						"ipfs",
+						"{{ipfs_cid}}",
+						"download"
+					]
+				}
+			}
+		},
+		{
+			"name": "12. Blockchain - Download EHR Records",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{doctor_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "X-Requester-Id",
+						"value": "{{doctor_id}}"
+					}
+				],
+				"url": {
+					"raw": "{{blockchain_url}}/api/v1/blockchain/ipfs/records/{{ehr_id}}/download",
+					"host": [
+						"{{blockchain_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"blockchain",
+						"ipfs",
+						"records",
+						"{{ehr_id}}",
+						"download"
+					]
+				}
+			}
 		}
 	],
 	"variable": [
 		{
 			"key": "auth_url",
-			"value": "http://localhost:5101",
+			"value": "http://localhost:5000",
 			"type": "string"
 		},
 		{
 			"key": "ehr_url",
-			"value": "http://localhost:5003",
+			"value": "http://localhost:5000",
 			"type": "string"
 		},
 		{
 			"key": "consent_url",
-			"value": "http://localhost:5004",
+			"value": "http://localhost:5000",
+			"type": "string"
+		},
+		{
+			"key": "blockchain_url",
+			"value": "http://localhost:5000",
 			"type": "string"
 		}
 	]

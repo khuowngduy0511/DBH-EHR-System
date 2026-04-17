@@ -10,11 +10,12 @@ public class OrganizationServiceTests_DeleteMembership_WithFakeId_ShouldReturnEr
     [SkippableFact]
     public async Task DeleteMembership_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(OrganizationClient);
         var fakeMembershipId = Guid.NewGuid();
         var url = ApiEndpoints.Memberships.Delete(fakeMembershipId);
         
-        var response = await DeleteWithRetryAsync(AuthClient, url);
+        var response = await DeleteWithRetryAsync(OrganizationClient, url);
         
-        Assert.False(response.StatusCode == HttpStatusCode.NotFound || response.StatusCode == HttpStatusCode.BadRequest);
+        Assert.True(response.StatusCode == HttpStatusCode.NotFound || response.StatusCode == HttpStatusCode.BadRequest);
     }
 }
