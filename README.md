@@ -56,12 +56,7 @@ cd ../..
 ## PHASE 4 — Seed Data
 
 ```bash
-docker run --rm --network dbh-ehr-backend_dbh_network \
-  -v "$(pwd)/scripts:/scripts" \
-  alpine/curl:latest sh -c \
-  "apk add --no-cache jq bash > /dev/null 2>&1 && \
-   sed 's|http://localhost:5000|http://dbh_gateway:5000|g' /scripts/seed-data.sh > /tmp/seed.sh && \
-   bash /tmp/seed.sh"
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\seed-data.ps1
 ```
 
 
