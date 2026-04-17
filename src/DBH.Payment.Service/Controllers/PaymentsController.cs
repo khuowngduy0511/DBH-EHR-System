@@ -28,7 +28,7 @@ public class PaymentsController : ControllerBase
     }
 
     [HttpPost("invoices/{invoiceId}/pay-cash")]
-    [Authorize(Roles = "Receptionist,Admin,SystemAdmin")]
+    [Authorize(Roles = "Receptionist,Admin")]
     public async Task<IActionResult> PayCash(Guid invoiceId, [FromBody] PayCashRequest? request)
     {
         var result = await _paymentService.PayCashAsync(invoiceId, request);
