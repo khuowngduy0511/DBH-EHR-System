@@ -1,0 +1,24 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+public class EhrServiceTests_GetEhrRecord_WithFakeId_ShouldReturnNotFound : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+    "AuthService",
+    "EhrService"
+    };
+
+    [SkippableFact]
+    public async Task GetEhrRecord_WithFakeId_ShouldReturnNotFound()
+    {
+    await AuthenticateAsAdminAsync(EhrClient);
+    var response = await GetWithRetryAsync(EhrClient, ApiEndpoints.Ehr.GetRecord(Guid.NewGuid()));
+    
+    Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+}

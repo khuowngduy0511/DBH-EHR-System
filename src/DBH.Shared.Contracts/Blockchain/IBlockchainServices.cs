@@ -10,6 +10,12 @@ namespace DBH.Shared.Contracts.Blockchain;
 public class FabricEnrollResult
 {
     public bool Success { get; init; }
+    /// <summary>Unique enrollment id used on the CA.</summary>
+    public string EnrollmentId { get; init; } = string.Empty;
+    /// <summary>Secret returned/used during registration. Persist it securely if the identity must be enrolled again.</summary>
+    public string? EnrollmentSecret { get; init; }
+    /// <summary>Expected local MSP directory for the enrolled identity.</summary>
+    public string? AccountStoragePath { get; init; }
     /// <summary>PEM-encoded signed certificate returned by the CA</summary>
     public string? Certificate { get; init; }
     /// <summary>PEM-encoded private key generated locally before enrollment</summary>
@@ -28,7 +34,8 @@ public interface IFabricCaService
     /// <param name="enrollmentId">Unique ID for the identity — typically the user's UID.</param>
     /// <param name="username">Human-readable name stored as a certificate attribute.</param>
     /// <param name="role">Role name used as the OU (Organizational Unit) attribute in the certificate.</param>
-    Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role);
+    /// <param name="secret">Optional CA secret to reuse for login/re-enrollment.</param>
+    Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null);
 }
 
 // ============================================================================
@@ -152,4 +159,30 @@ public interface IAuditBlockchainService
     /// Lấy audit logs theo actor DID
     /// </summary>
     Task<List<AuditEntry>> GetAuditsByActorAsync(string actorDid);
+}
+
+/// <summary>
+/// Service cho Emergency Access contract nằm cùng ehr chaincode package.
+/// </summary>
+public interface IEmergencyBlockchainService
+{
+    /// <summary>
+    /// Ghi log emergency access lên blockchain.
+    /// </summary>
+    Task<BlockchainTransactionResult> EmergencyAccessAsync(EmergencyAccessRecord record);
+
+    /// <summary>
+    /// Lấy emergency access logs theo target record DID.
+    /// </summary>
+    Task<List<EmergencyAccessRecord>> GetEmergencyAccessByRecordAsync(string targetRecordDid);
+
+    /// <summary>
+    /// Lấy emergency access logs theo accessor DID.
+    /// </summary>
+    Task<List<EmergencyAccessRecord>> GetEmergencyAccessByAccessorAsync(string accessorDid);
+
+    /// <summary>
+    /// Lấy toàn bộ emergency access logs.
+    /// </summary>
+    Task<List<EmergencyAccessRecord>> GetAllEmergencyAccessAsync();
 }

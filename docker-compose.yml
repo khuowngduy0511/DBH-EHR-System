@@ -99,6 +99,39 @@ services:
       start_period: 10s
 
   # ===========================================================================
+  # ASP.NET Core Blockchain Service
+  # ===========================================================================
+  blockchain_service:
+    build:
+      context: .
+      dockerfile: src/DBH.Blockchain.Service/Dockerfile
+    container_name: dbh_blockchain_service
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__BlockchainDb: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      ServiceUrls__AuthService: "http://gateway:5000"
+      ServiceUrls__EhrService: "http://gateway:5000"
+    ports:
+      - "5090:5090"
+    depends_on:
+      auth_service:
+        condition: service_healthy
+      ehr_service:
+        condition: service_healthy
+      pg_primary:
+        condition: service_healthy
+    networks:
+      - dbh_network
+    profiles:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
   # PostgreSQL Primary (Read-Write) - Bitnami with built-in replication
   # ===========================================================================
   pg_primary:

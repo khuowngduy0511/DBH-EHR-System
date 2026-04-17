@@ -1,0 +1,27 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+public class ConsentServiceTests_RevokeConsent_WithFakeId_ShouldReturnError : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+    "AuthService",
+    "ConsentService"
+    };
+
+    [SkippableFact]
+    public async Task RevokeConsent_WithFakeId_ShouldReturnError()
+    {
+    await AuthenticateAsAdminAsync(ConsentClient);
+    var request = new { reason = "No longer needed" };
+    var response = await PostAsJsonWithRetryAsync(ConsentClient, ApiEndpoints.Consents.Revoke(Guid.NewGuid()), request);
+    
+    Assert.True(response.StatusCode == HttpStatusCode.NotFound || response.StatusCode == HttpStatusCode.BadRequest);
+    var json = await ReadJsonResponseAsync(response);
+    Assert.False(json.GetProperty("success").GetBoolean());
+    }
+}

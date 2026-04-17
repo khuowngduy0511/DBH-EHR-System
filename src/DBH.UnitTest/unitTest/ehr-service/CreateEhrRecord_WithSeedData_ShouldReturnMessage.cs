@@ -1,0 +1,26 @@
+﻿using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+public class EhrServiceTests_CreateEhrRecord_WithSeedData_ShouldReturnMessage : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+    "AuthService",
+    "EhrService"
+    };
+
+    [SkippableFact]
+    public async Task CreateEhrRecord_WithSeedData_ShouldReturnMessage()
+    {
+    await AuthenticateAsDoctorAsync(EhrClient);
+    var request = new { patientId = TestSeedData.PatientUserId, orgId = TestSeedData.HospitalAOrgId, encounterId = Guid.NewGuid(), data = new { doctorId = TestSeedData.DoctorUserId, diagnosis = "Common cold", treatment = "Rest", notes = "Follow-up in 7 days" } };
+    var response = await PostAsJsonWithRetryAsync(EhrClient, ApiEndpoints.Ehr.CreateRecord, request);
+    
+    var json = await ReadJsonResponseAsync(response);
+    Assert.True(json.ValueKind == JsonValueKind.Object);
+    }
+}
