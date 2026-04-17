@@ -11,9 +11,12 @@ public static class VietnamTimeHelper
             OperatingSystem.IsWindows() ? "SE Asia Standard Time" : "Asia/Ho_Chi_Minh");
 
     /// <summary>
-    /// Thời gian hiện tại theo múi giờ Việt Nam (UTC+7)
+    /// Thời gian hiện tại theo múi giờ Việt Nam (UTC+7), đánh dấu Kind=Utc để tương thích PostgreSQL timestamptz.
+    /// Giá trị số lưu trong DB là giờ VN (UTC+7), không phải UTC.
     /// </summary>
-    public static DateTime Now => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
+    public static DateTime Now => DateTime.SpecifyKind(
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone),
+        DateTimeKind.Utc);
 
     /// <summary>
     /// Ngày hiện tại theo múi giờ Việt Nam
