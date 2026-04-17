@@ -1,4 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/ehr/records/patient/{{patientId}}"
-method: GET
-order: 4000
