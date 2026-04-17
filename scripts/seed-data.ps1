@@ -183,7 +183,6 @@ foreach ($d in $doctors) {
         gender         = $d.gender
         dateOfBirth    = "$($d.dob)T00:00:00Z"
         address        = $d.address
-        organizationId = $null
     } $adminToken | Out-Null
 
     $login = Api POST "$AUTH/login" @{ email = $d.email; password = "Doctor@123" }
@@ -239,7 +238,6 @@ foreach ($s in $staffList) {
         gender         = $s.gender
         dateOfBirth    = "$($s.dob)T00:00:00Z"
         address        = $s.address
-        organizationId = $null
     } $adminToken | Out-Null
 
     $login = Api POST "$AUTH/login" @{ email = $s.email; password = "Staff@123" }
@@ -891,7 +889,6 @@ for ($i = 0; $i -lt 3; $i++) {
         granteeType  = "DOCTOR"
         permission   = "READ"
         purpose      = "TREATMENT"
-        conditions   = '{"scope":"all_records","note":"Dong y cho bac si xem ho so"}'
         durationDays = 90
     } $patToken
     $consentId = if ($consent.data.consentId) { $consent.data.consentId } elseif ($consent.consentId) { $consent.consentId } else { $null }
@@ -907,7 +904,6 @@ $consent = Api POST $CONSU @{
     granteeType  = "DOCTOR"
     permission   = "FULL_ACCESS"
     purpose      = "RESEARCH"
-    conditions   = '{"scope":"anonymized","project":"Nghien cuu tang huyet ap 2024"}'
     durationDays = 365
 } $patientData[0].token
 Write-Host "  Consent: $($patientData[0].name) -> $($doctorData[1].name) (FULL_ACCESS/RESEARCH)"
@@ -921,7 +917,6 @@ $consent = Api POST $CONSU @{
     granteeType  = "ORGANIZATION"
     permission   = "READ"
     purpose      = "TREATMENT"
-    conditions   = '{"scope":"all_records","note":"Dong y chia se ho so cho benh vien"}'
     durationDays = 365
 } $patientData[0].token
 Write-Host "  Consent: $($patientData[0].name) -> Hospital A (ORG/READ)"
@@ -935,7 +930,6 @@ $consent = Api POST $CONSU @{
     granteeType  = "DOCTOR"
     permission   = "READ"
     purpose      = "TREATMENT"
-    conditions   = '{"scope":"pediatric_records"}'
     durationDays = 180
 } $patientData[2].token
 Write-Host "  Consent: $($patientData[2].name) -> $($doctorData[2].name) (READ/TREATMENT)"
@@ -949,7 +943,6 @@ $consent = Api POST $CONSU @{
     granteeType  = "ORGANIZATION"
     permission   = "READ"
     purpose      = "TREATMENT"
-    conditions   = '{"scope":"all_records","note":"Dong y chia se ho so cho benh vien B"}'
     durationDays = 365
 } $patientData[4].token
 Write-Host "  Consent: $($patientData[4].name) -> Hospital B (ORG/READ)"
@@ -1081,6 +1074,7 @@ $auditLogs = @(
     },
     @{
         actorDid       = $patientData[0].did;    actorUserId = $patientData[0].userId; actorType = "PATIENT"; action = "GRANT_CONSENT";  targetType = "CONSENT";      result = "SUCCESS"
+        patientDid     = $patientData[0].did;    patientId = $patientData[0].patientId
         ipAddress      = "192.168.1.100"; userAgent = "DBH-Mobile/2.0 Android"; metadata = '{"grantee":"dr.hieu","permission":"READ","purpose":"TREATMENT"}'
     },
     @{

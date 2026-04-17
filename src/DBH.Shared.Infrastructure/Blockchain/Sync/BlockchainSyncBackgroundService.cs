@@ -1,3 +1,4 @@
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -289,7 +290,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
                 Success = true,
                 TxHash = string.Empty,
                 BlockNumber = 0,
-                Timestamp = DateTime.UtcNow
+                Timestamp = VietnamTimeHelper.Now
             }
             : new BlockchainTransactionResult
             {

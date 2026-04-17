@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.EHR.Service.Models.Enums;
+using DBH.Shared.Contracts;
 
 namespace DBH.EHR.Service.Models.Entities;
 
@@ -41,10 +42,10 @@ public class EhrSubscription
     public DateOnly? NextBillingDate { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = VietnamTimeHelper.Now;
 
     // Navigation
     [ForeignKey("EhrId")]

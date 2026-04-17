@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.Services;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
@@ -164,7 +165,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { 
     Status = "healthy", 
     Service = "DBH.Appointment.Service",
-    Timestamp = DateTime.UtcNow 
+    Timestamp = VietnamTimeHelper.Now 
 }))
 .WithName("HealthCheck")
 .WithTags("Health");

@@ -38,11 +38,6 @@ public class GrantConsentRequest
     public ConsentPurpose Purpose { get; set; } = ConsentPurpose.TREATMENT;
 
     /// <summary>
-    /// Additional conditions as JSON (report types, etc.)
-    /// </summary>
-    public string? Conditions { get; set; }
-
-    /// <summary>
     /// Duration in days (null = no expiration)
     /// </summary>
     public int? DurationDays { get; set; }
@@ -72,7 +67,6 @@ public class ConsentResponse
     public Guid? EhrId { get; set; }
     public ConsentPermission Permission { get; set; }
     public ConsentPurpose Purpose { get; set; }
-    public string? Conditions { get; set; }
     public DateTime GrantedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public ConsentStatus Status { get; set; }

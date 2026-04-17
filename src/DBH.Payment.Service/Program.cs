@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Payment.Service.DbContext;
 using DBH.Payment.Service.Services;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
@@ -152,7 +153,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     Status = "healthy",
     Service = "DBH.Payment.Service",
-    Timestamp = DateTime.UtcNow
+    Timestamp = VietnamTimeHelper.Now
 }))
 .WithName("HealthCheck")
 .WithTags("Health");

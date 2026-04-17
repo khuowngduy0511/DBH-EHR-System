@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using DBH.Shared.Contracts;
 
 namespace DBH.Auth.Service.Services;
 
@@ -34,7 +35,7 @@ public class OrganizationServiceClient : IOrganizationServiceClient
                 orgId = organizationId,
                 departmentId,
                 jobTitle,
-                startDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                startDate = VietnamTimeHelper.Today,
                 status = "ACTIVE"
             };
 

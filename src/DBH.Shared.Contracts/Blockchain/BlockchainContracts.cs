@@ -168,7 +168,7 @@ public class EmergencyAccessRecord
 public class EhrHashCommittedEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();
-    public DateTime OccurredAt { get; init; } = DateTime.UtcNow;
+    public DateTime OccurredAt { get; init; } = VietnamTimeHelper.Now;
     public Guid EhrId { get; init; }
     public int Version { get; init; }
     public string ContentHash { get; init; } = string.Empty;
@@ -179,7 +179,7 @@ public class EhrHashCommittedEvent
 public class ConsentCommittedEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();
-    public DateTime OccurredAt { get; init; } = DateTime.UtcNow;
+    public DateTime OccurredAt { get; init; } = VietnamTimeHelper.Now;
     public string ConsentId { get; init; } = string.Empty;
     public string PatientDid { get; init; } = string.Empty;
     public string GranteeDid { get; init; } = string.Empty;
@@ -191,7 +191,7 @@ public class ConsentCommittedEvent
 public class AuditCommittedEvent
 {
     public Guid EventId { get; init; } = Guid.NewGuid();
-    public DateTime OccurredAt { get; init; } = DateTime.UtcNow;
+    public DateTime OccurredAt { get; init; } = VietnamTimeHelper.Now;
     public string AuditId { get; init; } = string.Empty;
     public string TxHash { get; init; } = string.Empty;
     public long BlockNumber { get; init; }
