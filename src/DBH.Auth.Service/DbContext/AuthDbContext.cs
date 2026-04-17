@@ -214,6 +214,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         var nurseRoleId = Guid.Parse("44444444-4444-4444-4444-444444444444");
         var patientRoleId = Guid.Parse("55555555-5555-5555-5555-555555555555");
         var receptionistRoleId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var labtechRoleId = Guid.Parse("77777777-7777-7777-7777-777777777777");
 
         var adminUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var doctorUserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -247,7 +248,8 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             new Role { RoleId = 3, RoleName = RoleName.Pharmacist },
             new Role { RoleId = 4, RoleName = RoleName.Nurse },
             new Role { RoleId = 5, RoleName = RoleName.Patient },
-            new Role { RoleId = 6, RoleName = RoleName.Receptionist }
+            new Role { RoleId = 6, RoleName = RoleName.Receptionist },
+            new Role { RoleId = 7, RoleName = RoleName.LabTech }
         );
 
         // 2. Users

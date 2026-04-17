@@ -243,7 +243,13 @@ public class AppointmentService : IAppointmentService
 
         var totalCount = await query.CountAsync();
         var items = await query
-            .OrderByDescending(a => a.ScheduledAt)
+            .OrderBy(a => a.Status == AppointmentStatus.PENDING ? 1 :
+                          a.Status == AppointmentStatus.CONFIRMED ? 2 :
+                          a.Status == AppointmentStatus.CHECKED_IN ? 3 :
+                          a.Status == AppointmentStatus.IN_PROGRESS ? 4 :
+                          a.Status == AppointmentStatus.COMPLETED ? 5 :
+                          a.Status == AppointmentStatus.CANCELLED ? 6 : 99)
+            .ThenBy(a => a.ScheduledAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

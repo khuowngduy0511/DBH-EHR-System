@@ -604,6 +604,7 @@ public class AuthService : IAuthService
         var normalizedStatus = string.IsNullOrWhiteSpace(query.Status) ? null : query.Status.Trim();
         var normalizedRole = query.Role?.ToString();
         var normalizedSpecialty = string.IsNullOrWhiteSpace(query.Specialty) ? null : query.Specialty.Trim();
+        var normalizedSearch = string.IsNullOrWhiteSpace(query.SearchTerm) ? null : query.SearchTerm.Trim();
 
         RoleName? requestedRole = null;
         var roleIsStaffBucket = false;
@@ -667,6 +668,14 @@ public class AuthService : IAuthService
         var userQuery = _dbContext.Users
             .AsNoTracking()
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            userQuery = userQuery.Where(u => 
+                (u.FullName != null && EF.Functions.ILike(u.FullName, $"%{normalizedSearch}%")) || 
+                (u.Email != null && EF.Functions.ILike(u.Email, $"%{normalizedSearch}%")) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, $"%{normalizedSearch}%")));
+        }
 
         if (!string.IsNullOrWhiteSpace(normalizedGender))
         {
