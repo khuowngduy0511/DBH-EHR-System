@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -146,7 +147,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { 
     Status = "healthy", 
     Service = "DBH.Notification.Service",
-    Timestamp = DateTime.UtcNow 
+    Timestamp = VietnamTimeHelper.Now 
 }))
 .WithName("HealthCheck")
 .WithTags("Health");

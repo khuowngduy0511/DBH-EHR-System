@@ -2,6 +2,7 @@
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -134,7 +135,7 @@ public class OrganizationService : IOrganizationService
         if (request.Website != null) org.Website = request.Website;
         if (request.LogoUrl != null) org.LogoUrl = request.LogoUrl;
         if (request.Settings != null) org.Settings = request.Settings;
-        org.UpdatedAt = DateTime.UtcNow;
+        org.UpdatedAt = VietnamTimeHelper.Now;
 
         await _context.SaveChangesAsync();
 
@@ -155,7 +156,7 @@ public class OrganizationService : IOrganizationService
         }
 
         org.Status = OrganizationStatus.INACTIVE;
-        org.UpdatedAt = DateTime.UtcNow;
+        org.UpdatedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<bool> { Success = true, Message = "Organization deactivated", Data = true };
@@ -174,9 +175,9 @@ public class OrganizationService : IOrganizationService
         }
 
         org.Status = OrganizationStatus.ACTIVE;
-        org.VerifiedAt = DateTime.UtcNow;
+        org.VerifiedAt = VietnamTimeHelper.Now;
         org.VerifiedBy = verifiedByUserId;
-        org.UpdatedAt = DateTime.UtcNow;
+        org.UpdatedAt = VietnamTimeHelper.Now;
 
         // Generate DID for blockchain
         org.OrgDid = $"did:fabric:org:{org.OrgId:N}";
@@ -300,7 +301,7 @@ public class OrganizationService : IOrganizationService
         if (request.RoomNumbers != null) dept.RoomNumbers = request.RoomNumbers;
         if (request.PhoneExtension != null) dept.PhoneExtension = request.PhoneExtension;
         if (request.Status.HasValue) dept.Status = request.Status.Value;
-        dept.UpdatedAt = DateTime.UtcNow;
+        dept.UpdatedAt = VietnamTimeHelper.Now;
 
         await _context.SaveChangesAsync();
 
@@ -321,7 +322,7 @@ public class OrganizationService : IOrganizationService
         }
 
         dept.Status = DepartmentStatus.INACTIVE;
-        dept.UpdatedAt = DateTime.UtcNow;
+        dept.UpdatedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<bool> { Success = true, Message = "Department deactivated", Data = true };
@@ -374,7 +375,7 @@ public class OrganizationService : IOrganizationService
             OrgPermissions = request.OrgPermissions,
             Notes = request.Notes,
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
 
@@ -546,7 +547,7 @@ public class OrganizationService : IOrganizationService
         if (request.Status.HasValue) membership.Status = request.Status.Value;
         if (request.OrgPermissions != null) membership.OrgPermissions = request.OrgPermissions;
         if (request.Notes != null) membership.Notes = request.Notes;
-        membership.UpdatedAt = DateTime.UtcNow;
+        membership.UpdatedAt = VietnamTimeHelper.Now;
         membership.UpdatedBy = actorUserId;
 
         await _context.SaveChangesAsync();
@@ -569,8 +570,8 @@ public class OrganizationService : IOrganizationService
         }
 
         membership.Status = MembershipStatus.TERMINATED;
-        membership.EndDate = DateOnly.FromDateTime(DateTime.UtcNow);
-        membership.UpdatedAt = DateTime.UtcNow;
+        membership.EndDate = VietnamTimeHelper.Today;
+        membership.UpdatedAt = VietnamTimeHelper.Now;
         membership.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -629,7 +630,7 @@ public class OrganizationService : IOrganizationService
         config.EncryptedClientId = MasterKeyEncryptionService.Encrypt(request.ClientId);
         config.EncryptedApiKey = MasterKeyEncryptionService.Encrypt(request.ApiKey);
         config.EncryptedChecksumKey = MasterKeyEncryptionService.Encrypt(request.ChecksumKey);
-        config.UpdatedAt = DateTime.UtcNow;
+        config.UpdatedAt = VietnamTimeHelper.Now;
 
         await _context.SaveChangesAsync();
 

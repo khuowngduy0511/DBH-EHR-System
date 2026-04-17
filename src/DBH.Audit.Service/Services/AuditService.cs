@@ -2,6 +2,7 @@ using DBH.Audit.Service.DbContext;
 using DBH.Audit.Service.DTOs;
 using DBH.Audit.Service.Models.Entities;
 using DBH.Audit.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,9 +54,9 @@ public class AuditService : IAuditService
                 ErrorMessage = request.ErrorMessage,
                 IpAddress = request.IpAddress,
                 UserAgent = request.UserAgent,
-                BlockchainTimestamp = DateTime.UtcNow,
-                SyncedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
+                BlockchainTimestamp = VietnamTimeHelper.Now,
+                SyncedAt = VietnamTimeHelper.Now,
+                CreatedAt = VietnamTimeHelper.Now
             };
 
             // Commit to blockchain via IAuditBlockchainService
@@ -272,9 +273,9 @@ public class AuditService : IAuditService
                 Result = Enum.TryParse<AuditResult>(entry.Result, true, out var ar) ? ar : AuditResult.SUCCESS,
                 IpAddress = entry.IpAddress,
                 Metadata = entry.Metadata,
-                BlockchainTimestamp = DateTime.TryParse(entry.Timestamp, out var ts) ? ts : DateTime.UtcNow,
-                SyncedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
+                BlockchainTimestamp = DateTime.TryParse(entry.Timestamp, out var ts) ? ts : VietnamTimeHelper.Now,
+                SyncedAt = VietnamTimeHelper.Now,
+                CreatedAt = VietnamTimeHelper.Now
             };
 
             _db.AuditLogs.Add(auditLog);

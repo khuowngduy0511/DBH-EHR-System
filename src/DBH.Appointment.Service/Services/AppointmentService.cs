@@ -5,6 +5,7 @@ using DBH.Appointment.Service.DbContext;
 using DBH.Appointment.Service.DTOs;
 using DBH.Appointment.Service.Models.Entities;
 using DBH.Appointment.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Events;
 using DBH.Shared.Contracts.Commands;
 using DBH.Shared.Infrastructure.Messaging;
@@ -52,7 +53,7 @@ public class AppointmentService : IAppointmentService
             ? request.ScheduledAt
             : request.ScheduledAt.ToUniversalTime();
 
-        if (scheduledAtUtc < DateTime.UtcNow)
+        if (scheduledAtUtc < VietnamTimeHelper.Now)
         {
             return new ApiResponse<AppointmentResponse>
             {
@@ -155,7 +156,7 @@ public class AppointmentService : IAppointmentService
             ScheduledAt = scheduledAtUtc,
             Status = AppointmentStatus.PENDING,
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
 
@@ -275,7 +276,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = status;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
         
@@ -313,7 +314,7 @@ public class AppointmentService : IAppointmentService
             ? newDate
             : newDate.ToUniversalTime();
 
-        if (newDateUtc < DateTime.UtcNow)
+        if (newDateUtc < VietnamTimeHelper.Now)
         {
             return new ApiResponse<AppointmentResponse>
             {
@@ -373,7 +374,7 @@ public class AppointmentService : IAppointmentService
 
         appointment.ScheduledAt = newDateUtc;
         appointment.Status = AppointmentStatus.RESCHEDULED;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -422,7 +423,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CONFIRMED;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -488,7 +489,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -544,7 +545,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -597,7 +598,7 @@ public class AppointmentService : IAppointmentService
             };
 
         appointment.Status = AppointmentStatus.CHECKED_IN;
-        appointment.UpdatedAt = DateTime.UtcNow;
+        appointment.UpdatedAt = VietnamTimeHelper.Now;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
 
@@ -718,7 +719,7 @@ public class AppointmentService : IAppointmentService
         if (appointment.Status == AppointmentStatus.CONFIRMED || appointment.Status == AppointmentStatus.CHECKED_IN)
         {
             appointment.Status = AppointmentStatus.IN_PROGRESS;
-            appointment.UpdatedAt = DateTime.UtcNow;
+            appointment.UpdatedAt = VietnamTimeHelper.Now;
             appointment.UpdatedBy = actorUserId;
         }
 
@@ -730,7 +731,7 @@ public class AppointmentService : IAppointmentService
             OrgId = request.OrgId,
             Notes = request.Notes,
             CreatedBy = actorUserId,
-            UpdatedAt = DateTime.UtcNow,
+            UpdatedAt = VietnamTimeHelper.Now,
             UpdatedBy = actorUserId
         };
 
@@ -844,7 +845,7 @@ public class AppointmentService : IAppointmentService
             encounter.Notes = request.Notes;
         }
 
-        encounter.UpdatedAt = DateTime.UtcNow;
+        encounter.UpdatedAt = VietnamTimeHelper.Now;
         encounter.UpdatedBy = actorUserId;
 
         await _context.SaveChangesAsync();
@@ -881,14 +882,14 @@ public class AppointmentService : IAppointmentService
             encounter.Notes = request.Notes;
         }
 
-        encounter.UpdatedAt = DateTime.UtcNow;
+        encounter.UpdatedAt = VietnamTimeHelper.Now;
         encounter.UpdatedBy = actorUserId;
 
         // Mark appointment as COMPLETED
         if (encounter.Appointment != null && encounter.Appointment.Status != AppointmentStatus.COMPLETED)
         {
             encounter.Appointment.Status = AppointmentStatus.COMPLETED;
-            encounter.Appointment.UpdatedAt = DateTime.UtcNow;
+            encounter.Appointment.UpdatedAt = VietnamTimeHelper.Now;
             encounter.Appointment.UpdatedBy = actorUserId;
         }
 
@@ -1373,7 +1374,7 @@ public class AppointmentService : IAppointmentService
         try
         {
             var reminderTime = appointment.ScheduledAt.AddHours(-1);
-            if (reminderTime > DateTime.UtcNow)
+            if (reminderTime > VietnamTimeHelper.Now)
             {
                 await _messagePublisher.ScheduleAsync(
                     new NotifyAppointmentReminderCommand

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using DBH.Auth.Service.Models.Enums;
+using DBH.Shared.Contracts;
 
 namespace DBH.Auth.Service.Models.Entities;
 
@@ -24,7 +25,7 @@ public class User
     public string? OrganizationId { get; set; } 
     public UserStatus Status { get; set; }
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
     public Guid? CreatedBy { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public Guid? UpdatedBy { get; set; }
