@@ -39,6 +39,12 @@ secrets.json
 **/download*/
 
 # =============================================================================
+# POSTMAN COLLECTIONS (local generated requests and environment variables)
+# =============================================================================
+postman/collections/**/*.json
+postman/environments/**/*.json
+DBH_EHR_E2E_Test.postman_collection.json
+# =============================================================================
 # CRYPTOGRAPHY OUTPUTS (generated artifacts)
 # =============================================================================
 **/*.aes
