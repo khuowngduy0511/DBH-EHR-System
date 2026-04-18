@@ -141,6 +141,7 @@ public class GetAllUsersQuery
     public string? Status { get; set; }
     public string? Role { get; set; }
     public string? Specialty { get; set; }
+    public string? SearchTerm { get; set; }
 }
 
 public class PagedResponse<T>

@@ -1,4 +1,4 @@
-﻿using DBH.Organization.Service.DbContext;
+using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
@@ -469,12 +469,22 @@ public class OrganizationService : IOrganizationService
         var query = _context.Memberships
             .Include(m => m.Organization)
             .Include(m => m.Department)
-            .Where(m => m.OrgId == request.OrgId)
             .Where(m => m.Status == MembershipStatus.ACTIVE);
+
+        if (request.OrgId.HasValue)
+        {
+            query = query.Where(m => m.OrgId == request.OrgId.Value);
+        }
 
         if (request.DepartmentId.HasValue)
         {
             query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Specialty))
+        {
+            var searchPattern = $"%{request.Specialty.Trim()}%";
+            query = query.Where(m => m.Specialty != null && EF.Functions.ILike(m.Specialty, searchPattern));
         }
 
         var candidates = await query

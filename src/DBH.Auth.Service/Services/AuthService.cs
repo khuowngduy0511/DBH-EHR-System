@@ -914,6 +914,18 @@ public class AuthService : IAuthService
             .AsNoTracking()
             .AsQueryable();
 
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            var searchTerm = query.SearchTerm.Trim();
+            var searchPattern = $"%{searchTerm}%";
+            userQuery = userQuery.Where(u => 
+                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                u.UserId.ToString() == searchTerm
+            );
+        }
+
         if (!string.IsNullOrWhiteSpace(normalizedGender))
         {
             userQuery = userQuery.Where(u => u.Gender != null && EF.Functions.ILike(u.Gender, normalizedGender));
