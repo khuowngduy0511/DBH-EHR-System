@@ -1,0 +1,61 @@
+using System.Net;
+using System.Net.Http.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+/// <summary>
+/// Bad case: Try to upload empty file
+/// Expected: 400 Bad Request
+/// </summary>
+public class EhrServiceTests_AddEhrFile_WithEmptyFile_ShouldReturnBadRequest : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "EhrService"
+    };
+
+    [SkippableFact]
+    public async Task AddEhrFile_WithEmptyFile_ShouldReturnBadRequest()
+    {
+        await AuthenticateAsDoctorAsync(EhrClient);
+
+        // Step 1: Create an EHR record first
+        var createRequest = new 
+        { 
+            patientId = TestSeedData.PatientUserId, 
+            orgId = TestSeedData.HospitalAOrgId, 
+            encounterId = Guid.NewGuid(), 
+            data = new 
+            { 
+                doctorId = TestSeedData.DoctorUserId, 
+                diagnosis = "Test", 
+                treatment = "Test", 
+                notes = "Empty file test" 
+            } 
+        };
+
+        var createResponse = await PostAsJsonWithRetryAsync(EhrClient, ApiEndpoints.Ehr.CreateRecord, createRequest);
+        var createJson = await ReadJsonResponseAsync(createResponse);
+        
+        if (!createJson.TryGetProperty("ehrId", out var ehrIdElement))
+            return; // Skip if EHR creation fails
+
+        var ehrId = Guid.Parse(ehrIdElement.GetString()!);
+
+        // Step 2: Upload an empty file
+        using var fileContent = new MultipartFormDataContent();
+        var emptyFileData = new ByteArrayContent(new byte[] { });
+        fileContent.Add(emptyFileData, "file", "empty-file.txt");
+
+        var response = await EhrClient.PostAsync(
+            ApiEndpoints.Ehr.AddFile(ehrId), 
+            fileContent);
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.BadRequest || 
+            response.StatusCode == HttpStatusCode.UnprocessableEntity,
+            $"Expected 400 or 422, got {response.StatusCode}");
+    }
+}

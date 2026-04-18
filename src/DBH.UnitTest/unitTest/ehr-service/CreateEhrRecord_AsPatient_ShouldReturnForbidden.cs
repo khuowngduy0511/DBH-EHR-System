@@ -1,0 +1,47 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+/// <summary>
+/// Permission test: Try to create EHR with non-doctor role (should fail)
+/// Expected: 403 Forbidden or error response
+/// </summary>
+public class EhrServiceTests_CreateEhrRecord_AsPatient_ShouldReturnForbidden : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "EhrService"
+    };
+
+    [SkippableFact]
+    public async Task CreateEhrRecord_AsPatient_ShouldReturnForbidden()
+    {
+        // Authenticate as patient (not doctor)
+        await AuthenticateAsPatientAsync(EhrClient);
+
+        var request = new 
+        { 
+            patientId = TestSeedData.PatientUserId, 
+            orgId = TestSeedData.HospitalAOrgId, 
+            encounterId = Guid.NewGuid(), 
+            data = new 
+            { 
+                doctorId = TestSeedData.DoctorUserId, 
+                diagnosis = "Test", 
+                treatment = "Test", 
+                notes = "Test" 
+            } 
+        };
+
+        var response = await PostAsJsonWithRetryAsync(EhrClient, ApiEndpoints.Ehr.CreateRecord, request);
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Forbidden || 
+            response.StatusCode == HttpStatusCode.Unauthorized,
+            $"Expected 403 or 401, got {response.StatusCode}");
+    }
+}

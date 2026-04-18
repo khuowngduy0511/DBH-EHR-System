@@ -1,0 +1,41 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.UnitTests;
+
+/// <summary>
+/// Bad case: Get EHR records for non-existent organization
+/// Expected: 200 OK with empty array or 404 Not Found
+/// </summary>
+public class EhrServiceTests_GetOrgEhrRecords_WithNonExistentOrg_ShouldReturnEmptyOrNotFound : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[]
+    {
+        "AuthService",
+        "EhrService"
+    };
+
+    [SkippableFact]
+    public async Task GetOrgEhrRecords_WithNonExistentOrg_ShouldReturnEmptyOrNotFound()
+    {
+        await AuthenticateAsDoctorAsync(EhrClient);
+
+        var fakeOrgId = Guid.NewGuid();
+        
+        var response = await GetWithRetryAsync(EhrClient, ApiEndpoints.Ehr.OrgRecords(fakeOrgId));
+
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK || 
+            response.StatusCode == HttpStatusCode.NotFound,
+            $"Expected 200 or 404, got {response.StatusCode}");
+
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var json = await ReadJsonResponseAsync(response);
+            // Empty array or no results is acceptable
+            Assert.True(json.ValueKind == JsonValueKind.Array, "Should return array");
+        }
+    }
+}
