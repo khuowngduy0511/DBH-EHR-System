@@ -71,9 +71,23 @@ dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj --filter "FullyQualifiedName~Au
 dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj -v detailed
 ```
 
+```powershell
+# Run all tests and save full test output
+dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj `
+	--logger "console;verbosity=detailed" `
+	--logger "trx;LogFileName=DBH.UnitTest.trx" `
+	--results-directory .\TestResults `
+	--diag .\logs\DBH.UnitTest.diag.txt `
+	| Tee-Object -FilePath .\logs\DBH.UnitTest.console.log
+```
+
+This writes:
+- `.\logs\DBH.UnitTest.console.log` for console output
+- `.\logs\DBH.UnitTest.diag.txt` for full dotnet/vstest diagnostics
+- `.\TestResults\DBH.UnitTest.trx` for structured test results
+
 ## Key Design Patterns
 
-- **`ApiEndpoints.cs`** — No raw URL strings in tests; all routes centralized
 - **`TestSeedData.cs`** — Tests use real seed data IDs to verify DB content matches
 - **Response validation** — Checks `success` flag, `message` content, and `data` fields (not just HTTP status codes)
 - **Not-found testing** — Fake GUIDs verify proper 404 responses with error messages

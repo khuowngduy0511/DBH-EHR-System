@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
@@ -25,6 +26,12 @@
     <None Update="appsettings.Test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DBH.Consent.Service\DBH.Consent.Service.csproj" />
+    <ProjectReference Include="..\DBH.EHR.Service\DBH.EHR.Service.csproj" />
+    <ProjectReference Include="..\DBH.Shared.Infrastructure\DBH.Shared.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
