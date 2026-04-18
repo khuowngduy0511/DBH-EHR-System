@@ -60,4 +60,6 @@ cd /d/DBH-EHR-Backend
 bash scripts/seed-data.sh
 ```
 
+Chỉ build 1 cái
+docker compose -f docker-compose.dev.yml up -d --build --no-deps appointment_service
 
