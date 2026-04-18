@@ -19,12 +19,12 @@ public class AppointmentServiceTests_CreateAppointment_WithInvalidData_ShouldRet
     [SkippableFact]
     public async Task CreateAppointment_WithMissingPatientId_ShouldReturnBadRequest()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         var request = new 
         { 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "General checkup" 
         };
@@ -40,13 +40,13 @@ public class AppointmentServiceTests_CreateAppointment_WithInvalidData_ShouldRet
     [SkippableFact]
     public async Task CreateAppointment_WithPastDate_ShouldReturnBadRequest()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         var request = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(-1), // Past date
             reason = "General checkup" 
         };

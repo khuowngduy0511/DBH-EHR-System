@@ -20,14 +20,14 @@ public class AppointmentServiceTests_ConfirmAppointment_WithValidId_ShouldConfir
     [SkippableFact]
     public async Task ConfirmAppointment_WithValidId_ShouldConfirm()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         // First create an appointment
         var createRequest = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "Confirm test", 
             notes = "Test confirmation" 
@@ -51,7 +51,7 @@ public class AppointmentServiceTests_ConfirmAppointment_WithValidId_ShouldConfir
         var appointmentId = Guid.Parse(apptIdElement.GetString()!);
 
         // Now confirm it - authenticate as doctor
-        await AuthenticateAsDoctorAsync(AppointmentClient);
+        await AuthenticateAsFreshDoctorAsync(AppointmentClient);
 
         var confirmResponse = await PutAsJsonWithRetryAsync(
             AppointmentClient, 

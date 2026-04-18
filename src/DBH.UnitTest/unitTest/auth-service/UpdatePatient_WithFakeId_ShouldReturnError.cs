@@ -11,6 +11,8 @@ public class AuthServiceTests_UpdatePatient_WithFakeId_ShouldReturnError : ApiTe
     [SkippableFact]
     public async Task UpdatePatient_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakePatientId = Guid.NewGuid();
         var request = new { dob = "1990-01-01", bloodType = "O+" };
         var url = ApiEndpoints.Patients.Update(fakePatientId);

@@ -21,16 +21,16 @@ public class AppointmentLifecycleTests : ApiTestBase
     [SkippableFact]
     public async Task AppointmentLifecycle_CreateConfirmRescheduleCheckIn_ShouldSucceed()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         // =====================================================================
         // STEP 1: CREATE APPOINTMENT
         // =====================================================================
         var createRequest = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "Lifecycle test", 
             notes = "Full lifecycle testing" 
@@ -67,7 +67,7 @@ public class AppointmentLifecycleTests : ApiTestBase
         // =====================================================================
         // STEP 3: CONFIRM APPOINTMENT (as doctor)
         // =====================================================================
-        await AuthenticateAsDoctorAsync(AppointmentClient);
+        await AuthenticateAsFreshDoctorAsync(AppointmentClient);
 
         var confirmResponse = await PutAsJsonWithRetryAsync(
             AppointmentClient, 
@@ -82,7 +82,7 @@ public class AppointmentLifecycleTests : ApiTestBase
         // =====================================================================
         // STEP 4: RESCHEDULE APPOINTMENT
         // =====================================================================
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         var newDate = DateTime.UtcNow.AddDays(14);
         var rescheduleResponse = await PutAsJsonWithRetryAsync(

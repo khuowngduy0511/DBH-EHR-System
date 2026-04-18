@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using DBH.UnitTest.Shared;
 
@@ -20,24 +19,14 @@ public class AppointmentServiceTests_SearchDoctors_WithValidCriteria_ShouldRetur
     [SkippableFact]
     public async Task SearchDoctors_WithValidCriteria_ShouldReturnDoctors()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        await AuthenticateAsAdminAsync(AppointmentClient);
 
-        var query = new 
-        { 
-            organizationId = TestSeedData.HospitalAOrgId, 
-            specialty = "General Practice", 
-            page = 1, 
-            pageSize = 10 
-        };
-
-        var response = await PostAsJsonWithRetryAsync(
-            AppointmentClient, 
-            ApiEndpoints.Appointments.SearchDoctors, 
-            query);
+        var url = $"{ApiEndpoints.Appointments.SearchDoctors}?organizationId={TestSeedData.HospitalAOrgId}&specialty=General%20Practice&page=1&pageSize=10";
+        var response = await GetWithRetryAsync(AppointmentClient, url);
 
         Assert.True(
-            response.StatusCode == HttpStatusCode.OK || 
-            response.StatusCode == HttpStatusCode.BadRequest, // May fail if endpoint uses GET
+            response.StatusCode == HttpStatusCode.OK ||
+            response.StatusCode == HttpStatusCode.BadRequest,
             $"Expected 200 or 400, got {response.StatusCode}");
     }
 }

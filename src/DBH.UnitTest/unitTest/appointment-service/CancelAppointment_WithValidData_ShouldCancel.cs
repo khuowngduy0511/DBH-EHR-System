@@ -20,14 +20,14 @@ public class AppointmentServiceTests_CancelAppointment_WithValidData_ShouldCance
     [SkippableFact]
     public async Task CancelAppointment_WithValidData_ShouldCancel()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         // First create an appointment
         var createRequest = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "Cancel test", 
             notes = "Test cancellation" 

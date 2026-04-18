@@ -11,6 +11,8 @@ public class AppointmentServiceTests_Reschedule_WithFakeId_ShouldReturnError : A
     [SkippableFact]
     public async Task Reschedule_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsDoctorAsync(AuthClient);
+
         var fakeId = Guid.NewGuid();
         var newDate = DateTime.UtcNow.AddDays(1).ToString("o");
         var url = ApiEndpoints.Appointments.Reschedule(fakeId, newDate);

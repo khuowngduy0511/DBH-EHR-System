@@ -10,6 +10,8 @@ public class NotificationServiceTests_MarkAllNotificationsAsRead_WithFakeUserId_
     [SkippableFact]
     public async Task MarkAllNotificationsAsRead_WithFakeUserId_ShouldReturnResult()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakeUserDid = "did:dbh:user:00000000-0000-0000-0000-000000000000";
         var url = ApiEndpoints.Notifications.MarkAllRead(fakeUserDid);
         

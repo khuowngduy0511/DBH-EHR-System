@@ -10,6 +10,8 @@ public class OrganizationServiceTests_DeleteOrganization_WithFakeId_ShouldReturn
     [SkippableFact]
     public async Task DeleteOrganization_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakeOrgId = Guid.NewGuid();
         var url = ApiEndpoints.Organizations.Delete(fakeOrgId);
         

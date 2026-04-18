@@ -72,19 +72,20 @@ dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj -v detailed
 ```
 
 ```powershell
-# Run all tests and save full test output
+# Run tests with plain HTTP trace output (no diagnostic noise)
 dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj `
-	--logger "console;verbosity=detailed" `
-	--logger "trx;LogFileName=DBH.UnitTest.trx" `
-	--results-directory .\TestResults `
-	--diag .\logs\DBH.UnitTest.diag.txt `
-	| Tee-Object -FilePath .\logs\DBH.UnitTest.console.log
+	--logger "console;verbosity=quiet" `
+	-v minimal
 ```
 
-This writes:
-- `.\logs\DBH.UnitTest.console.log` for console output
-- `.\logs\DBH.UnitTest.diag.txt` for full dotnet/vstest diagnostics
-- `.\TestResults\DBH.UnitTest.trx` for structured test results
+Optional (only when you need artifacts):
+```powershell
+dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj `
+	--logger "console;verbosity=quiet" `
+	--logger "trx;LogFileName=DBH.UnitTest.trx" `
+	--results-directory .\TestResults `
+	-v minimal
+```
 
 ## Key Design Patterns
 

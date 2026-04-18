@@ -20,13 +20,13 @@ public class AppointmentServiceTests_CreateAppointment_WithValidData_ShouldCreat
     [SkippableFact]
     public async Task CreateAppointment_WithValidData_ShouldCreate()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         var request = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "General checkup", 
             notes = "Patient has flu-like symptoms" 

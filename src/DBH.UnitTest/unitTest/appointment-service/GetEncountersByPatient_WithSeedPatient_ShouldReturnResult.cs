@@ -16,8 +16,9 @@ public class AppointmentServiceTests_GetEncountersByPatient_WithSeedPatient_Shou
     [SkippableFact]
     public async Task GetEncountersByPatient_WithSeedPatient_ShouldReturnResult()
     {
+    var freshUsers = await CreateFreshDoctorAndPatientAsync();
     await AuthenticateAsAdminAsync(AppointmentClient);
-    var response = await GetWithRetryAsync(AppointmentClient, $"{ApiEndpoints.Encounters.ByPatient(TestSeedData.PatientUserId)}?page=1&pageSize=10");
+    var response = await GetWithRetryAsync(AppointmentClient, $"{ApiEndpoints.Encounters.ByPatient(freshUsers.PatientUserId)}?page=1&pageSize=10");
     
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     var json = await ReadJsonResponseAsync(response);

@@ -20,14 +20,14 @@ public class AppointmentServiceTests_CheckInAppointment_WithValidId_ShouldCheckI
     [SkippableFact]
     public async Task CheckInAppointment_WithValidId_ShouldCheckIn()
     {
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
         // First create an appointment
         var createRequest = new 
         { 
-            patientId = TestSeedData.PatientUserId, 
-            doctorId = TestSeedData.DoctorUserId, 
-            organizationId = TestSeedData.HospitalAOrgId, 
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
+            organizationId = freshUsers.OrganizationId,
             appointmentDate = DateTime.UtcNow.AddDays(7), 
             reason = "Check-in test", 
             notes = "Test check-in" 

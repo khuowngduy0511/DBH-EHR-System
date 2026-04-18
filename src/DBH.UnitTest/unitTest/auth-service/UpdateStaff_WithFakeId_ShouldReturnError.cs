@@ -11,6 +11,8 @@ public class AuthServiceTests_UpdateStaff_WithFakeId_ShouldReturnError : ApiTest
     [SkippableFact]
     public async Task UpdateStaff_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakeStaffId = Guid.NewGuid();
         var request = new { role = "Nurse", specialty = "General", licenseNumber = "STAFF123", verifiedStatus = true };
         var url = ApiEndpoints.Staff.Update(fakeStaffId);
