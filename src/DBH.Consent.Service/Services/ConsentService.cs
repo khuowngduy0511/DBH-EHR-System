@@ -6,6 +6,7 @@ using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Notification;
+using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
@@ -178,9 +179,9 @@ public class ConsentService : IConsentService
             EhrId = request.EhrId,
             Permission = request.Permission,
             Purpose = request.Purpose,
-            GrantedAt = VietnamTimeHelper.Now,
+            GrantedAt = VietnamTime.DatabaseNow,
             ExpiresAt = request.DurationDays.HasValue 
-                ? VietnamTimeHelper.Now.AddDays(request.DurationDays.Value) 
+                ? VietnamTime.DatabaseNow.AddDays(request.DurationDays.Value)
                 : null,
             Status = ConsentStatus.ACTIVE,
             GrantTxHash = txHash
@@ -350,7 +351,7 @@ public class ConsentService : IConsentService
         }
 
         consent.Status = ConsentStatus.REVOKED;
-        consent.RevokedAt = VietnamTimeHelper.Now;
+        consent.RevokedAt = VietnamTime.DatabaseNow;
         consent.RevokeReason = request.RevokeReason;
         consent.RevokeTxHash = txHash;
 
@@ -486,7 +487,7 @@ public class ConsentService : IConsentService
                 // Update local cache from blockchain data
                 consent.Status = Enum.TryParse<ConsentStatus>(bcConsent.Status, true, out var status) 
                     ? status : consent.Status;
-                consent.LastSyncedAt = VietnamTimeHelper.Now;
+                consent.LastSyncedAt = VietnamTime.DatabaseNow;
                 await _context.SaveChangesAsync();
 
                 return new ApiResponse<ConsentResponse>
@@ -507,7 +508,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        consent.LastSyncedAt = VietnamTimeHelper.Now;
+        consent.LastSyncedAt = VietnamTime.DatabaseNow;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<ConsentResponse>
@@ -568,7 +569,7 @@ public class ConsentService : IConsentService
             Reason = request.Reason,
             RequestedDurationDays = request.RequestedDurationDays,
             Status = AccessRequestStatus.PENDING,
-            ExpiresAt = VietnamTimeHelper.Now.AddDays(7) // Request expires in 7 days
+            ExpiresAt = VietnamTime.DatabaseNow.AddDays(7) // Request expires in 7 days
         };
 
         _context.AccessRequests.Add(accessRequest);
@@ -699,7 +700,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        request.RespondedAt = VietnamTimeHelper.Now;
+        request.RespondedAt = VietnamTime.DatabaseNow;
         request.ResponseReason = response.ResponseReason;
 
         if (response.Approve)

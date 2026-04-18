@@ -17,12 +17,12 @@ public class AppointmentServiceTests_RescheduleFlow_CreateThenRescheduleAndClean
     public async Task RescheduleFlow_CreateThenRescheduleAndCleanup_ShouldSucceed()
     {
         // 1. Create appointment
-        await AuthenticateAsPatientAsync(AppointmentClient);
+        var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
         
         var createRequest = new 
         { 
-            patientId = TestSeedData.PatientUserId,
-            doctorId = TestSeedData.DoctorUserId,
+            patientId = freshUsers.PatientUserId,
+            doctorId = freshUsers.DoctorUserId,
             appointmentDate = DateTime.UtcNow.AddDays(5).ToString("o"),
             reason = "Test appointment for reschedule"
         };

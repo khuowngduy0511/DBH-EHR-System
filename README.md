@@ -59,4 +59,6 @@ cd ../..
 C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\seed-data.ps1
 ```
 
+Chỉ build 1 cái
+docker compose -f docker-compose.dev.yml up -d --build --no-deps appointment_service
 

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using DBH.Auth.Service.Models.Enums;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 
 namespace DBH.Auth.Service.Models.Entities;
 
@@ -13,5 +14,5 @@ public class UserCredential
     public User User { get; set; } = null!;
     public ProviderType Provider { get; set; }
     public string? CredentialValue { get; set; }
-    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
+    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
 }

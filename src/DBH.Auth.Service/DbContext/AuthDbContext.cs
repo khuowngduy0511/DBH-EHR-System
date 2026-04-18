@@ -288,12 +288,12 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         modelBuilder.Entity<UserSecurity>().HasData(securities);
 
         // 5. Profiles (Seed basic placeholders)
-        modelBuilder.Entity<Doctor>().HasData(new Doctor { DoctorId = Guid.NewGuid(), UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", VerifiedStatus = VerificationStatus.Verified });
-        modelBuilder.Entity<Patient>().HasData(new Patient { PatientId = Guid.NewGuid(), UserId = patientUserId, Dob = new DateOnly(1990, 1, 1) });
+        modelBuilder.Entity<Doctor>().HasData(new Doctor { DoctorId = doctorUserId, UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", VerifiedStatus = VerificationStatus.Verified });
+        modelBuilder.Entity<Patient>().HasData(new Patient { PatientId = patientUserId, UserId = patientUserId, Dob = new DateOnly(1990, 1, 1) });
         modelBuilder.Entity<Staff>().HasData(
-            new Staff { StaffId = Guid.NewGuid(), UserId = pharmacistUserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM123", VerifiedStatus = VerificationStatus.Verified },
-            new Staff { StaffId = Guid.NewGuid(), UserId = nurseUserId, Role = StaffRole.Nurse, Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified },
-            new Staff { StaffId = Guid.NewGuid(), UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified }
+            new Staff { StaffId = pharmacistUserId, UserId = pharmacistUserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM123", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = nurseUserId, UserId = nurseUserId, Role = StaffRole.Nurse, Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = receptionistUserId, UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified }
         );
     }
 }

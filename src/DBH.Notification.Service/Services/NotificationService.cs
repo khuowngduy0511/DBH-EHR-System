@@ -3,6 +3,7 @@ using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
 using DBH.Notification.Service.Models.Enums;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace DBH.Notification.Service.Services;
@@ -42,7 +43,7 @@ public class NotificationService : INotificationService
                 ActionUrl = request.ActionUrl,
                 Data = request.Data,
                 ExpiresAt = request.ExpiresAt,
-                CreatedAt = VietnamTimeHelper.Now
+                CreatedAt = VietnamTime.DatabaseNow
             };
 
             _db.Notifications.Add(notification);
@@ -53,7 +54,7 @@ public class NotificationService : INotificationService
             if (notification.Channel == NotificationChannel.InApp)
             {
                 notification.Status = NotificationStatus.Sent;
-                notification.SentAt = VietnamTimeHelper.Now;
+                notification.SentAt = VietnamTime.DatabaseNow;
                 await _db.SaveChangesAsync();
             }
 
@@ -83,8 +84,8 @@ public class NotificationService : INotificationService
                 Priority = request.Priority,
                 Channel = NotificationChannel.InApp,
                 Status = NotificationStatus.Sent,
-                SentAt = VietnamTimeHelper.Now,
-                CreatedAt = VietnamTimeHelper.Now
+                SentAt = VietnamTime.DatabaseNow,
+                CreatedAt = VietnamTime.DatabaseNow
             };
             _db.Notifications.Add(notification);
             count++;
@@ -140,7 +141,7 @@ public class NotificationService : INotificationService
         foreach (var n in notifications)
         {
             n.Status = NotificationStatus.Read;
-            n.ReadAt = VietnamTimeHelper.Now;
+            n.ReadAt = VietnamTime.DatabaseNow;
         }
 
         await _db.SaveChangesAsync();
@@ -156,7 +157,7 @@ public class NotificationService : INotificationService
         foreach (var n in unread)
         {
             n.Status = NotificationStatus.Read;
-            n.ReadAt = VietnamTimeHelper.Now;
+            n.ReadAt = VietnamTime.DatabaseNow;
         }
 
         await _db.SaveChangesAsync();
@@ -198,7 +199,7 @@ public class NotificationService : INotificationService
             existing.OsVersion = request.OsVersion;
             existing.AppVersion = request.AppVersion;
             existing.IsActive = true;
-            existing.UpdatedAt = VietnamTimeHelper.Now;
+            existing.UpdatedAt = VietnamTime.DatabaseNow;
         }
         else
         {
@@ -212,8 +213,8 @@ public class NotificationService : INotificationService
                 OsVersion = request.OsVersion,
                 AppVersion = request.AppVersion,
                 IsActive = true,
-                CreatedAt = VietnamTimeHelper.Now,
-                UpdatedAt = VietnamTimeHelper.Now
+                CreatedAt = VietnamTime.DatabaseNow,
+                UpdatedAt = VietnamTime.DatabaseNow
             };
             _db.DeviceTokens.Add(existing);
         }
@@ -238,7 +239,7 @@ public class NotificationService : INotificationService
         if (device == null) return ApiResponse<bool>.Fail("Device not found");
 
         device.IsActive = false;
-        device.UpdatedAt = VietnamTimeHelper.Now;
+        device.UpdatedAt = VietnamTime.DatabaseNow;
         await _db.SaveChangesAsync();
         return ApiResponse<bool>.Ok(true);
     }
@@ -252,7 +253,7 @@ public class NotificationService : INotificationService
         foreach (var d in devices)
         {
             d.IsActive = false;
-            d.UpdatedAt = VietnamTimeHelper.Now;
+            d.UpdatedAt = VietnamTime.DatabaseNow;
         }
 
         await _db.SaveChangesAsync();
@@ -274,8 +275,8 @@ public class NotificationService : INotificationService
             pref = new NotificationPreference
             {
                 UserDid = userDid,
-                CreatedAt = VietnamTimeHelper.Now,
-                UpdatedAt = VietnamTimeHelper.Now
+                CreatedAt = VietnamTime.DatabaseNow,
+                UpdatedAt = VietnamTime.DatabaseNow
             };
             _db.NotificationPreferences.Add(pref);
             await _db.SaveChangesAsync();
@@ -307,7 +308,7 @@ public class NotificationService : INotificationService
         if (request.QuietHoursEnabled.HasValue) pref.QuietHoursEnabled = request.QuietHoursEnabled.Value;
         if (request.QuietHoursStart.HasValue) pref.QuietHoursStart = request.QuietHoursStart.Value;
         if (request.QuietHoursEnd.HasValue) pref.QuietHoursEnd = request.QuietHoursEnd.Value;
-        pref.UpdatedAt = VietnamTimeHelper.Now;
+        pref.UpdatedAt = VietnamTime.DatabaseNow;
 
         await _db.SaveChangesAsync();
         return ApiResponse<PreferencesResponse>.Ok(MapPreferencesToResponse(pref));

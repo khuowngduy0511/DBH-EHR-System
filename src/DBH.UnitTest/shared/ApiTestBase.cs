@@ -31,16 +31,18 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
 
     private readonly List<HttpClient> _clients = new();
     private bool _disposed;
+    private FreshDoctorPatientUsers? _instanceFreshUsers;
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _tokenCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, FreshDoctorPatientUsers> _freshDoctorPatientCache = new();
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _readyServices =
         new(StringComparer.OrdinalIgnoreCase);
     private static readonly System.Threading.SemaphoreSlim _tokenLock = new(1, 1);
+    private static readonly System.Threading.SemaphoreSlim _freshDoctorPatientLock = new(1, 1);
     private static readonly System.Threading.SemaphoreSlim _readinessLock = new(1, 1);
     private static readonly object _httpLogLock = new();
     private static readonly string _httpLogPath = Path.Combine(AppContext.BaseDirectory, "dbh-unittest-http.log");
     private static bool _httpLogInitialized;
-    private static bool _httpLogPathAnnounced;
 
     private const int MaxRequestRetries = 4;
     private const int RetryBaseDelayMs = 200;
@@ -49,6 +51,16 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
     private const int HttpLogBodyMaxLength = 4000;
 
     protected virtual IReadOnlyCollection<string> RequiredServices => Array.Empty<string>();
+    protected virtual bool UseDynamicDoctorPatientUsers => false;
+
+    public sealed record FreshDoctorPatientUsers(
+        Guid DoctorUserId,
+        string DoctorEmail,
+        string DoctorPassword,
+        Guid PatientUserId,
+        string PatientEmail,
+        string PatientPassword,
+        Guid OrganizationId);
 
     protected ApiTestBase()
     {
@@ -98,6 +110,12 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
                     $"Network error: required service '{serviceName}' is unavailable for '{GetType().Name}'. Details: {ex.Message}");
                 return;
             }
+        }
+
+        if (UseDynamicDoctorPatientUsers)
+        {
+            _instanceFreshUsers = await CreateFreshDoctorAndPatientAsync($"{GetType().Name}:{Guid.NewGuid():N}");
+            TestRuntimeContext.Set(_instanceFreshUsers);
         }
     }
 
@@ -390,12 +408,6 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
                 _httpLogInitialized = true;
             }
 
-            if (!_httpLogPathAnnounced)
-            {
-                Console.WriteLine($"HTTP test log: {_httpLogPath}");
-                _httpLogPathAnnounced = true;
-            }
-
             File.AppendAllText(_httpLogPath, message + Environment.NewLine);
         }
 
@@ -537,6 +549,14 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
     /// </summary>
     protected async Task<JsonElement> AuthenticateAsDoctorAsync(HttpClient client, [CallerMemberName] string testName = "")
     {
+        if (UseDynamicDoctorPatientUsers)
+        {
+            var users = _instanceFreshUsers ?? await CreateFreshDoctorAndPatientAsync(testName);
+            _instanceFreshUsers ??= users;
+            TestRuntimeContext.Set(users);
+            return await AuthenticateAsync(client, users.DoctorEmail, users.DoctorPassword, testName);
+        }
+
         return await AuthenticateAsync(client, TestSeedData.DoctorEmail, TestSeedData.DoctorPassword, testName);
     }
 
@@ -545,7 +565,144 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
     /// </summary>
     protected async Task<JsonElement> AuthenticateAsPatientAsync(HttpClient client, [CallerMemberName] string testName = "")
     {
+        if (UseDynamicDoctorPatientUsers)
+        {
+            var users = _instanceFreshUsers ?? await CreateFreshDoctorAndPatientAsync(testName);
+            _instanceFreshUsers ??= users;
+            TestRuntimeContext.Set(users);
+            return await AuthenticateAsync(client, users.PatientEmail, users.PatientPassword, testName);
+        }
+
         return await AuthenticateAsync(client, TestSeedData.PatientEmail, TestSeedData.PatientPassword, testName);
+    }
+
+    /// <summary>
+    /// Creates a fresh doctor + patient for the current test and returns their credentials and IDs.
+    /// The pair is cached by test name, so multiple calls in one test reuse the same users.
+    /// </summary>
+    protected async Task<FreshDoctorPatientUsers> CreateFreshDoctorAndPatientAsync([CallerMemberName] string testName = "")
+    {
+        var cacheKey = string.IsNullOrWhiteSpace(testName) ? Guid.NewGuid().ToString("N") : testName;
+        if (_freshDoctorPatientCache.TryGetValue(cacheKey, out var existingUsers))
+        {
+            return existingUsers;
+        }
+
+        await _freshDoctorPatientLock.WaitAsync();
+        try
+        {
+            if (_freshDoctorPatientCache.TryGetValue(cacheKey, out existingUsers))
+            {
+                return existingUsers;
+            }
+
+            var suffix = Guid.NewGuid().ToString("N")[..10];
+            var patientEmail = $"ut.patient.{suffix}@test.local";
+            var patientPassword = "Patient@123";
+            var doctorEmail = $"ut.doctor.{suffix}@test.local";
+            var doctorPassword = "Doctor@123";
+            var patientPhone = "09" + DateTime.UtcNow.ToString("HHmmssff");
+            var doctorPhone = "08" + DateTime.UtcNow.ToString("HHmmssff");
+
+            var registerPatientRequest = new
+            {
+                fullName = $"UT Patient {suffix}",
+                email = patientEmail,
+                password = patientPassword,
+                phone = patientPhone
+            };
+
+            var registerPatientResponse = await PostAsJsonWithRetryAsync(
+                AuthClient,
+                ApiEndpoints.Auth.Register,
+                registerPatientRequest,
+                default,
+                testName);
+
+            registerPatientResponse.EnsureSuccessStatusCode();
+            var patientJson = await ReadJsonResponseAsync(registerPatientResponse);
+            var patientUserId = ExtractUserId(patientJson, "register patient", testName);
+
+            await AuthenticateAsAdminAsync(AuthClient, testName);
+
+            var registerDoctorRequest = new
+            {
+                fullName = $"UT Doctor {suffix}",
+                email = doctorEmail,
+                password = doctorPassword,
+                phone = doctorPhone,
+                gender = "Male",
+                dateOfBirth = "1985-01-01",
+                address = "Unit test generated",
+                organizationId = TestSeedData.HospitalAOrgId.ToString(),
+                specialty = "General Medicine",
+                licenseNumber = $"UT-LIC-{suffix}"
+            };
+
+            var registerDoctorResponse = await PostAsJsonWithRetryAsync(
+                AuthClient,
+                ApiEndpoints.Auth.RegisterDoctor,
+                registerDoctorRequest,
+                default,
+                testName);
+
+            registerDoctorResponse.EnsureSuccessStatusCode();
+            var doctorJson = await ReadJsonResponseAsync(registerDoctorResponse);
+            var doctorUserId = ExtractUserId(doctorJson, "register doctor", testName);
+
+            var users = new FreshDoctorPatientUsers(
+                doctorUserId,
+                doctorEmail,
+                doctorPassword,
+                patientUserId,
+                patientEmail,
+                patientPassword,
+                TestSeedData.HospitalAOrgId);
+
+            _freshDoctorPatientCache[cacheKey] = users;
+            return users;
+        }
+        finally
+        {
+            _freshDoctorPatientLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Creates and authenticates a fresh patient account for the current test.
+    /// Also returns paired doctor/patient IDs for test request payloads.
+    /// </summary>
+    protected async Task<FreshDoctorPatientUsers> AuthenticateAsFreshPatientAsync(HttpClient client, [CallerMemberName] string testName = "")
+    {
+        var users = await CreateFreshDoctorAndPatientAsync(testName);
+        await AuthenticateAsync(client, users.PatientEmail, users.PatientPassword, testName);
+        return users;
+    }
+
+    /// <summary>
+    /// Creates and authenticates a fresh doctor account for the current test.
+    /// Also returns paired doctor/patient IDs for test request payloads.
+    /// </summary>
+    protected async Task<FreshDoctorPatientUsers> AuthenticateAsFreshDoctorAsync(HttpClient client, [CallerMemberName] string testName = "")
+    {
+        var users = await CreateFreshDoctorAndPatientAsync(testName);
+        await AuthenticateAsync(client, users.DoctorEmail, users.DoctorPassword, testName);
+        return users;
+    }
+
+    private static Guid ExtractUserId(JsonElement responseJson, string action, string testName)
+    {
+        if (responseJson.TryGetProperty("userId", out var userIdElement))
+        {
+            var userIdText = userIdElement.GetString();
+            if (!string.IsNullOrWhiteSpace(userIdText) && Guid.TryParse(userIdText, out var parsedUserId))
+            {
+                return parsedUserId;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"{action} did not return a valid userId for test '{FormatTestName(testName)}'. Response: {responseJson}");
     }
 
     /// <summary>
@@ -581,6 +738,11 @@ public abstract class ApiTestBase : IDisposable, IAsyncLifetime
         if (_disposed)
         {
             return;
+        }
+
+        if (UseDynamicDoctorPatientUsers)
+        {
+            TestRuntimeContext.Clear();
         }
 
         foreach (var client in _clients)

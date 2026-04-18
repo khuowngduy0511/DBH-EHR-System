@@ -11,6 +11,8 @@ public class AppointmentServiceTests_UpdateEncounter_WithFakeId_ShouldReturnErro
     [SkippableFact]
     public async Task UpdateEncounter_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsDoctorAsync(AuthClient);
+
         var fakeEncounterId = Guid.NewGuid();
         var request = new { notes = "Updated encounter notes" };
         var url = ApiEndpoints.Encounters.Update(fakeEncounterId);

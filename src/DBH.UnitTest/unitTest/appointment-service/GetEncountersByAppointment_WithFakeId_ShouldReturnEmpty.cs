@@ -10,6 +10,8 @@ public class AppointmentServiceTests_GetEncountersByAppointment_WithFakeId_Shoul
     [SkippableFact]
     public async Task GetEncountersByAppointment_WithFakeId_ShouldReturnEmpty()
     {
+        await AuthenticateAsDoctorAsync(AuthClient);
+
         var fakeAppointmentId = Guid.NewGuid();
         var url = ApiEndpoints.Encounters.ByAppointment(fakeAppointmentId);
         

@@ -10,6 +10,8 @@ public class AuthServiceTests_GetUserId_WithMissingParams_ShouldReturnBadRequest
     [SkippableFact]
     public async Task GetUserId_WithMissingParams_ShouldReturnBadRequest()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var response = await GetWithRetryAsync(AuthClient, ApiEndpoints.Auth.UserId);
         
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

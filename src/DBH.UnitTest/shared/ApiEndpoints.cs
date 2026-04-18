@@ -166,8 +166,6 @@ public static class ApiEndpoints
         public static string Files(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/files";
         public static string AddFile(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/files";
         public static string DeleteFile(Guid ehrId, Guid fileId) => $"/api/v1/ehr/records/{ehrId}/files/{fileId}";
-        public static string DownloadIpfsRaw(string cid) => $"/api/v1/ehr/ipfs/{cid}/download";
-        public static string DownloadLatestIpfs(Guid ehrId) => $"/api/v1/ehr/records/{ehrId}/ipfs/download";
     }
 
     // =========================================================================

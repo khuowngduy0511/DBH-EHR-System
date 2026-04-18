@@ -11,6 +11,8 @@ public class OrganizationServiceTests_UpdateDepartment_WithFakeId_ShouldReturnEr
     [SkippableFact]
     public async Task UpdateDepartment_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakeDeptId = Guid.NewGuid();
         var request = new { name = "Updated Department", description = "Updated Desc" };
         var url = ApiEndpoints.Departments.Update(fakeDeptId);

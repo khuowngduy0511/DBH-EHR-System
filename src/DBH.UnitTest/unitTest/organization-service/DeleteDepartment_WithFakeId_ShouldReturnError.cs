@@ -10,6 +10,8 @@ public class OrganizationServiceTests_DeleteDepartment_WithFakeId_ShouldReturnEr
     [SkippableFact]
     public async Task DeleteDepartment_WithFakeId_ShouldReturnError()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var fakeDeptId = Guid.NewGuid();
         var url = ApiEndpoints.Departments.Delete(fakeDeptId);
         

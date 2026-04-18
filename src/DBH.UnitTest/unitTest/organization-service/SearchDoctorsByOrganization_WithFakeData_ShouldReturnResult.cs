@@ -11,6 +11,8 @@ public class OrganizationServiceTests_SearchDoctorsByOrganization_WithFakeData_S
     [SkippableFact]
     public async Task SearchDoctorsByOrganization_WithFakeData_ShouldReturnResult()
     {
+        await AuthenticateAsAdminAsync(AuthClient);
+
         var request = new { organizationId = Guid.NewGuid(), departmentId = (Guid?)null, specialty = "Cardiology" };
         
         var response = await PostAsJsonWithRetryAsync(AuthClient, ApiEndpoints.Memberships.SearchDoctors, request);

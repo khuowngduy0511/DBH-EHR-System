@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DBH.Auth.Service.Controllers;
 
 [ApiController]
-[Authorize(Roles = "Admin")]
+[Authorize]
 [Route("api/v1/staff")]
 public class StaffController : ControllerBase
 {
@@ -33,6 +33,7 @@ public class StaffController : ControllerBase
         _authService = authService;
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] GetAllUsersQuery query)
     {
@@ -46,6 +47,7 @@ public class StaffController : ControllerBase
         return Ok(result);
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpGet("{staffId:guid}")]
     public async Task<IActionResult> GetById(Guid staffId)
     {
@@ -58,6 +60,8 @@ public class StaffController : ControllerBase
         return Ok(MapToResponse(staff));
     }
 
+    [Authorize(Roles = "Admin,Receptionist")]
+    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStaffRequest request)
     {
@@ -87,6 +91,26 @@ public class StaffController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { staffId = staff.StaffId }, MapToResponse(staff));
     }
 
+    [Authorize(Roles = "Admin")]
+    [HttpPut("{staffId:guid}/verify")]
+    public async Task<IActionResult> Verify(Guid staffId)
+    {
+        var response = await _authService.VerifyStaffAsync(staffId);
+        if (!response.Success)
+        {
+            return NotFound(response);
+        }
+
+        var staff = await _staffRepository.GetByIdAsync(staffId);
+        return Ok(new
+        {
+            response.Message,
+            StaffId = staffId,
+            VerifiedStatus = staff?.VerifiedStatus.ToString() ?? VerificationStatus.Verified.ToString()
+        });
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpPut("{staffId:guid}")]
     public async Task<IActionResult> Update(Guid staffId, [FromBody] UpdateStaffRequest request)
     {
@@ -107,6 +131,7 @@ public class StaffController : ControllerBase
         return Ok(MapToResponse(staff));
     }
 
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{staffId:guid}")]
     public async Task<IActionResult> Delete(Guid staffId)
     {

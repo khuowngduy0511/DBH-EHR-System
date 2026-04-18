@@ -16,8 +16,9 @@ public class AppointmentServiceTests_GetPatientsByDoctor_WithSeedDoctor_ShouldRe
     [SkippableFact]
     public async Task GetPatientsByDoctor_WithSeedDoctor_ShouldReturnResult()
     {
+    var freshUsers = await CreateFreshDoctorAndPatientAsync();
     await AuthenticateAsAdminAsync(AppointmentClient);
-    var response = await GetWithRetryAsync(AppointmentClient, $"{ApiEndpoints.Appointments.PatientsByDoctor(TestSeedData.DoctorUserId)}?page=1&pageSize=10");
+    var response = await GetWithRetryAsync(AppointmentClient, $"{ApiEndpoints.Appointments.PatientsByDoctor(freshUsers.DoctorUserId)}?page=1&pageSize=10");
     
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     var json = await ReadJsonResponseAsync(response);

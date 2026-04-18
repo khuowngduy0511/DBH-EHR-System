@@ -4,6 +4,7 @@ using DBH.Appointment.Service.Services;
 using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
+using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -165,7 +166,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { 
     Status = "healthy", 
     Service = "DBH.Appointment.Service",
-    Timestamp = VietnamTimeHelper.Now 
+    Timestamp = VietnamTime.Now 
 }))
 .WithName("HealthCheck")
 .WithTags("Health");
