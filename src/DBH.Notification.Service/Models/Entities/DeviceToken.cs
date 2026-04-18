@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 
 namespace DBH.Notification.Service.Models.Entities;
 
@@ -75,13 +76,13 @@ public class DeviceToken
     /// Thời điểm đăng ký
     /// </summary>
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
+    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
     
     /// <summary>
     /// Thời điểm cập nhật cuối
     /// </summary>
     [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; } = VietnamTimeHelper.Now;
+    public DateTime UpdatedAt { get; set; } = VietnamTime.DatabaseNow;
     
     /// <summary>
     /// Lần cuối sử dụng thành công

@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Notification.Service.Models.Enums;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 
 namespace DBH.Notification.Service.Models.Entities;
 
@@ -125,7 +126,7 @@ public class NotificationEntity
     /// Thời điểm tạo
     /// </summary>
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
+    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
     
     /// <summary>
     /// Thời điểm gửi

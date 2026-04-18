@@ -166,11 +166,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { 
     Status = "healthy", 
     Service = "DBH.Appointment.Service",
-<<<<<<< HEAD
     Timestamp = VietnamTime.Now 
-=======
-    Timestamp = VietnamTimeHelper.Now 
->>>>>>> c64989431eefc1df7898ce816c01b3e3a7947b3b
 }))
 .WithName("HealthCheck")
 .WithTags("Health");
