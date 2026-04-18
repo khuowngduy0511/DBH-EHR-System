@@ -1,3 +1,4 @@
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using System.Text.Json.Serialization;
 
@@ -26,7 +27,7 @@ public class BlockchainSyncJob
     public string PayloadJson { get; init; } = string.Empty;
     public int Attempts { get; set; }
     public string? LastError { get; set; }
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; init; } = VietnamTimeHelper.Now;
 
     /// <summary>
     /// Called after the blockchain transaction succeeds so the caller can update the DB state.

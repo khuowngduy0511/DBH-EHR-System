@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using DBH.Shared.Infrastructure.Time;
+using DBH.Shared.Contracts;
 
 namespace DBH.Appointment.Service.Models.Entities;
 
@@ -35,7 +35,7 @@ public class Encounter
     public string? Notes { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     [Column("created_by")]
     public Guid? CreatedBy { get; set; }

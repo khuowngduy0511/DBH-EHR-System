@@ -151,6 +151,7 @@ services:
       - IpfsConfig__DownloadPath=/tmp/ipfs_downloads
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__ConsentService=http://consent_service:5004
+      - ServiceUrls__AuditService=http://audit_service:5005
       - ServiceUrls__NotificationService=http://notification_service:5006
       - HyperledgerFabric__Enabled=true
       - HyperledgerFabric__SimulationMode=false
@@ -208,6 +209,7 @@ services:
       - RabbitMQ__Password=dbh_123
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__EhrService=http://ehr_service:5003
+      - ServiceUrls__AuditService=http://audit_service:5005
       - ServiceUrls__NotificationService=http://notification_service:5006
       - HyperledgerFabric__Enabled=true
       - HyperledgerFabric__SimulationMode=false

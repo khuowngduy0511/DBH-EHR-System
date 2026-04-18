@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DBH.EHR.Service.DbContext;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.EHR.Service.Services;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
@@ -105,6 +106,12 @@ builder.Services.AddHttpClient("AuthService", client =>
     client.BaseAddress = new Uri(authUrl);
 });
 
+builder.Services.AddHttpClient("AuditService", client =>
+{
+    var auditUrl = builder.Configuration["ServiceUrls:AuditService"] ?? "http://localhost:5005";
+    client.BaseAddress = new Uri(auditUrl);
+});
+
 // ============================================================================
 // Notification Client  
 // ============================================================================
@@ -163,7 +170,7 @@ app.MapGet("/health", () => Results.Ok(new
 {
     Status = "healthy",
     Service = "DBH.EHR.Service",
-    Timestamp = DateTime.UtcNow
+    Timestamp = VietnamTimeHelper.Now
 }))
 .WithName("HealthCheck")
 .WithTags("Health");

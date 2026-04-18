@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using DBH.Shared.Contracts;
 
 namespace DBH.Auth.Service.Models.Entities;
 
@@ -12,7 +13,7 @@ public class Permission
 
     public string? Description { get; set; }
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
     
     public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
 }

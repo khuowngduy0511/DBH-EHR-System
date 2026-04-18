@@ -6,7 +6,7 @@ namespace DBH.Shared.Contracts.Commands;
 public abstract class NotificationCommand
 {
     public Guid CommandId { get; init; } = Guid.NewGuid();
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; init; } = VietnamTimeHelper.Now;
     public string? CorrelationId { get; init; }
 }
 

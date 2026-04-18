@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.Services;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
@@ -91,6 +92,12 @@ builder.Services.AddHttpClient("EhrService", client =>
     client.BaseAddress = new Uri(ehrUrl);
 });
 
+builder.Services.AddHttpClient("AuditService", client =>
+{
+    var auditUrl = builder.Configuration["ServiceUrls:AuditService"] ?? "http://localhost:5005";
+    client.BaseAddress = new Uri(auditUrl);
+});
+
 // ============================================================================
 // Blockchain Services (Hyperledger Fabric)
 // ============================================================================
@@ -152,7 +159,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { 
     Status = "healthy", 
     Service = "DBH.Consent.Service",
-    Timestamp = DateTime.UtcNow 
+    Timestamp = VietnamTimeHelper.Now 
 }))
 .WithName("HealthCheck")
 .WithTags("Health");

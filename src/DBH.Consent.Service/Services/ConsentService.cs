@@ -1,6 +1,7 @@
 using DBH.Consent.Service.DbContext;
 using DBH.Consent.Service.DTOs;
 using DBH.Consent.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.cryptography;
@@ -177,10 +178,9 @@ public class ConsentService : IConsentService
             EhrId = request.EhrId,
             Permission = request.Permission,
             Purpose = request.Purpose,
-            Conditions = request.Conditions,
-            GrantedAt = DateTime.UtcNow,
+            GrantedAt = VietnamTimeHelper.Now,
             ExpiresAt = request.DurationDays.HasValue 
-                ? DateTime.UtcNow.AddDays(request.DurationDays.Value) 
+                ? VietnamTimeHelper.Now.AddDays(request.DurationDays.Value) 
                 : null,
             Status = ConsentStatus.ACTIVE,
             GrantTxHash = txHash
@@ -211,6 +211,9 @@ public class ConsentService : IConsentService
                 _logger.LogWarning("Queued blockchain audit log failed for {ConsentId}: {Error}", consent.ConsentId, error);
                 return Task.CompletedTask;
             });
+
+        // Also POST to Audit Service for local DB storage (use original patientId for by-patient query)
+        _ = PostAuditLogToServiceAsync("GRANT_CONSENT", consent.ConsentId, request.PatientId, request.PatientId, "PATIENT");
 
         _logger.LogInformation(
             "Granted consent {ConsentId} from patient {PatientId} to grantee {GranteeId}",
@@ -347,7 +350,7 @@ public class ConsentService : IConsentService
         }
 
         consent.Status = ConsentStatus.REVOKED;
-        consent.RevokedAt = DateTime.UtcNow;
+        consent.RevokedAt = VietnamTimeHelper.Now;
         consent.RevokeReason = request.RevokeReason;
         consent.RevokeTxHash = txHash;
 
@@ -365,7 +368,7 @@ public class ConsentService : IConsentService
             PatientDid = consent.PatientDid,
             ConsentId = consent.ConsentId.ToString(),
             Result = "SUCCESS",
-            Timestamp = DateTime.UtcNow.ToString("o")
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
         };
 
         _blockchainSyncService.EnqueueAuditEntry(
@@ -375,6 +378,13 @@ public class ConsentService : IConsentService
                 _logger.LogWarning("Queued blockchain audit log failed for {ConsentId}: {Error}", consent.ConsentId, error);
                 return Task.CompletedTask;
             });
+
+        // Also POST to Audit Service for local DB storage
+        // consent.PatientId is the normalized userId — resolve back to original profile patientId for by-patient query
+        var revokeAuthClient = _httpClientFactory.CreateClient("AuthService");
+        var revokeBearer = GetBearerTokenFromContext();
+        var originalPatientId = await ResolveProfilePatientIdAsync(revokeAuthClient, consent.PatientId, revokeBearer) ?? consent.PatientId;
+        _ = PostAuditLogToServiceAsync("REVOKE_CONSENT", consent.ConsentId, originalPatientId, consent.PatientId, "PATIENT");
 
         _logger.LogInformation("Revoked consent {ConsentId}", consentId);
 
@@ -418,7 +428,7 @@ public class ConsentService : IConsentService
             patientCandidates.Contains(c.PatientId) &&
             granteeCandidates.Contains(c.GranteeId) &&
             c.Status == ConsentStatus.ACTIVE &&
-            (c.ExpiresAt == null || c.ExpiresAt > DateTime.UtcNow));
+            (c.ExpiresAt == null || c.ExpiresAt > VietnamTimeHelper.Now));
 
         // If specific EHR ID requested, check for it or null (all records)
         if (request.EhrId.HasValue)
@@ -476,7 +486,7 @@ public class ConsentService : IConsentService
                 // Update local cache from blockchain data
                 consent.Status = Enum.TryParse<ConsentStatus>(bcConsent.Status, true, out var status) 
                     ? status : consent.Status;
-                consent.LastSyncedAt = DateTime.UtcNow;
+                consent.LastSyncedAt = VietnamTimeHelper.Now;
                 await _context.SaveChangesAsync();
 
                 return new ApiResponse<ConsentResponse>
@@ -497,7 +507,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        consent.LastSyncedAt = DateTime.UtcNow;
+        consent.LastSyncedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<ConsentResponse>
@@ -558,7 +568,7 @@ public class ConsentService : IConsentService
             Reason = request.Reason,
             RequestedDurationDays = request.RequestedDurationDays,
             Status = AccessRequestStatus.PENDING,
-            ExpiresAt = DateTime.UtcNow.AddDays(7) // Request expires in 7 days
+            ExpiresAt = VietnamTimeHelper.Now.AddDays(7) // Request expires in 7 days
         };
 
         _context.AccessRequests.Add(accessRequest);
@@ -567,6 +577,27 @@ public class ConsentService : IConsentService
         _logger.LogInformation(
             "Created access request {RequestId} from {RequesterId} to patient {PatientId}",
             accessRequest.RequestId, accessRequest.RequesterId, accessRequest.PatientId);
+
+        // Audit: blockchain + Audit Service
+        var auditEntry = new AuditEntry
+        {
+            ActorDid = accessRequest.RequesterId.ToString(),
+            ActorType = accessRequest.RequesterType.ToString(),
+            Action = "CREATE_ACCESS_REQUEST",
+            TargetType = "ACCESS_REQUEST",
+            TargetId = accessRequest.RequestId.ToString(),
+            PatientDid = accessRequest.PatientId.ToString(),
+            Result = "SUCCESS",
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
+        };
+        _blockchainSyncService.EnqueueAuditEntry(
+            auditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for AccessRequest {RequestId}: {Error}", accessRequest.RequestId, error);
+                return Task.CompletedTask;
+            });
+        _ = PostAuditLogToServiceAsync("CREATE_ACCESS_REQUEST", accessRequest.RequestId, request.PatientId, accessRequest.RequesterId, accessRequest.RequesterType.ToString());
 
         // Notify patient about access request
         if (_notificationClient != null)
@@ -668,7 +699,7 @@ public class ConsentService : IConsentService
             };
         }
 
-        request.RespondedAt = DateTime.UtcNow;
+        request.RespondedAt = VietnamTimeHelper.Now;
         request.ResponseReason = response.ResponseReason;
 
         if (response.Approve)
@@ -712,6 +743,34 @@ public class ConsentService : IConsentService
             "Access request {RequestId} {Status} by patient",
             requestId, request.Status);
 
+        // Audit: blockchain + Audit Service
+        var respondAuditEntry = new AuditEntry
+        {
+            ActorDid = request.PatientId.ToString(),
+            ActorType = "PATIENT",
+            Action = request.Status == AccessRequestStatus.APPROVED ? "APPROVE_ACCESS_REQUEST" : "DENY_ACCESS_REQUEST",
+            TargetType = "ACCESS_REQUEST",
+            TargetId = request.RequestId.ToString(),
+            PatientDid = request.PatientId.ToString(),
+            Result = "SUCCESS",
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
+        };
+        _blockchainSyncService.EnqueueAuditEntry(
+            respondAuditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for AccessRequest response {RequestId}: {Error}", request.RequestId, error);
+                return Task.CompletedTask;
+            });
+        {
+            var respondAuthClient = _httpClientFactory.CreateClient("AuthService");
+            var respondBearer = GetBearerTokenFromContext();
+            var respondOriginalPatientId = await ResolveProfilePatientIdAsync(respondAuthClient, request.PatientId, respondBearer) ?? request.PatientId;
+            _ = PostAuditLogToServiceAsync(
+                request.Status == AccessRequestStatus.APPROVED ? "APPROVE_ACCESS_REQUEST" : "DENY_ACCESS_REQUEST",
+                request.RequestId, respondOriginalPatientId, request.PatientId, "PATIENT");
+        }
+
         // Notify requester about access request response
         if (_notificationClient != null)
         {
@@ -752,6 +811,32 @@ public class ConsentService : IConsentService
 
         request.Status = AccessRequestStatus.CANCELLED;
         await _context.SaveChangesAsync();
+
+        // Audit: blockchain + Audit Service
+        var cancelAuditEntry = new AuditEntry
+        {
+            ActorDid = request.RequesterId.ToString(),
+            ActorType = request.RequesterType.ToString(),
+            Action = "CANCEL_ACCESS_REQUEST",
+            TargetType = "ACCESS_REQUEST",
+            TargetId = request.RequestId.ToString(),
+            PatientDid = request.PatientId.ToString(),
+            Result = "SUCCESS",
+            Timestamp = VietnamTimeHelper.Now.ToString("o")
+        };
+        _blockchainSyncService.EnqueueAuditEntry(
+            cancelAuditEntry,
+            onFailure: error =>
+            {
+                _logger.LogWarning("Queued blockchain audit log failed for AccessRequest cancel {RequestId}: {Error}", request.RequestId, error);
+                return Task.CompletedTask;
+            });
+        {
+            var cancelAuthClient = _httpClientFactory.CreateClient("AuthService");
+            var cancelBearer = GetBearerTokenFromContext();
+            var cancelOriginalPatientId = await ResolveProfilePatientIdAsync(cancelAuthClient, request.PatientId, cancelBearer) ?? request.PatientId;
+            _ = PostAuditLogToServiceAsync("CANCEL_ACCESS_REQUEST", request.RequestId, cancelOriginalPatientId, request.RequesterId, request.RequesterType.ToString());
+        }
 
         return new ApiResponse<bool> { Success = true, Message = "Access request cancelled", Data = true };
     }
@@ -812,7 +897,6 @@ public class ConsentService : IConsentService
             EhrId = consent.EhrId,
             Permission = consent.Permission,
             Purpose = consent.Purpose,
-            Conditions = consent.Conditions,
             GrantedAt = consent.GrantedAt,
             ExpiresAt = consent.ExpiresAt,
             Status = consent.Status,
@@ -904,6 +988,117 @@ public class ConsentService : IConsentService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Reverse of ResolveUserIdAsync: given a userId, resolve back to the original
+    /// profilePatientId so that audit "by-patient" queries work correctly.
+    /// Calls GET /api/v1/auth/users/{userId} and extracts profiles.Patient.patientId.
+    /// </summary>
+    private async Task<Guid?> ResolveProfilePatientIdAsync(HttpClient authClient, Guid userId, string? bearerToken)
+    {
+        var response = await SendAuthGetAsync(authClient, $"/api/v1/auth/users/{userId}", bearerToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+
+        // Try profiles.Patient.patientId (camelCase)
+        if (doc.RootElement.TryGetProperty("profiles", out var profiles))
+        {
+            if (profiles.TryGetProperty("Patient", out var patientProfile)
+                && patientProfile.TryGetProperty("patientId", out var pid)
+                && pid.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pid.GetString(), out var parsed))
+            {
+                return parsed;
+            }
+            // Fallback PascalCase
+            if (profiles.TryGetProperty("Patient", out var patientProfile2)
+                && patientProfile2.TryGetProperty("PatientId", out var pid2)
+                && pid2.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pid2.GetString(), out var parsed2))
+            {
+                return parsed2;
+            }
+        }
+
+        // Try Profiles (PascalCase root)
+        if (doc.RootElement.TryGetProperty("Profiles", out var profilesPascal))
+        {
+            if (profilesPascal.TryGetProperty("Patient", out var patientProfile)
+                && patientProfile.TryGetProperty("PatientId", out var pid)
+                && pid.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pid.GetString(), out var parsed))
+            {
+                return parsed;
+            }
+            if (profilesPascal.TryGetProperty("Patient", out var patientProfile2)
+                && patientProfile2.TryGetProperty("patientId", out var pid2)
+                && pid2.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pid2.GetString(), out var parsed2))
+            {
+                return parsed2;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// POST audit log to the Audit Service HTTP API so it gets stored in PostgreSQL
+    /// for querying by both patient and actor.
+    /// </summary>
+    private async Task PostAuditLogToServiceAsync(string action, Guid targetId, Guid patientId, Guid? actorUserId, string actorType, Guid? orgId = null)
+    {
+        try
+        {
+            var auditClient = _httpClientFactory.CreateClient("AuditService");
+            var bearerToken = GetBearerTokenFromContext();
+
+            var auditPayload = new
+            {
+                actorDid = actorUserId?.ToString() ?? "SYSTEM",
+                actorUserId = actorUserId,
+                actorType = actorType,
+                action = action,
+                targetType = "CONSENT",
+                targetId = targetId,
+                patientDid = patientId.ToString(),
+                patientId = patientId,
+                organizationId = orgId,
+                result = "SUCCESS",
+                ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString(),
+                userAgent = _httpContextAccessor.HttpContext?.Request.Headers["User-Agent"].ToString()
+            };
+
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "api/v1/audit")
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(auditPayload),
+                    System.Text.Encoding.UTF8,
+                    "application/json")
+            };
+
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+            {
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            }
+
+            var response = await auditClient.SendAsync(requestMessage);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Audit Service returned {StatusCode} for consent audit log POST (ConsentId={ConsentId}, Action={Action})",
+                    response.StatusCode, targetId, action);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to POST consent audit log to Audit Service for ConsentId={ConsentId}, Action={Action}", targetId, action);
+        }
     }
 }
 

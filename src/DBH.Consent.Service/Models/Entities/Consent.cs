@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Consent.Service.Models.Enums;
+using DBH.Shared.Contracts;
 
 namespace DBH.Consent.Service.Models.Entities;
 
@@ -71,14 +72,8 @@ public class Consent
     [MaxLength(30)]
     public ConsentPurpose Purpose { get; set; }
 
-    /// <summary>
-    /// Điều kiện bổ sung (report types được phép, etc.)
-    /// </summary>
-    [Column("conditions", TypeName = "jsonb")]
-    public string? Conditions { get; set; }
-
     [Column("granted_at")]
-    public DateTime GrantedAt { get; set; } = DateTime.UtcNow;
+    public DateTime GrantedAt { get; set; } = VietnamTimeHelper.Now;
 
     [Column("expires_at")]
     public DateTime? ExpiresAt { get; set; }
@@ -118,11 +113,11 @@ public class Consent
     /// Thời điểm sync cuối từ blockchain
     /// </summary>
     [Column("last_synced_at")]
-    public DateTime LastSyncedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastSyncedAt { get; set; } = VietnamTimeHelper.Now;
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = VietnamTimeHelper.Now;
 }
