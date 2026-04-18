@@ -39,7 +39,7 @@ public class AuthController : ControllerBase
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost("register-doctor")]
     public async Task<IActionResult> RegisterDoctor([FromBody] RegisterDoctorRequest request)
     {
@@ -54,7 +54,7 @@ public class AuthController : ControllerBase
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost("register-staff")]
     public async Task<IActionResult> RegisterStaff([FromBody] RegisterStaffRequest request)
     {
@@ -70,7 +70,7 @@ public class AuthController : ControllerBase
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost("registerStaffDoctor")]
     public async Task<IActionResult> RegisterStaffDoctor([FromBody] RegisterStaffDoctorRequest request)
     {

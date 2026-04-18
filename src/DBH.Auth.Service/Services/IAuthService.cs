@@ -9,6 +9,8 @@ public interface IAuthService
     Task<AuthResponse> RegisterDoctorAsync(RegisterDoctorRequest request);
     Task<AuthResponse> RegisterStaffAsync(RegisterStaffRequest request);
     Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request);
+    Task<AuthResponse> VerifyDoctorAsync(Guid doctorId);
+    Task<AuthResponse> VerifyStaffAsync(Guid staffId);
     Task<AuthResponse> UpdateRoleAsync(UpdateRoleRequest request);
     Task<AuthResponse> UpdateUserAsync(Guid userId, AdminUpdateUserRequest request);
     Task<AuthResponse> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, bool isAdminOverride = false);
