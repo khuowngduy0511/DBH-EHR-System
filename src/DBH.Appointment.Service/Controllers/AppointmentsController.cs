@@ -71,10 +71,13 @@ public class AppointmentsController : ControllerBase
         [FromQuery] Guid? doctorId,
         [FromQuery] Guid? orgId,
         [FromQuery] AppointmentStatus? status,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        [FromQuery] string? searchTerm,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
-        var result = await _appointmentService.GetAppointmentsAsync(patientId, doctorId, orgId, status, page, pageSize);
+        var result = await _appointmentService.GetAppointmentsAsync(patientId, doctorId, orgId, status, fromDate, toDate, searchTerm, page, pageSize);
         return Ok(result);
     }
 
@@ -207,9 +210,9 @@ public class AppointmentsController : ControllerBase
     [Authorize(Roles = "Receptionist,Doctor,Admin")]
     [ProducesResponseType(typeof(PagedResponse<DoctorPatientResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<DoctorPatientResponse>>> GetPatientsByDoctor(
-        Guid doctorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        Guid doctorId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? searchTerm = null)
     {
-        var result = await _appointmentService.GetPatientsByDoctorAsync(doctorId, page, pageSize);
+        var result = await _appointmentService.GetPatientsByDoctorAsync(doctorId, page, pageSize, searchTerm);
         return Ok(result);
     }
 }
