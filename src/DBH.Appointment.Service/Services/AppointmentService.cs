@@ -1292,7 +1292,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor not found"
+                Message = "Không tìm thấy bác sĩ."
             };
         }
 
@@ -1302,7 +1302,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy cơ sở y tế."
             };
         }
 
@@ -1312,7 +1312,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor does not belong to this organization"
+                Message = "Bác sĩ không thuộc cơ sở y tế này. Vui lòng chọn lại."
             };
         }
 

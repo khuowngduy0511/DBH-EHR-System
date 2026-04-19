@@ -480,6 +480,39 @@ services:
           path: ./src/DBH.Blockchain.Service/Dockerfile
 
   # ============================================================================
+  # AI & RAG SERVICES
+  # ============================================================================
+
+  lightrag:
+    build:
+      context: .
+      dockerfile: lightrag.Dockerfile
+    container_name: dbh_lightrag
+    ports:
+      - "9621:9621"
+    environment:
+      - OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
+      - LLM_BINDING=openai
+      - OPENAI_BASE_URL=https://openrouter.ai/api/v1
+      - LLM_MODEL=openai/gpt-4o-mini
+      - EMBEDDING_BINDING=hf
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+    volumes:
+      - ../light-rag-DBH-system/knowledge_base:/app/knowledge_base
+    networks:
+      - dbh_network
+    command: >
+      sh -c "mkdir -p /app/knowledge_base/rag_storage &&
+             python /app/knowledge_base/index_docs.py &&
+             python /app/knowledge_base/rag_server.py"
+    working_dir: /app/knowledge_base
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9621/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
   # DATABASES
   # ============================================================================
 
