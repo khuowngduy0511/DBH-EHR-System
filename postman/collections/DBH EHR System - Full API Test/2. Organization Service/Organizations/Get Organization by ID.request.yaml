@@ -1,4 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/organizations/{{orgId}}"
-method: GET
-order: 3000

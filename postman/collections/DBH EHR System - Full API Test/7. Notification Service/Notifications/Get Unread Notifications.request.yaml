@@ -1,8 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/notifications/by-user/{{userDid}}/unread?page=1&pageSi\
-  ze=20"
-method: GET
-queryParams:
-  page: "1"
-  pageSize: "20"
-order: 4000

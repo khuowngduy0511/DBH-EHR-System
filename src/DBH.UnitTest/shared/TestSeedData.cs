@@ -10,10 +10,13 @@ public static class TestSeedData
     // USER IDS
     // =========================================================================
     public static readonly Guid AdminUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-    public static readonly Guid DoctorUserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static readonly Guid _doctorUserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     public static readonly Guid PharmacistUserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public static readonly Guid NurseUserId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
-    public static readonly Guid PatientUserId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+    private static readonly Guid _patientUserId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+
+    public static Guid DoctorUserId => TestRuntimeContext.Get()?.DoctorUserId ?? _doctorUserId;
+    public static Guid PatientUserId => TestRuntimeContext.Get()?.PatientUserId ?? _patientUserId;
     public static readonly Guid ReceptionistUserId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
 
     // =========================================================================

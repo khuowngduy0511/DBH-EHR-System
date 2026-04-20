@@ -244,6 +244,7 @@ if ($afterDocumentSuccess) {
 }
 
 $result = [ordered]@{
+    adminToken = $adminToken
     orgId = $orgId
     receptionEmail = $receptionEmail
     receptionUserId = $receptionUserId

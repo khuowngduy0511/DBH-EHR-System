@@ -1,6 +1,8 @@
 using DBH.Notification.Service.DbContext;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
+using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -63,7 +65,7 @@ public class PreferencesService : IPreferencesService
         if (request.QuietTimeEnd != null && int.TryParse(request.QuietTimeEnd.Replace(":", "").Substring(0, 2), out var endHour))
             prefs.QuietHoursEnd = endHour;
 
-        prefs.UpdatedAt = DateTime.UtcNow;
+        prefs.UpdatedAt = VietnamTime.DatabaseNow;
         await _context.SaveChangesAsync();
 
         _logger.LogInformation("Updated preferences for user {UserDid}", userDid);

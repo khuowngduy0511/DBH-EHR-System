@@ -4,6 +4,7 @@ using System.Text.Json;
 using DBH.Payment.Service.DbContext;
 using DBH.Payment.Service.DTOs;
 using DBH.Payment.Service.Models.Enums;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using PayOS;
@@ -97,8 +98,8 @@ public class PaymentProcessingService : IPaymentProcessingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create PayOS payment link for invoice {InvoiceId}", invoiceId);
-            return new ApiResponse<CheckoutResponse> { Success = false, Message = "Failed to create payment link. Please try again." };
+            _logger.LogError(ex, "Failed to create PayOS payment link for invoice {InvoiceId}. Error: {Message}", invoiceId, ex.Message);
+            return new ApiResponse<CheckoutResponse> { Success = false, Message = $"Failed to create payment link: {ex.Message}" };
         }
 
         string? checkoutUrl = paymentLinkResponse?.CheckoutUrl?.ToString();
@@ -154,11 +155,11 @@ public class PaymentProcessingService : IPaymentProcessingService
             Status = PaymentStatus.PAID,
             OrderCode = GenerateOrderCode(),
             TransactionRef = request?.TransactionRef,
-            PaidAt = DateTime.UtcNow
+            PaidAt = VietnamTimeHelper.Now
         };
 
         invoice.Status = InvoiceStatus.PAID;
-        invoice.PaidAt = DateTime.UtcNow;
+        invoice.PaidAt = VietnamTimeHelper.Now;
 
         _context.Payments.Add(payment);
         await _context.SaveChangesAsync();
@@ -263,11 +264,11 @@ public class PaymentProcessingService : IPaymentProcessingService
         if (webhookRequest.Code == "00" && webhookRequest.Success)
         {
             payment.Status = PaymentStatus.PAID;
-            payment.PaidAt = DateTime.UtcNow;
+            payment.PaidAt = VietnamTimeHelper.Now;
             payment.TransactionRef = webhookRequest.Data.Reference;
 
             invoice.Status = InvoiceStatus.PAID;
-            invoice.PaidAt = DateTime.UtcNow;
+            invoice.PaidAt = VietnamTimeHelper.Now;
 
             await _context.SaveChangesAsync();
 
@@ -322,11 +323,11 @@ public class PaymentProcessingService : IPaymentProcessingService
             if (string.Equals(status, "PAID", StringComparison.OrdinalIgnoreCase))
             {
                 payment.Status = PaymentStatus.PAID;
-                payment.PaidAt = DateTime.UtcNow;
+                payment.PaidAt = VietnamTimeHelper.Now;
 
                 var invoice = payment.Invoice;
                 invoice.Status = InvoiceStatus.PAID;
-                invoice.PaidAt = DateTime.UtcNow;
+                invoice.PaidAt = VietnamTimeHelper.Now;
 
                 await _context.SaveChangesAsync();
                 await PublishInvoicePaidEventAsync(invoice);
@@ -399,7 +400,7 @@ public class PaymentProcessingService : IPaymentProcessingService
                 OrgId = invoice.OrgId,
                 EncounterId = invoice.EncounterId,
                 TotalAmount = invoice.TotalAmount,
-                PaidAt = invoice.PaidAt ?? DateTime.UtcNow
+                PaidAt = invoice.PaidAt ?? VietnamTimeHelper.Now
             });
 
             _logger.LogInformation("Published InvoicePaidEvent for invoice {InvoiceId}", invoice.InvoiceId);

@@ -1,8 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/audit/sync/blockchain-audit-id-here"
-method: POST
-auth:
-  type: bearer
-  credentials:
-    token: "{{adminToken}}"
-order: 8000

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Payment.Service.Models.Enums;
+using DBH.Shared.Contracts;
 
 namespace DBH.Payment.Service.Models.Entities;
 
@@ -38,7 +39,7 @@ public class Invoice
     public DateTime? PaidAt { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTimeHelper.Now;
 
     // Navigation
     public virtual ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();

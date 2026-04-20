@@ -1,7 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/reschedule?newDate=2026\
-  -04-05T10:00:00Z"
-method: PUT
-queryParams:
-  newDate: 2026-04-05T10:00:00Z
-order: 8000

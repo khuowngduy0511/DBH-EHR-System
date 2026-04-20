@@ -1,6 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/status?status=COMPLETED"
-method: PUT
-queryParams:
-  status: COMPLETED
-order: 7000

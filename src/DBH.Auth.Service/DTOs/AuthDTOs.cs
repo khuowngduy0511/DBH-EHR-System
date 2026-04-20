@@ -35,17 +35,41 @@ public class RefreshTokenRequest
     public string RefreshToken { get; set; } = string.Empty;
 }
 
-public class RegisterStaffDoctorRequest
+public abstract class RegisterProfileBaseRequest
 {
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
-    public string Role { get; set; } = string.Empty;
     public string? Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string? Address { get; set; }
     public string? OrganizationId { get; set; }
+}
+
+public class RegisterDoctorRequest : RegisterProfileBaseRequest
+{
+    public string? Specialty { get; set; }
+    public string? LicenseNumber { get; set; }
+    public string? LicenseImage { get; set; }
+    public VerificationStatus VerifiedStatus { get; set; } = VerificationStatus.Pending;
+}
+
+public class RegisterStaffRequest : RegisterProfileBaseRequest
+{
+    public StaffRole Role { get; set; }
+    public string? LicenseNumber { get; set; }
+    public string? Specialty { get; set; }
+    public VerificationStatus VerifiedStatus { get; set; } = VerificationStatus.Pending;
+}
+
+public class RegisterStaffDoctorRequest : RegisterProfileBaseRequest
+{
+    public string Role { get; set; } = string.Empty;
+    public string? LicenseNumber { get; set; }
+    public string? Specialty { get; set; }
+    public string? LicenseImage { get; set; }
+    public VerificationStatus VerifiedStatus { get; set; } = VerificationStatus.Pending;
 }
 
 public class UpdateRoleRequest
@@ -68,6 +92,29 @@ public class UpdateProfileRequest
     public string? Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string? Address { get; set; }
+}
+
+public class AdminUpdateUserRequest
+{
+    public string? FullName { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? Gender { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Address { get; set; }
+    public string? OrganizationId { get; set; }
+    public UserStatus? Status { get; set; }
+}
+
+public class ChangePasswordRequest
+{
+    public string CurrentPassword { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class AdminChangePasswordRequest
+{
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 public class UserProfileResponse

@@ -109,7 +109,7 @@ public class DoctorsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Receptionist")]
     public async Task<IActionResult> Create([FromBody] CreateDoctorRequest request)
     {
         var user = await _userRepository.GetByIdAsync(request.UserId);
@@ -136,6 +136,25 @@ public class DoctorsController : ControllerBase
         await EnsureUserRoleAsync(request.UserId, RoleName.Doctor);
 
         return CreatedAtAction(nameof(GetById), new { doctorId = doctor.DoctorId }, MapToResponse(doctor));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("{doctorId:guid}/verify")]
+    public async Task<IActionResult> Verify(Guid doctorId)
+    {
+        var response = await _authService.VerifyDoctorAsync(doctorId);
+        if (!response.Success)
+        {
+            return NotFound(response);
+        }
+
+        var doctor = await _doctorRepository.GetByIdAsync(doctorId);
+        return Ok(new
+        {
+            response.Message,
+            DoctorId = doctorId,
+            VerifiedStatus = doctor?.VerifiedStatus.ToString() ?? VerificationStatus.Verified.ToString()
+        });
     }
 
     [Authorize(Roles = "Admin")]
