@@ -471,19 +471,20 @@ public class OrganizationService : IOrganizationService
             .Include(m => m.Department)
             .Where(m => m.Status == MembershipStatus.ACTIVE);
 
-        if (request.OrgId.HasValue && request.OrgId.Value != Guid.Empty)
+        if (request.OrgId.HasValue)
         {
             query = query.Where(m => m.OrgId == request.OrgId.Value);
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Specialty))
-        {
-            query = query.Where(m => m.Specialty != null && m.Specialty.Contains(request.Specialty));
         }
 
         if (request.DepartmentId.HasValue)
         {
             query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Specialty))
+        {
+            var searchPattern = $"%{request.Specialty.Trim()}%";
+            query = query.Where(m => m.Specialty != null && EF.Functions.ILike(m.Specialty, searchPattern));
         }
 
         var candidates = await query

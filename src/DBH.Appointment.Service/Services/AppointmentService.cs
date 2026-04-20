@@ -238,7 +238,9 @@ public class AppointmentService : IAppointmentService
     }
 
     public async Task<PagedResponse<AppointmentResponse>> GetAppointmentsAsync(
-        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, int page = 1, int pageSize = 10)
+        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, 
+        DateTime? fromDate = null, DateTime? toDate = null, string? searchTerm = null,
+        int page = 1, int pageSize = 10)
     {
         var query = _context.Appointments
             .Include(a => a.Encounters)
@@ -255,6 +257,21 @@ public class AppointmentService : IAppointmentService
 
         if (status.HasValue)
             query = query.Where(a => a.Status == status.Value);
+
+        if (fromDate.HasValue)
+            query = query.Where(a => a.ScheduledAt >= fromDate.Value);
+
+        if (toDate.HasValue)
+            query = query.Where(a => a.ScheduledAt <= toDate.Value);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            searchTerm = searchTerm.ToLower();
+            query = query.Where(a => 
+                a.AppointmentId.ToString().ToLower().Contains(searchTerm) ||
+                a.PatientId.ToString().ToLower().Contains(searchTerm) ||
+                a.DoctorId.ToString().ToLower().Contains(searchTerm));
+        }
 
         var totalCount = await query.CountAsync();
         var items = await query
@@ -960,9 +977,9 @@ public class AppointmentService : IAppointmentService
     /// Flow: Encounters → Consent Service (verify) → Auth Service (patient info)
     /// </summary>
     public async Task<PagedResponse<DoctorPatientResponse>> GetPatientsByDoctorAsync(
-        Guid doctorId, int page = 1, int pageSize = 10)
+        Guid doctorId, int page = 1, int pageSize = 10, string? searchTerm = null)
     {
-        // Step 1: Lấy danh sách patientIds đã khám (từ encounters có appointment COMPLETED)
+        // Step 1: Lấy danh sách record encounters đã khám của bác sĩ (Status = COMPLETED)
         var encounterGroups = await _context.Encounters
             .Include(e => e.Appointment)
             .Where(e => e.DoctorId == doctorId 
@@ -992,13 +1009,27 @@ public class AppointmentService : IAppointmentService
         }
 
         // Step 2: Kiểm tra consent cho từng patient với doctor (gọi Consent Service)
-        var consentedPatientIds = await GetConsentedPatientIdsAsync(
-            doctorId, encounterGroups.Select(g => g.PatientId).ToList());
+        var listPatientIds = encounterGroups.Select(g => g.PatientId).ToList();
+        var consentedPatientIds = await GetConsentedPatientIdsAsync(doctorId, listPatientIds);
 
         // Filter chỉ giữ patient có consent
         var filteredGroups = encounterGroups
             .Where(g => consentedPatientIds.Contains(g.PatientId))
             .ToList();
+
+        // Step 3: Xử lý tìm kiếm (Search)
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            // Để tìm theo tên, ta cần load thông tin patient từ AuthService trước cho danh sách này
+            var allPatientInfos = await GetPatientInfosAsync(filteredGroups.Select(g => g.PatientId).ToList());
+            
+            filteredGroups = filteredGroups.Where(g => {
+                var info = allPatientInfos.GetValueOrDefault(g.PatientId);
+                return g.PatientId.ToString().ToLower().Contains(term) || 
+                       (info != null && (info.FullName?.ToLower().Contains(term) == true || info.Email?.ToLower().Contains(term) == true));
+            }).ToList();
+        }
 
         var totalCount = filteredGroups.Count;
 
@@ -1008,14 +1039,13 @@ public class AppointmentService : IAppointmentService
             .Take(pageSize)
             .ToList();
 
-        // Step 3: Lấy thông tin patient (tên, email, sdt) từ Auth Service
-        var patientInfos = await GetPatientInfosAsync(
-            pagedGroups.Select(g => g.PatientId).ToList());
+        // Step 4: Lấy thông tin chi tiết cho trang hiện tại (nếu chưa load ở trên hoặc load lại để đảm bảo)
+        var pagedPatientInfos = await GetPatientInfosAsync(pagedGroups.Select(g => g.PatientId).ToList());
 
         // Map kết quả
         var result = pagedGroups.Select(g =>
         {
-            var info = patientInfos.GetValueOrDefault(g.PatientId);
+            var info = pagedPatientInfos.GetValueOrDefault(g.PatientId);
             return new DoctorPatientResponse
             {
                 PatientId = g.PatientId,
@@ -1277,7 +1307,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor not found"
+                Message = "Không tìm thấy bác sĩ."
             };
         }
 
@@ -1287,7 +1317,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy cơ sở y tế."
             };
         }
 
@@ -1297,7 +1327,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor does not belong to this organization"
+                Message = "Bác sĩ không thuộc cơ sở y tế này. Vui lòng chọn lại."
             };
         }
 

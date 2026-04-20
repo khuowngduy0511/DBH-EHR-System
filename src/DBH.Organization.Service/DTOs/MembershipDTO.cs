@@ -71,6 +71,10 @@ public class SearchDoctorsRequest
     public Guid? OrgId { get; set; }
 
     public Guid? DepartmentId { get; set; }
+    
+    public string? Specialty { get; set; }
+    
+    public string? DoctorName { get; set; }
 
     public string? Specialty { get; set; }
 
