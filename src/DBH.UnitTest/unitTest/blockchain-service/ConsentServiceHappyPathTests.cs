@@ -79,6 +79,8 @@ public class ConsentServiceHappyPathTests
         Assert.Equal(1, sync.ConsentGrantCount);
         Assert.NotNull(sync.LastGrantedConsent);
         Assert.Equal(persisted.BlockchainConsentId, sync.LastGrantedConsent!.ConsentId);
+        Assert.EndsWith("Z", sync.LastGrantedConsent!.GrantedAt);
+        Assert.DoesNotContain("+07:00", sync.LastGrantedConsent.GrantedAt);
 
         Assert.Single(notifications.Sent);
         Assert.Equal(doctorId, notifications.Sent[0].RecipientUserId);
@@ -116,6 +118,7 @@ public class ConsentServiceHappyPathTests
     {
         public int ConsentGrantCount { get; private set; }
         public ConsentRecord? LastGrantedConsent { get; private set; }
+        public AuditEntry? LastAuditEntry { get; private set; }
         public int PendingCount => 0;
 
         public void EnqueueEhrHash(EhrHashRecord record, Func<BlockchainTransactionResult, Task>? onSuccess = null, Func<string, Task>? onFailure = null)
@@ -134,6 +137,7 @@ public class ConsentServiceHappyPathTests
 
         public void EnqueueAuditEntry(AuditEntry entry, Func<BlockchainTransactionResult, Task>? onSuccess = null, Func<string, Task>? onFailure = null)
         {
+            LastAuditEntry = entry;
         }
 
         public void EnqueueFabricCaEnrollment(string enrollmentId, string username, string role, Func<string, Task>? onFailure = null)

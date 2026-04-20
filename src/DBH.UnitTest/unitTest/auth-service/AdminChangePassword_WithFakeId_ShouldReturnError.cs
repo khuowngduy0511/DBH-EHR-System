@@ -13,7 +13,7 @@ public class AuthServiceTests_AdminChangePassword_WithFakeId_ShouldReturnError :
     {
         await AuthenticateAsAdminAsync(AuthClient);
         var fakeUserId = Guid.NewGuid();
-        var request = new { oldPassword = "OldPass123", newPassword = "NewPass123" };
+        var request = new { newPassword = "NewPass123" };
         var url = ApiEndpoints.Auth.AdminChangePassword.Replace("{userId}", fakeUserId.ToString());
         
         var response = await PutAsJsonWithRetryAsync(AuthClient, url, request);

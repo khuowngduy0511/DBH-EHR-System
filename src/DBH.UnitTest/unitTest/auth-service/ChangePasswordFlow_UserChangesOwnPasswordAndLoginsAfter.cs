@@ -14,32 +14,26 @@ public class AuthServiceTests_ChangePasswordFlow_UpdateThenLoginWithOldFailNewSu
     [SkippableFact]
     public async Task ChangePasswordFlow_UpdateThenLoginWithOldFailNewSuccess_ShouldSucceed()
     {
-        // 1. Login as doctor with original password
+        // 1. Use a fresh doctor account to avoid password races with other tests.
+        var freshUsers = await CreateFreshDoctorAndPatientAsync();
         var doctorClient = new HttpClient { BaseAddress = AuthClient.BaseAddress };
-        var loginJson = await AuthenticateAsDoctorAsync(doctorClient);
+        await AuthenticateAsync(doctorClient, freshUsers.DoctorEmail, freshUsers.DoctorPassword);
         
-        // 3. Change own password via ChangeMyPassword
-        var newPassword = "NewDoctorPassword" + Guid.NewGuid().ToString().Substring(0, 8);
-        var changeRequest = new { oldPassword = TestSeedData.DoctorPassword, newPassword = newPassword };
+        // 2. Change own password via ChangeMyPassword
+        var newPassword = $"NewDoc@{Guid.NewGuid().ToString("N")[..8]}";
+        var changeRequest = new { oldPassword = freshUsers.DoctorPassword, newPassword = newPassword };
         
         var changeResponse = await PutAsJsonWithRetryAsync(doctorClient, ApiEndpoints.Auth.ChangeMyPassword, changeRequest);
-        Assert.True(changeResponse.StatusCode == HttpStatusCode.OK || changeResponse.StatusCode == HttpStatusCode.BadRequest);
+        Assert.Equal(HttpStatusCode.OK, changeResponse.StatusCode);
         
-        // 4. Try login with old password (should fail)
-        var loginRequest = new { email = TestSeedData.DoctorEmail, password = TestSeedData.DoctorPassword };
+        // 3. Try login with old password (should fail)
+        var loginRequest = new { email = freshUsers.DoctorEmail, password = freshUsers.DoctorPassword };
         var loginOldResponse = await PostAsJsonWithRetryAsync(AuthClient, ApiEndpoints.Auth.Login, loginRequest);
         Assert.Equal(HttpStatusCode.Unauthorized, loginOldResponse.StatusCode);
         
-        // 5. Try login with new password (should succeed)
-        var loginNewRequest = new { email = TestSeedData.DoctorEmail, password = newPassword };
+        // 4. Try login with new password (should succeed)
+        var loginNewRequest = new { email = freshUsers.DoctorEmail, password = newPassword };
         var loginNewResponse = await PostAsJsonWithRetryAsync(AuthClient, ApiEndpoints.Auth.Login, loginNewRequest);
         Assert.Equal(HttpStatusCode.OK, loginNewResponse.StatusCode);
-        
-        // 6. Restore password for other tests
-        var restoreClient = new HttpClient { BaseAddress = AuthClient.BaseAddress };
-        var restoreJson = await AuthenticateAsync(restoreClient, TestSeedData.DoctorEmail, newPassword);
-        
-        var restoreRequest = new { oldPassword = newPassword, newPassword = TestSeedData.DoctorPassword };
-        await PutAsJsonWithRetryAsync(restoreClient, ApiEndpoints.Auth.ChangeMyPassword, restoreRequest);
     }
 }

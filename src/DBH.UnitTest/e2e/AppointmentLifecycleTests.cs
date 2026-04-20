@@ -31,7 +31,7 @@ public class AppointmentLifecycleTests : ApiTestBase
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
             organizationId = freshUsers.OrganizationId,
-            appointmentDate = DateTime.UtcNow.AddDays(7), 
+            appointmentDate = DateTime.UtcNow.AddDays(7).ToString("o"), 
             reason = "Lifecycle test", 
             notes = "Full lifecycle testing" 
         };
