@@ -76,8 +76,6 @@ public class SearchDoctorsRequest
     
     public string? DoctorName { get; set; }
 
-    public string? Specialty { get; set; }
-
     public string? DateOfBirth { get; set; }
 
     [Range(1, int.MaxValue)]
