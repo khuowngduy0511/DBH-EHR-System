@@ -1,7 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/memberships/by-user/{{doctorUserId}}?page=1&pageSize=10"
-method: GET
-queryParams:
-  page: "1"
-  pageSize: "10"
-order: 4000

@@ -8,6 +8,7 @@ using DBH.EHR.Service.Models.Entities;
 using DBH.EHR.Service.Repositories.Postgres;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.cryptography;
+using DBH.Shared.Contracts;
 using DBH.Shared.Infrastructure.Ipfs;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
 using DBH.Shared.Infrastructure.Notification;
@@ -1355,28 +1356,7 @@ public class EhrService : IEhrService
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private DateTime GetLocalTime()
-    {
-        try
-        {
-            // Windows ID: SE Asia Standard Time, Linux ID: Asia/Ho_Chi_Minh
-            TimeZoneInfo tz;
-            try
-            {
-                tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-            }
-            catch
-            {
-                tz = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
-            }
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to resolve UTC+7 timezone via IDs, using manual offset.");
-            return DateTime.UtcNow.AddHours(7);
-        }
-    }
+    private DateTime GetLocalTime() => VietnamTimeHelper.Now;
 
     private static EhrRecordResponseDto MapToEhrRecordResponse(EhrRecord record)
     {

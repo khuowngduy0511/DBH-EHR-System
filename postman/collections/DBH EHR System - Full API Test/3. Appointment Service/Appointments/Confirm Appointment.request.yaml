@@ -1,8 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/appointments/{{appointmentId}}/confirm"
-method: PUT
-auth:
-  type: bearer
-  credentials:
-    token: "{{doctorToken}}"
-order: 5000

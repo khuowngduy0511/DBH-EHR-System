@@ -35,5 +35,9 @@ dotnet run --project src/DBH.Chaincode.Tester -- consent-verify consent-demo-001
 - `ehr-commit`, `ehr-get`, `ehr-history`, `ehr-verify`
 - `consent-grant`, `consent-revoke`, `consent-get`, `consent-verify`, `consent-patient`, `consent-history`
 - `audit-commit`, `audit-get`, `audit-by-patient`, `audit-by-actor`
+- `emergency-access`, `emergency-by-record`, `emergency-by-accessor`, `emergency-all`
+- `account-register`, `account-login`
+
+Fabric CA enrollments are not stored in the application database. The tester prints the enrollment secret and the expected MSP path for the identity, which is typically `/tmp/fabric-crypto/peerOrganizations/<org>/users/<enrollmentId>@<org>/msp` in the running containerized environment.
 
 Outputs are printed as JSON where applicable. Any missing arguments will be prompted interactively.

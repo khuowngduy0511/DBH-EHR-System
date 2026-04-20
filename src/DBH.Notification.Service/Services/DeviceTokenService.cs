@@ -1,6 +1,8 @@
 using DBH.Notification.Service.DbContext;
 using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
+using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -32,7 +34,7 @@ public class DeviceTokenService : IDeviceTokenService
             existingToken.OsVersion = request.OsVersion;
             existingToken.AppVersion = request.AppVersion;
             existingToken.IsActive = true;
-            existingToken.UpdatedAt = DateTime.UtcNow;
+            existingToken.UpdatedAt = VietnamTime.DatabaseNow;
 
             await _context.SaveChangesAsync();
 
@@ -95,7 +97,7 @@ public class DeviceTokenService : IDeviceTokenService
         }
 
         device.IsActive = false;
-        device.UpdatedAt = DateTime.UtcNow;
+        device.UpdatedAt = VietnamTime.DatabaseNow;
         await _context.SaveChangesAsync();
 
         return new ApiResponse<bool>
@@ -115,7 +117,7 @@ public class DeviceTokenService : IDeviceTokenService
         foreach (var device in devices)
         {
             device.IsActive = false;
-            device.UpdatedAt = DateTime.UtcNow;
+            device.UpdatedAt = VietnamTime.DatabaseNow;
         }
 
         await _context.SaveChangesAsync();

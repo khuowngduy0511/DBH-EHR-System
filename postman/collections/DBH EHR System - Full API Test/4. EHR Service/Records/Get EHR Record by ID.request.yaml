@@ -1,6 +1,0 @@
-$kind: http-request
-url: "{{baseUrl}}/api/v1/ehr/records/{{ehrId}}?useReplica=false"
-method: GET
-queryParams:
-  useReplica: "false"
-order: 2000

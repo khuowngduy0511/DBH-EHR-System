@@ -18,7 +18,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Registers a new user and creates an associated profile Patient    
+    /// Registers a new user and creates an associated patient profile.    
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
@@ -35,11 +35,42 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>    
-    /// Registers a new user and creates an associated profile for either Staff or Doctor based on the role specified in the request. Only users with Admin role can access this endpoint.
+    /// Registers a new doctor with the full doctor profile payload. Only users with Admin role can access this endpoint.
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Receptionist")]
+    [HttpPost("register-doctor")]
+    public async Task<IActionResult> RegisterDoctor([FromBody] RegisterDoctorRequest request)
+    {
+        var response = await _authService.RegisterDoctorAsync(request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Registers a new staff account with the full staff profile payload. Only users with Admin role can access this endpoint.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
+    [Authorize(Roles = "Admin,Receptionist")]
+    [HttpPost("register-staff")]
+    public async Task<IActionResult> RegisterStaff([FromBody] RegisterStaffRequest request)
+    {
+        var response = await _authService.RegisterStaffAsync(request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Registers a new user and creates an associated profile for either Staff or Doctor based on the role specified in the request.
+    /// Kept for backward compatibility.
+    /// </summary>
+    /// <param name="request"></param>
+    /// <returns></returns>
+    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost("registerStaffDoctor")]
     public async Task<IActionResult> RegisterStaffDoctor([FromBody] RegisterStaffDoctorRequest request)
     {
@@ -54,6 +85,42 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest request)
     {
         var response = await _authService.UpdateRoleAsync(request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}")]
+    public async Task<IActionResult> UpdateUser(Guid userId, [FromBody] AdminUpdateUserRequest request)
+    {
+        var response = await _authService.UpdateUserAsync(userId, request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize]
+    [HttpPut("me/change-password")]
+    public async Task<IActionResult> ChangeMyPassword([FromBody] ChangePasswordRequest request)
+    {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var response = await _authService.ChangePasswordAsync(userId, request);
+        if (!response.Success)
+            return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}/change-password")]
+    public async Task<IActionResult> AdminChangeUserPassword(Guid userId, [FromBody] AdminChangePasswordRequest request)
+    {
+        var response = await _authService.AdminChangePasswordAsync(userId, request);
         if (!response.Success)
             return BadRequest(response);
         return Ok(response);

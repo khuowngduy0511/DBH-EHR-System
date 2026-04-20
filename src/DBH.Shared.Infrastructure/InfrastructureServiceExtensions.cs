@@ -237,6 +237,7 @@ public static class InfrastructureServiceExtensions
             services.AddScoped<IEhrBlockchainService, EhrBlockchainService>();
             services.AddScoped<IConsentBlockchainService, ConsentBlockchainService>();
             services.AddScoped<IAuditBlockchainService, AuditBlockchainService>();
+            services.AddScoped<IEmergencyBlockchainService, EmergencyBlockchainService>();
         }
 
         return services;

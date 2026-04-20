@@ -531,11 +531,11 @@ foreach ($pair in $aptPairs) {
     $aptIdx++
 }
 
-# Confirm most appointments (skip last 2 future for lifecycle demo)
+# Confirm most appointments (skip index 4 = Em->Dr Hieu kept PENDING for reject demo)
 $confirmCount = 0
 for ($ci = 0; $ci -lt $appointmentData.Count; $ci++) {
     $aptItem = $appointmentData[$ci]
-    if ($aptItem.aptId -and -not $aptItem.isPast) {
+    if ($aptItem.aptId -and -not $aptItem.isPast -and $ci -ne 4) {
         $docToken = $doctorData[$aptItem.docIdx].token
         Api PUT "$APTU/$($aptItem.aptId)/confirm" $null $docToken | Out-Null
         $confirmCount++

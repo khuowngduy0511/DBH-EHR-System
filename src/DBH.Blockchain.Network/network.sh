@@ -367,8 +367,8 @@ function networkUp() {
 
 function startExplorer() {
   local explorerScript="${ROOTDIR}/explorer/explorer.sh"
-
-  if [ ! -f "$explorerScript" ]; then
+  local explorerResetScript="${ROOTDIR}/explorer/setup.sh"
+  if [[ ! -f "$explorerScript" || ! -f "$explorerResetScript" ]]; then
     warnln "Explorer script not found at ${explorerScript}. Skipping Explorer startup."
     return 0
   fi
@@ -376,7 +376,8 @@ function startExplorer() {
   infoln "Starting Hyperledger Explorer..."
   (
     cd "${ROOTDIR}/explorer"
-    bash ./explorer.sh start
+    bash ./setup.sh
+    bash ./explorer.sh reset
   )
 
   if [ $? -ne 0 ]; then

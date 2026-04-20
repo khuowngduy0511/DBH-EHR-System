@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Notification.Service.Models.Enums;
+using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 
 namespace DBH.Notification.Service.Models.Entities;
 
@@ -130,8 +132,8 @@ public class NotificationPreference
     // =========================================================================
     
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
     
     [Column("updated_at")]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = VietnamTime.DatabaseNow;
 }

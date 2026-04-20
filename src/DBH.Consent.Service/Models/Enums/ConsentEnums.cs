@@ -6,10 +6,10 @@ namespace DBH.Consent.Service.Models.Enums;
 public enum GranteeType
 {
     DOCTOR,
-    ORGANIZATION,
-    EMERGENCY,
-    RESEARCHER,
-    INSURANCE
+    NURSE,
+    PHARMACIST,
+    PATIENT,
+    ORGANIZATION
 }
 
 /// <summary>

@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using DBH.Audit.Service.Models.Enums;
+using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Time;
 
 namespace DBH.Audit.Service.Models.Entities;
 
@@ -134,8 +136,8 @@ public class AuditLog
     /// Thời điểm sync từ blockchain
     /// </summary>
     [Column("synced_at")]
-    public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
+    public DateTime SyncedAt { get; set; } = VietnamTime.DatabaseNow;
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
 }
