@@ -397,6 +397,24 @@ public class AuthService : IAuthService
     {
         var credentials = await _credentialRepository.FindManyAsync(c => c.UserId == userId && c.Provider == Models.Enums.ProviderType.RefreshToken);
         var tokenList = credentials.ToList();
+
+        var now = DateTime.UtcNow;
+        var security = await _securityRepository.FindAsync(s => s.UserId == userId);
+        if (security == null)
+        {
+            await _securityRepository.AddAsync(new UserSecurity
+            {
+                UserId = userId,
+                MfaEnabled = false,
+                LastPasswordChange = now
+            });
+        }
+        else
+        {
+            security.LastPasswordChange = now;
+            await _securityRepository.UpdateAsync(security);
+        }
+
         if (tokenList.Count == 0)
             return false;
 
@@ -840,12 +858,24 @@ public class AuthService : IAuthService
     {
         if (patientId.HasValue)
         {
+            var patientUser = await _userRepository.GetByIdAsync(patientId.Value);
+            if (patientUser != null)
+            {
+                return patientUser.UserId;
+            }
+
             var patient = await _patientRepository.FindAsync(p => p.PatientId == patientId.Value);
             return patient?.UserId;
         }
 
         if (doctorId.HasValue)
         {
+            var doctorUser = await _userRepository.GetByIdAsync(doctorId.Value);
+            if (doctorUser != null)
+            {
+                return doctorUser.UserId;
+            }
+
             var doctor = await _doctorRepository.FindAsync(d => d.DoctorId == doctorId.Value);
             return doctor?.UserId;
         }
