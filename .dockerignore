@@ -13,12 +13,12 @@
 **/*.jfm
 **/bin
 **/obj
-**/node_modules
-**/npm-debug.log
-**/secrets.dev.yaml
-**/values.dev.yaml
 **/bin/
 **/obj/
+src/DBH.Blockchain.Network/
+scripts/
+docs/
+.postman/
 **/*.user
 **/Dockerfile*
 **/docker-compose*
