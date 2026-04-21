@@ -10,10 +10,9 @@ RUN apt-get update && apt-get install -y \
 
 # Install python dependencies (CPU versions for speed)
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install "lightrag-hku[api]" sentence-transformers numpy
+RUN pip install "lightrag-hku[api]" numpy openai asyncpg
 
-# Pre-download the embedding model to cache it in the image
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# Pre-download step omitted: DBH System now uses OpenRouter API for embeddings.
 
 EXPOSE 9621
 
