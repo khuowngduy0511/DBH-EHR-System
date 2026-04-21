@@ -949,6 +949,18 @@ public class AuthService : IAuthService
             .AsNoTracking()
             .AsQueryable();
 
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            var searchTerm = query.SearchTerm.Trim();
+            var searchPattern = $"%{searchTerm}%";
+            userQuery = userQuery.Where(u => 
+                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                u.UserId.ToString() == searchTerm
+            );
+        }
+
         if (!string.IsNullOrWhiteSpace(normalizedGender))
         {
             userQuery = userQuery.Where(u => u.Gender != null && EF.Functions.ILike(u.Gender, normalizedGender));
@@ -1303,6 +1315,44 @@ public class AuthService : IAuthService
         return user?.IsInRole(RoleName.Admin.ToString()) == true
             ? VerificationStatus.Verified
             : VerificationStatus.Pending;
+    }
+
+    public async Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status)
+    {
+        if (!Enum.TryParse<UserStatus>(status, true, out var newStatus))
+        {
+            return new AuthResponse
+            {
+                Success = false,
+                Message = $"Trạng thái '{status}' không hợp lệ. Các giá trị hợp lệ: Active, Inactive, Suspended, Pending."
+            };
+        }
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        if (user.Status == newStatus)
+        {
+            return new AuthResponse { Success = true, Message = "Người dùng đã có trạng thái này." };
+        }
+
+        user.Status = newStatus;
+        user.UpdatedAt = VietnamTime.DatabaseNow;
+        user.UpdatedBy = GetCurrentActorId();
+        await _userRepository.UpdateAsync(user);
+
+        _logger.LogInformation("User {UserId} status updated to {Status} by actor {ActorId}.",
+            userId, newStatus, GetCurrentActorId());
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = $"Cập nhật trạng thái người dùng thành '{newStatus}' thành công.",
+            UserId = userId
+        };
     }
 }
 

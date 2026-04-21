@@ -189,9 +189,6 @@ public class AuthController : ControllerBase
         return Ok(profile);
     }
 
-    /// <summary>
-    /// Updates the profile of the currently authenticated user (Progressive Profiling).
-    /// </summary>
     [Authorize]
     [HttpPut("me/profile")]
     public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateProfileRequest request)
@@ -207,7 +204,25 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}")]
+    public async Task<IActionResult> UpdateUserProfileByAdmin(Guid userId, [FromBody] UpdateProfileRequest request)
+    {
+        var response = await _authService.UpdateProfileAsync(userId, request);
+        if (!response.Success) return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}/status")]
+    public async Task<IActionResult> UpdateUserStatus(Guid userId, [FromQuery] string status)
+    {
+        var response = await _authService.UpdateUserStatusAsync(userId, status);
+        if (!response.Success) return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin, Doctor, Patient, Nurse, Receptionist, Pharmacist, LabTech")]
     [HttpGet("users/{userId:guid}")]
     public async Task<IActionResult> GetUserProfile(Guid userId)
     {
