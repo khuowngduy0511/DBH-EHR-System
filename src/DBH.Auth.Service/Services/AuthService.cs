@@ -1316,5 +1316,43 @@ public class AuthService : IAuthService
             ? VerificationStatus.Verified
             : VerificationStatus.Pending;
     }
+
+    public async Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status)
+    {
+        if (!Enum.TryParse<UserStatus>(status, true, out var newStatus))
+        {
+            return new AuthResponse
+            {
+                Success = false,
+                Message = $"Trạng thái '{status}' không hợp lệ. Các giá trị hợp lệ: Active, Inactive, Suspended, Pending."
+            };
+        }
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        if (user.Status == newStatus)
+        {
+            return new AuthResponse { Success = true, Message = "Người dùng đã có trạng thái này." };
+        }
+
+        user.Status = newStatus;
+        user.UpdatedAt = VietnamTime.DatabaseNow;
+        user.UpdatedBy = GetCurrentActorId();
+        await _userRepository.UpdateAsync(user);
+
+        _logger.LogInformation("User {UserId} status updated to {Status} by actor {ActorId}.",
+            userId, newStatus, GetCurrentActorId());
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = $"Cập nhật trạng thái người dùng thành '{newStatus}' thành công.",
+            UserId = userId
+        };
+    }
 }
 
