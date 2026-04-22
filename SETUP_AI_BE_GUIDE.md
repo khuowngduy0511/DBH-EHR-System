@@ -41,6 +41,11 @@ Front-end sẽ trả mọi dữ kiện bảo mật đã được hệ thống ph
 
 > ![Minh Họa 5: Giao diện Chatbot AI phản hồi mượt mà tài liệu hệ thống cho tài khoản Admin cấp cao](images/05.png)
 > ![Minh Họa 6: Chi tiết thêm về tính năng và kết quả hiển thị trên trang Dashboard](images/06.png)
+> ![Minh Họa 7: Tính năng tra cứu chuyên khoa động sau khi tối ưu file Workflow](images/07.png)
+> ![Minh Họa 8: Kiểm thử luồng tương tác xử lý yêu cầu khám bệnh thực tế](images/08.png)
+> ![Minh Họa 9: Trực quan hóa quy trình đặt lịch khám thông minh qua nhánh AI](images/09.png)
+> ![Minh Họa 10: Xử lý và phân tích phản hồi nâng cao ở chặng cuối (Phần 1)](images/10.png)
+> ![Minh Họa 11: Thành quả nghiệm thu toàn bộ quy trình phân luồng thông minh RAG (Phần 2)](images/11.png)
 
 ---
 *Kết thúc lưu trình test Report hệ thống.*
