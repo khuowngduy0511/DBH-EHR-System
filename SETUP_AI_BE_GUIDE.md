@@ -48,4 +48,25 @@ Front-end sẽ trả mọi dữ kiện bảo mật đã được hệ thống ph
 > ![Minh Họa 11: Thành quả nghiệm thu toàn bộ quy trình phân luồng thông minh RAG (Phần 2)](images/11.png)
 
 ---
+
+## 4. Sơ Đồ Kiến Trúc Toàn Hệ Thống (BE + n8n + AI)
+Hình dưới đây mô tả tổng quan cách Frontend, n8n Workflow Engine, Backend Microservices và LightRAG RAG Engine phối hợp hoạt động với nhau trong một mạng Docker nội bộ thống nhất.
+
+> ![Sơ đồ kiến trúc tổng thể hệ thống DBH-EHR: Frontend → n8n AI Workflow → Backend Microservices + LightRAG Knowledge Engine](images/ai_flow_architecture.png)
+
+---
+
+### 4.1 Luồng Xử Lý Nội Bộ AI (n8n + GPT-4o-mini)
+Chi tiết quy trình xử lý bên trong engine AI: từ bước xác thực JWT, phân loại ý định bằng GPT-4o-mini, cho đến phân luồng ra 5 nhánh xử lý chuyên biệt.
+
+> ![Sơ đồ luồng xử lý nội bộ AI: JWT → GPT-4o-mini Intent Classifier → 5 nhánh GREETING / VIEW_APPOINTMENTS / BOOK_APPOINTMENT / POLICY_QUERY / EHR_QUERY](images/ai_only_flow.png)
+
+---
+
+### 4.2 Cơ Chế Phân Quyền LightRAG (RBAC Namespace)
+LightRAG thực thi cô lập dữ liệu nghiêm ngặt bằng cách tách riêng Vector Database theo vai trò người dùng. Bệnh nhân chỉ truy vấn được tài liệu dành cho bệnh nhân; Admin có thể xem toàn bộ tài liệu hệ thống thông qua namespace riêng biệt.
+
+> ![Sơ đồ phân quyền RBAC LightRAG: Bệnh nhân → namespace patient / Admin → namespace admin → Supabase Vector DB cô lập hoàn toàn](images/lightrag_rbac_flow.png)
+
+---
 *Kết thúc lưu trình test Report hệ thống.*

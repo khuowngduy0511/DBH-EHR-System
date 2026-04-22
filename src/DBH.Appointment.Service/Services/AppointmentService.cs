@@ -259,10 +259,16 @@ public class AppointmentService : IAppointmentService
             query = query.Where(a => a.Status == status.Value);
 
         if (fromDate.HasValue)
-            query = query.Where(a => a.ScheduledAt >= fromDate.Value);
+        {
+            var fromUtc = fromDate.Value.Kind == DateTimeKind.Utc ? fromDate.Value : DateTime.SpecifyKind(fromDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.ScheduledAt >= fromUtc);
+        }
 
         if (toDate.HasValue)
-            query = query.Where(a => a.ScheduledAt <= toDate.Value);
+        {
+            var toUtc = toDate.Value.Kind == DateTimeKind.Utc ? toDate.Value : DateTime.SpecifyKind(toDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.ScheduledAt <= toUtc);
+        }
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
