@@ -567,7 +567,7 @@ services:
     networks:
       - dbh_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ["CMD-SHELL", "pg_isready -U admin && psql -U admin -lqt | cut -d \\| -f 1 | grep -qw dbh_n8n"]
       interval: 10s
       timeout: 5s
       retries: 5
