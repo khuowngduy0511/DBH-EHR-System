@@ -111,6 +111,9 @@ services:
       ConnectionStrings__BlockchainDb: "Host=pg_primary;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       ServiceUrls__AuthService: "http://gateway:5000"
       ServiceUrls__EhrService: "http://gateway:5000"
+      IpfsConfig__ApiUrl: "${IPFS_API_URL:-http://ipfs:5001/api/v0}"
+      IpfsConfig__GatewayUrl: "${IPFS_GATEWAY_URL:-http://ipfs:8080/ipfs}"
+      IpfsConfig__DownloadPath: "${IPFS_DOWNLOAD_PATH:-/tmp/ipfs_downloads}"
     ports:
       - "5090:5090"
     depends_on:
