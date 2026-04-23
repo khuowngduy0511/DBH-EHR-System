@@ -81,6 +81,7 @@ builder.Services.AddDbContext<AppointmentDbContext>(options =>
 builder.Services.AddInfrastructure(builder.Configuration, options =>
 {
     options.UseRabbitMQ = true;
+    options.UseRedisCache = true;
     options.UseNotificationClient = true;
 });
 

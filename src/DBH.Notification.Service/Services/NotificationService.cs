@@ -3,6 +3,7 @@ using DBH.Notification.Service.DTOs;
 using DBH.Notification.Service.Models.Entities;
 using DBH.Notification.Service.Models.Enums;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,11 +13,16 @@ public class NotificationService : INotificationService
 {
     private readonly NotificationDbContext _db;
     private readonly ILogger<NotificationService> _logger;
+    private readonly ICacheService _cache;
 
-    public NotificationService(NotificationDbContext db, ILogger<NotificationService> logger)
+    private static readonly TimeSpan UnreadCacheTtl = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan PrefsCacheTtl = TimeSpan.FromMinutes(15);
+
+    public NotificationService(NotificationDbContext db, ILogger<NotificationService> logger, ICacheService cache)
     {
         _db = db;
         _logger = logger;
+        _cache = cache;
     }
 
     // ========================================================================
@@ -60,6 +66,8 @@ public class NotificationService : INotificationService
 
             _logger.LogInformation("Notification sent: {Id} type={Type} to={RecipientDid}",
                 notification.Id, notification.Type, notification.RecipientDid);
+
+            await _cache.RemoveAsync($"unread:{request.RecipientDid}");
 
             return ApiResponse<NotificationResponse>.Ok(MapToResponse(notification));
         }
@@ -145,6 +153,7 @@ public class NotificationService : INotificationService
         }
 
         await _db.SaveChangesAsync();
+        await _cache.RemoveAsync($"unread:{userDid}");
         return ApiResponse<int>.Ok(notifications.Count);
     }
 
@@ -161,6 +170,7 @@ public class NotificationService : INotificationService
         }
 
         await _db.SaveChangesAsync();
+        await _cache.RemoveAsync($"unread:{userDid}");
         return ApiResponse<int>.Ok(unread.Count);
     }
 
@@ -170,15 +180,23 @@ public class NotificationService : INotificationService
         if (notification == null)
             return ApiResponse<bool>.Fail("Notification not found");
 
+        var recipientDid = notification.RecipientDid;
         _db.Notifications.Remove(notification);
         await _db.SaveChangesAsync();
+        await _cache.RemoveAsync($"unread:{recipientDid}");
         return ApiResponse<bool>.Ok(true);
     }
 
     public async Task<int> GetUnreadCountAsync(string userDid)
     {
-        return await _db.Notifications
+        var cacheKey = $"unread:{userDid}";
+        var cached = await _cache.GetAsync<int?>(cacheKey);
+        if (cached.HasValue) return cached.Value;
+
+        var count = await _db.Notifications
             .CountAsync(n => n.RecipientDid == userDid && n.Status != NotificationStatus.Read);
+        await _cache.SetAsync(cacheKey, count, UnreadCacheTtl);
+        return count;
     }
 
     // ========================================================================
@@ -266,6 +284,10 @@ public class NotificationService : INotificationService
 
     public async Task<PreferencesResponse> GetPreferencesAsync(string userDid)
     {
+        var prefKey = $"prefs:{userDid}";
+        var prefCached = await _cache.GetAsync<PreferencesResponse>(prefKey);
+        if (prefCached != null) return prefCached;
+
         var pref = await _db.NotificationPreferences
             .FirstOrDefaultAsync(p => p.UserDid == userDid);
 
@@ -282,7 +304,9 @@ public class NotificationService : INotificationService
             await _db.SaveChangesAsync();
         }
 
-        return MapPreferencesToResponse(pref);
+        var prefResult = MapPreferencesToResponse(pref);
+        await _cache.SetAsync(prefKey, prefResult, PrefsCacheTtl);
+        return prefResult;
     }
 
     public async Task<ApiResponse<PreferencesResponse>> UpdatePreferencesAsync(string userDid, UpdatePreferencesRequest request)
@@ -311,6 +335,7 @@ public class NotificationService : INotificationService
         pref.UpdatedAt = VietnamTime.DatabaseNow;
 
         await _db.SaveChangesAsync();
+        await _cache.RemoveAsync($"prefs:{userDid}");
         return ApiResponse<PreferencesResponse>.Ok(MapPreferencesToResponse(pref));
     }
 

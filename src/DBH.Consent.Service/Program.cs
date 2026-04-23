@@ -109,6 +109,12 @@ builder.Services.AddHyperledgerFabric(builder.Configuration, "Consent", new[] { 
 builder.Services.AddNotificationClient(builder.Configuration);
 
 // ============================================================================
+// RabbitMQ (event publisher) + Redis Cache
+// ============================================================================
+builder.Services.AddRabbitMQ(builder.Configuration);
+builder.Services.AddRedisCache(builder.Configuration);
+
+// ============================================================================
 // JWT Authentication
 // ============================================================================
 

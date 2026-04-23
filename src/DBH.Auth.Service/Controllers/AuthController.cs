@@ -205,7 +205,7 @@ public class AuthController : ControllerBase
     }
 
     [Authorize(Roles = "Admin")]
-    [HttpPut("users/{userId:guid}")]
+    [HttpPut("users/{userId:guid}/profile")]
     public async Task<IActionResult> UpdateUserProfileByAdmin(Guid userId, [FromBody] UpdateProfileRequest request)
     {
         var response = await _authService.UpdateProfileAsync(userId, request);

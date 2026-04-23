@@ -77,7 +77,7 @@ builder.Services.AddInfrastructure(builder.Configuration, options =>
 {
     options.UseRabbitMQ = true;
     options.UseS3Storage = false;
-    options.UseRedisCache = false;
+    options.UseRedisCache = true;
     options.UseHyperledgerFabric = false;
     options.UseNotificationClient = false;
 });

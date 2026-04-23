@@ -8,6 +8,7 @@ using System.Security.Claims;
 using BCrypt.Net;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Time;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
@@ -31,6 +32,10 @@ public class AuthService : IAuthService
     private readonly IOrganizationServiceClient _organizationServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly AuthDbContext _dbContext;
+    private readonly ICacheService _cache;
+
+    private static readonly TimeSpan ProfileCacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan KeysCacheTtl = TimeSpan.FromMinutes(60);
 
     public AuthService(
         IUserRepository userRepository, 
@@ -46,7 +51,8 @@ public class AuthService : IAuthService
         IBlockchainSyncService blockchainSyncService,
         IOrganizationServiceClient organizationServiceClient,
         IHttpContextAccessor httpContextAccessor,
-        AuthDbContext dbContext)
+        AuthDbContext dbContext,
+        ICacheService cache)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -62,6 +68,7 @@ public class AuthService : IAuthService
         _organizationServiceClient = organizationServiceClient;
         _httpContextAccessor = httpContextAccessor;
         _dbContext = dbContext;
+        _cache = cache;
     }
 
 
@@ -369,6 +376,7 @@ public class AuthService : IAuthService
         }
 
         await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
+        await _cache.RemoveAsync($"profile:{request.UserId}");
 
         return new AuthResponse { Success = true, Message = "Cập nhật quyền thành công." };
     }
@@ -409,10 +417,16 @@ public class AuthService : IAuthService
 
     public async Task<UserProfileResponse?> GetMyProfileAsync(Guid userId)
     {
+        var cacheKey = $"profile:{userId}";
+        var cached = await _cache.GetAsync<UserProfileResponse>(cacheKey);
+        if (cached != null) return cached;
+
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
 
-        return BuildUserProfileResponse(user);
+        var result = BuildUserProfileResponse(user);
+        await _cache.SetAsync(cacheKey, result, ProfileCacheTtl);
+        return result;
     }
 
     public async Task<UserProfileResponse?> GetProfileByContactAsync(string? email, string? phone)
@@ -679,6 +693,7 @@ public class AuthService : IAuthService
                 }
             }
         }
+        await _cache.RemoveAsync($"profile:{userId}");
 
         return new AuthResponse { Success = true, Message = "Cập nhật hồ sơ cá nhân thành công." };
     }
@@ -768,6 +783,7 @@ public class AuthService : IAuthService
             await _userRepository.UpdateAsync(user);
         }
 
+        await _cache.RemoveAsync($"profile:{userId}");
         return new AuthResponse
         {
             Success = true,
@@ -855,6 +871,10 @@ public class AuthService : IAuthService
 
     public async Task<UserKeysDto?> GetUserKeysAsync(Guid userId)
     {
+        var keyCacheKey = $"keys:{userId}";
+        var keyCached = await _cache.GetAsync<UserKeysDto>(keyCacheKey);
+        if (keyCached != null) return keyCached;
+
         var user = await _userRepository.GetByIdAsync(userId);
         if (user == null || string.IsNullOrWhiteSpace(user.PublicKey))
         {
@@ -867,12 +887,14 @@ public class AuthService : IAuthService
             return null;
         }
 
-        return new UserKeysDto
+        var keyResult = new UserKeysDto
         {
             UserId = userId,
             PublicKey = user.PublicKey,
             EncryptedPrivateKey = privateCredential.CredentialValue
         };
+        await _cache.SetAsync(keyCacheKey, keyResult, KeysCacheTtl);
+        return keyResult;
     }
 
     public async Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor)
