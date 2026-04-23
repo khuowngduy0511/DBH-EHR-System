@@ -277,7 +277,7 @@ public class EhrService : IEhrService
         {
             _logger.LogWarning("Consent denied: requester {RequesterId} has no consent for EHR {EhrId} of patient {PatientId}",
                 requesterId, ehrId, record.PatientId);
-            return (null, true, $"Requester {requesterId} không có consent để truy cập EHR {ehrId} của bệnh nhân {record.PatientId}");
+            return (null, true, $"Người yêu cầu {requesterId} không có consent để truy cập EHR {ehrId} của bệnh nhân {record.PatientId}");
         }
 
         _logger.LogInformation("Consent verified: requester {RequesterId} granted access to EHR {EhrId}", requesterId, ehrId);
@@ -291,7 +291,7 @@ public class EhrService : IEhrService
     {
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
-            return (null, false, "EHR Record not found");
+            return (null, false, "Không tìm thấy hồ sơ EHR");
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var bearerToken = GetBearerTokenFromContext();
@@ -301,7 +301,7 @@ public class EhrService : IEhrService
         // Get latest version from Postgres
         var latestVersion = record.Versions?.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
         if (latestVersion == null)
-            return (null, false, "No versions found for EHR");
+            return (null, false, "Không tìm thấy phiên bản nào của EHR");
 
         // Retrieve encrypted text from IPFS or fallback
         string encryptedText;
@@ -316,7 +316,7 @@ public class EhrService : IEhrService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", latestVersion.IpfsCid);
-                return (null, false, "Failed to retrieve document from IPFS");
+                return (null, false, "Không thể lấy tài liệu từ IPFS");
             }
         }
         else if (!string.IsNullOrEmpty(latestVersion.EncryptedFallbackData))
@@ -325,7 +325,7 @@ public class EhrService : IEhrService
         }
         else
         {
-            return (null, false, "No encrypted data available for this EHR version");
+            return (null, false, "Không có dữ liệu mã hóa cho phiên bản EHR này");
         }
 
         bool isPatientOwner = requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId;
@@ -337,18 +337,18 @@ public class EhrService : IEhrService
             consentCheckResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId);
             if (!consentCheckResult.HasAccess || string.IsNullOrEmpty(consentCheckResult.ConsentId))
             {
-                return (null, true, "Requester does not have consent to read this EHR.");
+                return (null, true, "Người yêu cầu không có consent để đọc EHR này.");
             }
         }
 
         var requesterKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedRequesterId}/keys", bearerToken);
         if (!requesterKeyRes.IsSuccessStatusCode)
-           return (null, false, "Cannot fetch requester keys from Auth Service");
+              return (null, false, "Không thể lấy khóa của người yêu cầu từ Auth Service");
            
         var keysJson = await requesterKeyRes.Content.ReadAsStringAsync();
         var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (keys == null || string.IsNullOrEmpty(keys.EncryptedPrivateKey))
-             return (null, false, "Requester missing encrypted private key.");
+               return (null, false, "Người yêu cầu không có khóa riêng đã mã hóa.");
 
         var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
 
@@ -425,7 +425,7 @@ public class EhrService : IEhrService
         }
 
         if (candidateKeys.Count == 0)
-            return (null, false, "Unable to extract AES wrapper key from ledgers");
+            return (null, false, "Không thể trích xuất khóa bao AES từ sổ cái");
 
         Exception? lastDecryptError = null;
         foreach (var candidateKey in candidateKeys)
@@ -446,7 +446,7 @@ public class EhrService : IEhrService
         }
 
         _logger.LogError(lastDecryptError, "Failed to decrypt document payload for EHR {EhrId}", ehrId);
-        return (null, false, "Decryption failed due to invalid key or corrupted payload.");
+        return (null, false, "Giải mã thất bại do khóa không hợp lệ hoặc dữ liệu bị hỏng.");
     }
 
     public async Task<(string? DecryptedData, bool Forbidden, string? Message)> GetEhrDocumentForCurrentUserAsync(Guid ehrId)
@@ -454,7 +454,7 @@ public class EhrService : IEhrService
         var userId = GetCurrentUserIdFromContext();
         if (!userId.HasValue)
         {
-            return (null, true, "Cannot resolve current user id from token");
+            return (null, true, "Không thể xác định ID người dùng hiện tại từ token");
         }
 
         var (decryptedData, consentDenied, denyMessage) = await GetEhrDocumentAsync(ehrId, userId.Value);

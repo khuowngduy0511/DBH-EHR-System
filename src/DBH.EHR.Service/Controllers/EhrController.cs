@@ -111,7 +111,7 @@ public class EhrController : ControllerBase
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         if (!requesterId.HasValue)
-            return BadRequest(new { Message = "X-Requester-Id header is required to download EHR document" });
+            return BadRequest(new { Message = "Bắt buộc có header X-Requester-Id để tải tài liệu EHR" });
 
         var (decryptedData, consentDenied, denyMessage) = await _ehrService.GetEhrDocumentAsync(
             ehrId, requesterId.Value);
@@ -120,7 +120,7 @@ public class EhrController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
         
         if (string.IsNullOrEmpty(decryptedData))
-            return NotFound(new { Message = denyMessage ?? $"EHR Document {ehrId} not found or extraction failed" });
+            return NotFound(new { Message = denyMessage ?? $"Không tìm thấy tài liệu EHR {ehrId} hoặc trích xuất thất bại" });
         
         return Content(decryptedData, "application/json");
     }
@@ -140,7 +140,7 @@ public class EhrController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
 
         if (string.IsNullOrEmpty(decryptedData))
-            return NotFound(new { Message = message ?? $"EHR Document {ehrId} not found or extraction failed" });
+            return NotFound(new { Message = message ?? $"Không tìm thấy tài liệu EHR {ehrId} hoặc trích xuất thất bại" });
 
         return Content(decryptedData, "application/json");
     }
@@ -194,7 +194,7 @@ public class EhrController : ControllerBase
     {
         var version = await _ehrService.GetVersionByIdAsync(ehrId, versionId);
         if (version == null)
-            return NotFound(new { Message = $"Version {versionId} of EHR {ehrId} không tìm thấy" });
+            return NotFound(new { Message = $"Không tìm thấy phiên bản {versionId} của EHR {ehrId}" });
 
         return Ok(version);
     }
@@ -224,7 +224,7 @@ public class EhrController : ControllerBase
     public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, IFormFile file)
     {
         if (file == null || file.Length == 0)
-            return BadRequest(new { Message = "File is required" });
+            return BadRequest(new { Message = "Bắt buộc phải có tệp" });
 
         using var stream = file.OpenReadStream();
         var result = await _ehrService.AddFileAsync(ehrId, stream, file.FileName);
