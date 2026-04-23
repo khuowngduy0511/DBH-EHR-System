@@ -1,94 +1,89 @@
-# DBH.UnitTest - API Integration Tests
+# DBH.UnitTest - Test Documentation
 
-API integration tests for all DBH-EHR-System microservices using **xUnit** and **HttpClient**.
+Integration and E2E test suites for DBH-EHR-System using xUnit + HttpClient.
 
-## Project Structure
+## Focus
 
-```
-api/
-├── ApiTestBase.cs              # Shared HttpClient setup + authentication helpers
-├── ApiEndpoints.cs             # Centralized API URL constants
-├── TestSeedData.cs             # Known DB seed IDs and credentials
-├── AuthServiceTests.cs         # Auth, Doctors, Patients, Staff (18 tests)
-├── AppointmentServiceTests.cs  # Appointments, Encounters (13 tests)
-├── AuditServiceTests.cs        # Audit logs (8 tests)
-├── ConsentServiceTests.cs      # Consents, Access Requests (12 tests)
-├── EhrServiceTests.cs          # EHR Records, Versions, Files, IPFS (15 tests)
-├── NotificationServiceTests.cs # Notifications, Device Tokens, Preferences (12 tests)
-├── OrganizationServiceTests.cs # Organizations, Departments, Memberships (16 tests)
-└── PaymentServiceTests.cs      # Invoices, Payments, Webhook (10 tests)
-```
+- Unit-style API integration tests by service under `unitTest/*`.
+- Real workflow E2E tests under `e2e/*`.
+- One test case per file convention is applied across `unitTest` and `e2e`.
+
+## Current Inventory
+
+| Suite | Folder | Test Files |
+|---|---|---:|
+| E2E | `e2e` | 17 |
+| Auth Service | `unitTest/auth-service` | 34 |
+| Appointment Service | `unitTest/appointment-service` | 34 |
+| Audit Service | `unitTest/audit-service` | 14 |
+| Blockchain Service | `unitTest/blockchain-service` | 30 |
+| Consent Service | `unitTest/consent-service` | 20 |
+| EHR Service | `unitTest/ehr-service` | 35 |
+| Notification Service | `unitTest/notification-service` | 12 |
+| Organization Service | `unitTest/organization-service` | 28 |
+| Payment Service | `unitTest/payment-service` | 10 |
+| **Total** |  | **234** |
+
+## E2E Real-Flow Suites
+
+- `AppointmentLifecycleTests.cs`
+- `AuditTrailTests.cs`
+- `ConsentWorkflowTests.cs`
+- `EhrBulkQueryTests.cs`
+- `EhrCrudLifecycleTests.cs`
+- `EhrDataAccessControlTests.cs`
+- `EhrFileManagementTests.cs`
+- `EhrLifecycleTests.cs`
+- `EhrVersionHistoryTests.cs`
+- `FullOrgSetup_CreateToMembership_ShouldSucceed.cs`
+- `VerifySeedOrganization_ThenListDepartmentsAndMemberships.cs`
+- `FullPatientJourney_RegisterToDeactivateToReRegister.cs`
+- `LoginAllSeedUsers_ShouldSucceed.cs`
+- `RegisterDuplicate_ThenLoginOriginal_ShouldWork.cs`
+- `InvoiceLifecycle_CreateToPayCash_ShouldSucceed.cs`
+- `InvoiceCancel_ShouldUpdateStatus.cs`
+- `Checkout_WithFakeInvoice_ShouldReturnErrorWithMessage.cs`
 
 ## Prerequisites
 
-- **.NET 8 SDK**
-- All microservices running locally (via Docker Compose)
+- .NET 8 SDK
+- Docker + Docker Compose
+- All services running (recommended with dev compose)
 
-## Configuration
-
-Service URLs are in `appsettings.Test.json`:
-
-| Service       | Port  |
-|---------------|-------|
-| Gateway       | 5000  |
-| Auth          | 5101  |
-| Organization  | 5002  |
-| EHR           | 5003  |
-| Consent       | 5004  |
-| Audit         | 5005  |
-| Notification  | 5006  |
-| Appointment   | 5007  |
-| Payment       | 5008  |
-
-## Seed Data
-
-Tests validate against seeded database records defined in `TestSeedData.cs`:
-
-| User         | Email                 | Password          | Role         |
-|--------------|-----------------------|-------------------|--------------|
-| Admin        | admin@dbh.com         | admin123          | Admin        |
-| Doctor       | doctor@dbh.com        | doctor123         | Doctor       |
-| Pharmacist   | pharmacist@dbh.com    | pharma123         | Pharmacist   |
-| Nurse        | nurse@dbh.com         | nurse123          | Nurse        |
-| Patient      | patient@dbh.com       | patient123        | Patient      |
-| Receptionist | receptionist@dbh.com  | receptionist123   | Receptionist |
-
-**Organizations:** Hospital A, Hospital B, Clinic (with departments and memberships).
-
-## Running Tests
+## Run
 
 ```bash
-# Start services
 docker compose -f docker-compose.dev.yml up -d
-
-# Run all tests
 dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj
-
-# Run a specific service
-dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj --filter "FullyQualifiedName~AuthServiceTests"
-
-# Run with detailed output
-dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj -v detailed
 ```
+
+Run only E2E:
+
+```bash
+dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj --filter "FullyQualifiedName~DBH.UnitTest.E2E"
+```
+
+Run only one flow:
+
+```bash
+dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj --filter "FullyQualifiedName~FullPatientJourney_RegisterToDeactivateToReRegister"
+```
+
+Quiet output:
 
 ```powershell
-# Run tests with plain HTTP trace output (no diagnostic noise)
 dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj `
-	--logger "console;verbosity=quiet" `
-	-v minimal
+    --logger "console;verbosity=quiet" `
+    -v minimal
 ```
 
-Optional (only when you need artifacts):
+With TRX artifact:
+
 ```powershell
 dotnet test src/DBH.UnitTest/DBH.UnitTest.csproj `
-	--logger "console;verbosity=quiet" `
-	--logger "trx;LogFileName=DBH.UnitTest.trx" `
-	--results-directory .\TestResults `
-	-v minimal
+    --logger "console;verbosity=quiet" `
+    --logger "trx;LogFileName=DBH.UnitTest.trx" `
+    --results-directory .\TestResults `
+    -v minimal
 ```
-
-## Key Design Patterns
-
-- **`TestSeedData.cs`** — Tests use real seed data IDs to verify DB content matches
-- **Response validation** — Checks `success` flag, `message` content, and `data` fields (not just HTTP status codes)
-- **Not-found testing** — Fake GUIDs verify proper 404 responses with error messages
+```

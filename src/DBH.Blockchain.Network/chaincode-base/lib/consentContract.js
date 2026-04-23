@@ -6,6 +6,10 @@ const DOC_TYPES = {
     CONSENT: 'CONSENT_DOC'
 };
 
+function getVietnamNowIsoString() {
+    return new Date(Date.now() + (7 * 60 * 60 * 1000)).toISOString().replace('Z', '+07:00');
+}
+
 class ConsentContract extends Contract {
     async GrantConsent(ctx, consentID, patientDID, granteeDID, recordJSON, encryptedAesKey) {
         const record = JSON.parse(recordJSON);
@@ -22,7 +26,7 @@ class ConsentContract extends Contract {
         record.txId = ctx.stub.getTxID();
         record.status = 'ACTIVE';
         if (!record.grantedAt) {
-            record.grantedAt = new Date().toISOString();
+            record.grantedAt = getVietnamNowIsoString();
         }
 
         const recordBytes = Buffer.from(JSON.stringify(record));
@@ -135,6 +139,10 @@ class ConsentContract extends Contract {
             }
         }
 
+
+            function getVietnamNowIsoString() {
+                return new Date(Date.now() + (7 * 60 * 60 * 1000)).toISOString();
+            }
         return JSON.stringify({
             valid: true,
             consentId: consentID,
@@ -151,7 +159,7 @@ class ConsentContract extends Contract {
         while (!result.done) {
             try {
                 const record = JSON.parse(result.value.value.toString());
-                records.push(record);
+                        record.grantedAt = getVietnamNowIsoString();
             } catch (e) {
                 // skip malformed records
             }

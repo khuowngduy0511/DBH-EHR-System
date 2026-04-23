@@ -1,6 +1,8 @@
 
     using System.Text;
+    using System.Security.Claims;
     using DBH.Auth.Service.DbContext;
+    using DBH.Auth.Service.Models.Entities;
     using DBH.Auth.Service.Repositories;
     using DBH.Auth.Service.Services;
     using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -100,6 +102,42 @@
             ValidIssuer = jwtSettings["Issuer"],
             ValidAudience = jwtSettings["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey!))
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var principal = context.Principal;
+                var userIdText = principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                    ?? principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+
+                if (!Guid.TryParse(userIdText, out var userId))
+                {
+                    context.Fail("Invalid token subject.");
+                    return;
+                }
+
+                var issuedAtText = principal?.FindFirst("token_issued_at_ms")?.Value;
+                if (!long.TryParse(issuedAtText, out var issuedAtMs))
+                {
+                    context.Fail("Token issue time is missing.");
+                    return;
+                }
+
+                var securityRepository = context.HttpContext.RequestServices.GetRequiredService<IGenericRepository<UserSecurity>>();
+                var security = await securityRepository.FindAsync(s => s.UserId == userId);
+                if (security?.LastPasswordChange != null)
+                {
+                    var lastPasswordChangeUtc = DateTime.SpecifyKind(security.LastPasswordChange.Value, DateTimeKind.Utc);
+                    var issuedAtUtc = DateTimeOffset.FromUnixTimeMilliseconds(issuedAtMs).UtcDateTime;
+
+                    if (issuedAtUtc <= lastPasswordChangeUtc)
+                    {
+                        context.Fail("Token revoked.");
+                    }
+                }
+            }
         };
     });
 

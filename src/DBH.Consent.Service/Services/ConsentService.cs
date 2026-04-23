@@ -150,9 +150,9 @@ public class ConsentService : IConsentService
                 Permission = request.Permission.ToString(),
                 Purpose = request.Purpose.ToString(),
                 EhrId = request.EhrId?.ToString(),
-                GrantedAt = BlockchainTime.NowIsoString,
+                GrantedAt = VietnamTimeHelper.Now.ToString("o"),
                 ExpiresAt = request.DurationDays.HasValue
-                    ? BlockchainTime.Now.AddDays(request.DurationDays.Value).ToString("o")
+                    ? VietnamTimeHelper.Now.AddDays(request.DurationDays.Value).ToString("o")
                     : null,
                 Status = "ACTIVE",
                 EncryptedAesKey = wrappedKeyForGrantee
@@ -356,7 +356,7 @@ public class ConsentService : IConsentService
         {
             _blockchainSyncService.EnqueueConsentRevoke(
                 consent.BlockchainConsentId,
-                BlockchainTime.NowIsoString,
+                VietnamTimeHelper.Now.ToString("o"),
                 request.RevokeReason,
                 onFailure: error =>
                 {

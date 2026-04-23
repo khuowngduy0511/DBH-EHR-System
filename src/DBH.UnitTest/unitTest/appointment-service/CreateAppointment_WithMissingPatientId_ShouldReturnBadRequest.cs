@@ -1,15 +1,9 @@
 using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
 using DBH.UnitTest.Shared;
 
 namespace DBH.UnitTest.UnitTests;
 
-/// <summary>
-/// Good case: Create appointment with valid data
-/// Expected: 201 Created
-/// </summary>
-public class AppointmentServiceTests_CreateAppointment_WithValidData_ShouldCreate : ApiTestBase
+public class AppointmentServiceTests_CreateAppointment_WithMissingPatientId_ShouldReturnBadRequest : ApiTestBase
 {
     protected override IReadOnlyCollection<string> RequiredServices => new[]
     {
@@ -18,13 +12,12 @@ public class AppointmentServiceTests_CreateAppointment_WithValidData_ShouldCreat
     };
 
     [SkippableFact]
-    public async Task CreateAppointment_WithValidData_ShouldCreate()
+    public async Task CreateAppointment_WithMissingPatientId_ShouldReturnBadRequest()
     {
         var freshUsers = await AuthenticateAsFreshPatientAsync(AppointmentClient);
 
-        var request = new 
-        { 
-            patientId = freshUsers.PatientUserId,
+        var request = new
+        {
             doctorId = freshUsers.DoctorUserId,
             orgId = freshUsers.OrganizationId,
             scheduledAt = DateTime.UtcNow.AddDays(7).ToString("o")
@@ -33,8 +26,8 @@ public class AppointmentServiceTests_CreateAppointment_WithValidData_ShouldCreat
         var response = await PostAsJsonWithRetryAsync(AppointmentClient, ApiEndpoints.Appointments.Create, request);
 
         Assert.True(
-            response.StatusCode == HttpStatusCode.Created || 
-            response.StatusCode == HttpStatusCode.OK,
-            $"Expected 201 or 200, got {response.StatusCode}");
+            response.StatusCode == HttpStatusCode.BadRequest ||
+            response.StatusCode == HttpStatusCode.UnprocessableEntity,
+            $"Expected 400 or 422, got {response.StatusCode}");
     }
 }
