@@ -4,6 +4,7 @@ using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Notification;
 using DBH.Shared.Infrastructure.Time;
@@ -24,6 +25,10 @@ public class ConsentService : IConsentService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly INotificationServiceClient? _notificationClient;
+    private readonly ICacheService _cache;
+
+    private static readonly TimeSpan ConsentCacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ConsentListCacheTtl = TimeSpan.FromMinutes(5);
 
     public ConsentService(
         ConsentDbContext context,
@@ -31,6 +36,7 @@ public class ConsentService : IConsentService
         IHttpClientFactory httpClientFactory,
         IHttpContextAccessor httpContextAccessor,
         IBlockchainSyncService blockchainSyncService,
+        ICacheService cache,
         IConsentBlockchainService? blockchainService = null,
         IEhrBlockchainService? ehrBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
@@ -40,6 +46,7 @@ public class ConsentService : IConsentService
         _httpClientFactory = httpClientFactory;
         _httpContextAccessor = httpContextAccessor;
         _blockchainSyncService = blockchainSyncService;
+        _cache = cache;
         _blockchainService = blockchainService;
         _ehrBlockchainService = ehrBlockchainService;
         _notificationClient = notificationClient;
@@ -220,6 +227,8 @@ public class ConsentService : IConsentService
             "Granted consent {ConsentId} from patient {PatientId} to grantee {GranteeId}",
             consent.ConsentId, consent.PatientId, consent.GranteeId);
 
+        await _cache.RemoveByPatternAsync($"consents:grantee:{consent.GranteeId}:*");
+
         // Notify grantee about new consent
         if (_notificationClient != null)
         {
@@ -241,6 +250,10 @@ public class ConsentService : IConsentService
 
     public async Task<ApiResponse<ConsentResponse>> GetConsentByIdAsync(Guid consentId)
     {
+        var cKey = $"consent:{consentId}";
+        var cCached = await _cache.GetAsync<ApiResponse<ConsentResponse>>(cKey);
+        if (cCached != null) return cCached;
+
         var consent = await _context.Consents.FindAsync(consentId);
         if (consent == null)
         {
@@ -251,11 +264,13 @@ public class ConsentService : IConsentService
             };
         }
 
-        return new ApiResponse<ConsentResponse>
+        var cResult = new ApiResponse<ConsentResponse>
         {
             Success = true,
             Data = MapToResponse(consent)
         };
+        await _cache.SetAsync(cKey, cResult, ConsentCacheTtl);
+        return cResult;
     }
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByPatientAsync(Guid patientId, int page = 1, int pageSize = 10)
@@ -275,6 +290,10 @@ public class ConsentService : IConsentService
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByGranteeAsync(Guid granteeId, int page = 1, int pageSize = 10)
     {
+        var gKey = $"consents:grantee:{granteeId}:{page}:{pageSize}";
+        var gCached = await _cache.GetAsync<PagedResponse<ConsentResponse>>(gKey);
+        if (gCached != null) return gCached;
+
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var bearerToken = GetBearerTokenFromContext();
         var normalizedGranteeId = await ResolveUserIdAsync(authClient, granteeId, isPatientProfile: false, bearerToken);
@@ -285,7 +304,9 @@ public class ConsentService : IConsentService
             .ToList();
 
         var query = _context.Consents.Where(c => granteeCandidates.Contains(c.GranteeId));
-        return await ExecutePagedQueryAsync(query, page, pageSize);
+        var gResult = await ExecutePagedQueryAsync(query, page, pageSize);
+        await _cache.SetAsync(gKey, gResult, ConsentListCacheTtl);
+        return gResult;
     }
 
     public async Task<PagedResponse<ConsentResponse>> SearchConsentsAsync(ConsentQueryParams queryParams)
@@ -356,6 +377,8 @@ public class ConsentService : IConsentService
         consent.RevokeTxHash = txHash;
 
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"consent:{consentId}");
+        await _cache.RemoveByPatternAsync($"consents:grantee:{consent.GranteeId}:*");
 
         // Tự động tạo Audit Log khi Revoke Consent
         var auditEntry = new AuditEntry
