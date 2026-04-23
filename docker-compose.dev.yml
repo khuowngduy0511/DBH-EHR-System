@@ -61,6 +61,9 @@ services:
       - RabbitMQ__VirtualHost=/
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Auth:'
       - ServiceUrls__OrganizationService=http://organization_service:5002
       - FabricCA__CaUrl=https://ca_hospital1:7054
       - FabricCA__CaName=ca-hospital1
@@ -107,8 +110,13 @@ services:
       - ASPNETCORE_URLS=http://+:5002
       - ConnectionStrings__OrganizationDb=Host=pg_primary;Port=5432;Database=dbh_organization;Username=admin;Password=dbh_123
       - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Organization:'
     depends_on:
       pg_primary:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - dbh_network
@@ -146,6 +154,9 @@ services:
       - RabbitMQ__VirtualHost=/
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-EHR:'
       - IpfsConfig__ApiUrl=http://ipfs:5001/api/v0
       - IpfsConfig__GatewayUrl=http://ipfs:8080/ipfs
       - IpfsConfig__DownloadPath=/tmp/ipfs_downloads
@@ -207,6 +218,9 @@ services:
       - RabbitMQ__VirtualHost=/
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Consent:'
       - ServiceUrls__AuthService=http://auth_service:5101
       - ServiceUrls__EhrService=http://ehr_service:5003
       - ServiceUrls__AuditService=http://audit_service:5005
@@ -263,6 +277,9 @@ services:
       - RabbitMQ__VirtualHost=/
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Audit:'
       - HyperledgerFabric__Enabled=true
       - HyperledgerFabric__SimulationMode=false
       - HyperledgerFabric__PeerEndpoint=peer0.hospital1.ehr.com:7051
@@ -309,11 +326,24 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5006
-      - ConnectionStrings__DefaultConnection=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
+      - ConnectionStrings__NotificationDb=Host=pg_primary;Port=5432;Database=dbh_notification;Username=admin;Password=dbh_123
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__VirtualHost=/
+      - RabbitMQ__Username=admin
+      - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Notification:'
+      - JwtSettings__Key=your-super-secret-key-for-jwt-token-generation-min-32-chars
+      - JwtSettings__Issuer=DBH.Auth.Service
+      - JwtSettings__Audience=DBH.EHR.System
     depends_on:
       pg_primary:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - dbh_network
@@ -350,6 +380,9 @@ services:
       - RabbitMQ__Port=5672
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Appointment:'
       - ServiceUrls__EhrService=http://ehr_service:5003
       - ServiceUrls__OrganizationService=http://organization_service:5002
       - ServiceUrls__AuthService=http://auth_service:5101
@@ -395,6 +428,9 @@ services:
       - RabbitMQ__Port=5672
       - RabbitMQ__Username=admin
       - RabbitMQ__Password=dbh_123
+      - Redis__ConnectionString=redis:6379,password=dbh_123
+      - Redis__Enabled=true
+      - 'Redis__InstanceName=DBH-Payment:'
       - ServiceUrls__OrganizationService=http://organization_service:5002
       - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
     depends_on:
@@ -548,7 +584,7 @@ services:
       - "4001:4001"
       - "4001:4001/udp"
       - "5001:5001"
-      - "8080:8080"
+      - "8081:8080"
     environment:
       - IPFS_PROFILE=server
       - IPFS_PATH=/data/ipfs
@@ -590,12 +626,15 @@ services:
     container_name: dbh_redis
     ports:
       - "6379:6379"
+    command: redis-server --requirepass dbh_123
+    environment:
+      - REDIS_PASSWORD=dbh_123
     volumes:
       - redis_data:/data
     networks:
       - dbh_network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "dbh_123", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
