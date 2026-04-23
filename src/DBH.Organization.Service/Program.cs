@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.Services;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -78,6 +79,12 @@ builder.Services.AddHttpClient<IAuthUserClient, AuthUserClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+
+// ============================================================================
+// Redis Cache
+// ============================================================================
+
+builder.Services.AddRedisCache(builder.Configuration);
 
 // ============================================================================
 // JWT Authentication

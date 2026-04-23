@@ -3,6 +3,7 @@ using DBH.Organization.Service.DTOs;
 using DBH.Organization.Service.Models.Entities;
 using DBH.Organization.Service.Models.Enums;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -15,17 +16,23 @@ public class OrganizationService : IOrganizationService
     private readonly ILogger<OrganizationService> _logger;
     private readonly IAuthUserClient _authUserClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICacheService _cache;
+
+    private static readonly TimeSpan OrgCacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ListCacheTtl = TimeSpan.FromMinutes(5);
 
     public OrganizationService(
         OrganizationDbContext context,
         ILogger<OrganizationService> logger,
         IAuthUserClient authUserClient,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        ICacheService cache)
     {
         _context = context;
         _logger = logger;
         _authUserClient = authUserClient;
         _httpContextAccessor = httpContextAccessor;
+        _cache = cache;
     }
 
     // =========================================================================
@@ -62,6 +69,10 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<OrganizationResponse>> GetOrganizationByIdAsync(Guid orgId)
     {
+        var cacheKey = $"org:{orgId}";
+        var cached = await _cache.GetAsync<ApiResponse<OrganizationResponse>>(cacheKey);
+        if (cached != null) return cached;
+
         var org = await _context.Organizations
             .Include(o => o.Departments)
             .Include(o => o.Memberships)
@@ -76,15 +87,21 @@ public class OrganizationService : IOrganizationService
             };
         }
 
-        return new ApiResponse<OrganizationResponse>
+        var result = new ApiResponse<OrganizationResponse>
         {
             Success = true,
             Data = MapToResponse(org)
         };
+        await _cache.SetAsync(cacheKey, result, OrgCacheTtl);
+        return result;
     }
 
     public async Task<PagedResponse<OrganizationResponse>> GetOrganizationsAsync(int page = 1, int pageSize = 10, string? search = null)
     {
+        var cacheKey = $"orgs:list:{page}:{pageSize}:{search ?? string.Empty}";
+        var cached = await _cache.GetAsync<PagedResponse<OrganizationResponse>>(cacheKey);
+        if (cached != null) return cached;
+
         var query = _context.Organizations
             .Include(o => o.Departments)
             .Include(o => o.Memberships)
@@ -104,13 +121,15 @@ public class OrganizationService : IOrganizationService
             .Take(pageSize)
             .ToListAsync();
 
-        return new PagedResponse<OrganizationResponse>
+        var result = new PagedResponse<OrganizationResponse>
         {
             Data = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
         };
+        await _cache.SetAsync(cacheKey, result, ListCacheTtl);
+        return result;
     }
 
     public async Task<ApiResponse<OrganizationResponse>> UpdateOrganizationAsync(Guid orgId, UpdateOrganizationRequest request)
@@ -138,6 +157,8 @@ public class OrganizationService : IOrganizationService
         org.UpdatedAt = VietnamTimeHelper.Now;
 
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"org:{orgId}");
+        await _cache.RemoveByPatternAsync("orgs:list:*");
 
         return new ApiResponse<OrganizationResponse>
         {
@@ -158,6 +179,8 @@ public class OrganizationService : IOrganizationService
         org.Status = OrganizationStatus.INACTIVE;
         org.UpdatedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"org:{orgId}");
+        await _cache.RemoveByPatternAsync("orgs:list:*");
 
         return new ApiResponse<bool> { Success = true, Message = "Organization deactivated", Data = true };
     }
@@ -183,6 +206,8 @@ public class OrganizationService : IOrganizationService
         org.OrgDid = $"did:fabric:org:{org.OrgId:N}";
 
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"org:{orgId}");
+        await _cache.RemoveByPatternAsync("orgs:list:*");
 
         _logger.LogInformation("Verified organization {OrgId} by user {UserId}", orgId, verifiedByUserId);
 
@@ -236,6 +261,10 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<DepartmentResponse>> GetDepartmentByIdAsync(Guid departmentId)
     {
+        var cacheKey = $"dept:{departmentId}";
+        var cached = await _cache.GetAsync<ApiResponse<DepartmentResponse>>(cacheKey);
+        if (cached != null) return cached;
+
         var dept = await _context.Departments
             .Include(d => d.Organization)
             .Include(d => d.Memberships)
@@ -250,15 +279,21 @@ public class OrganizationService : IOrganizationService
             };
         }
 
-        return new ApiResponse<DepartmentResponse>
+        var result = new ApiResponse<DepartmentResponse>
         {
             Success = true,
             Data = MapToResponse(dept)
         };
+        await _cache.SetAsync(cacheKey, result, OrgCacheTtl);
+        return result;
     }
 
     public async Task<PagedResponse<DepartmentResponse>> GetDepartmentsByOrgAsync(Guid orgId, int page = 1, int pageSize = 10)
     {
+        var deptCacheKey = $"depts:org:{orgId}:{page}:{pageSize}";
+        var deptCached = await _cache.GetAsync<PagedResponse<DepartmentResponse>>(deptCacheKey);
+        if (deptCached != null) return deptCached;
+
         var query = _context.Departments
             .Include(d => d.Organization)
             .Include(d => d.Memberships)
@@ -271,13 +306,15 @@ public class OrganizationService : IOrganizationService
             .Take(pageSize)
             .ToListAsync();
 
-        return new PagedResponse<DepartmentResponse>
+        var deptListResult = new PagedResponse<DepartmentResponse>
         {
             Data = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
         };
+        await _cache.SetAsync($"depts:org:{orgId}:{page}:{pageSize}", deptListResult, OrgCacheTtl);
+        return deptListResult;
     }
 
     public async Task<ApiResponse<DepartmentResponse>> UpdateDepartmentAsync(Guid departmentId, UpdateDepartmentRequest request)
@@ -304,6 +341,8 @@ public class OrganizationService : IOrganizationService
         dept.UpdatedAt = VietnamTimeHelper.Now;
 
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"dept:{departmentId}");
+        await _cache.RemoveByPatternAsync($"depts:org:{dept.OrgId}:*");
 
         return new ApiResponse<DepartmentResponse>
         {
@@ -324,6 +363,8 @@ public class OrganizationService : IOrganizationService
         dept.Status = DepartmentStatus.INACTIVE;
         dept.UpdatedAt = VietnamTimeHelper.Now;
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"dept:{departmentId}");
+        await _cache.RemoveByPatternAsync($"depts:org:{dept.OrgId}:*");
 
         return new ApiResponse<bool> { Success = true, Message = "Department deactivated", Data = true };
     }
@@ -381,6 +422,8 @@ public class OrganizationService : IOrganizationService
 
         _context.Memberships.Add(membership);
         await _context.SaveChangesAsync();
+        await _cache.RemoveByPatternAsync($"members:org:{request.OrgId}:*");
+        await _cache.RemoveByPatternAsync($"members:user:{request.UserId}:*");
 
         return new ApiResponse<MembershipResponse>
         {
@@ -392,6 +435,10 @@ public class OrganizationService : IOrganizationService
 
     public async Task<ApiResponse<MembershipResponse>> GetMembershipByIdAsync(Guid membershipId)
     {
+        var mCacheKey = $"member:{membershipId}";
+        var mCached = await _cache.GetAsync<ApiResponse<MembershipResponse>>(mCacheKey);
+        if (mCached != null) return mCached;
+
         var membership = await _context.Memberships
             .Include(m => m.Organization)
             .Include(m => m.Department)
@@ -406,15 +453,21 @@ public class OrganizationService : IOrganizationService
             };
         }
 
-        return new ApiResponse<MembershipResponse>
+        var mResult = new ApiResponse<MembershipResponse>
         {
             Success = true,
             Data = MapToResponse(membership)
         };
+        await _cache.SetAsync(mCacheKey, mResult, OrgCacheTtl);
+        return mResult;
     }
 
     public async Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, int page = 1, int pageSize = 10)
     {
+        var moKey = $"members:org:{orgId}:{page}:{pageSize}";
+        var moCached = await _cache.GetAsync<PagedResponse<MembershipResponse>>(moKey);
+        if (moCached != null) return moCached;
+
         var query = _context.Memberships
             .Include(m => m.Organization)
             .Include(m => m.Department)
@@ -427,17 +480,23 @@ public class OrganizationService : IOrganizationService
             .Take(pageSize)
             .ToListAsync();
 
-        return new PagedResponse<MembershipResponse>
+        var moResult = new PagedResponse<MembershipResponse>
         {
             Data = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
         };
+        await _cache.SetAsync(moKey, moResult, ListCacheTtl);
+        return moResult;
     }
 
     public async Task<PagedResponse<MembershipResponse>> GetMembershipsByUserAsync(Guid userId, int page = 1, int pageSize = 10)
     {
+        var muKey = $"members:user:{userId}:{page}:{pageSize}";
+        var muCached = await _cache.GetAsync<PagedResponse<MembershipResponse>>(muKey);
+        if (muCached != null) return muCached;
+
         var query = _context.Memberships
             .Include(m => m.Organization)
             .Include(m => m.Department)
@@ -450,13 +509,15 @@ public class OrganizationService : IOrganizationService
             .Take(pageSize)
             .ToListAsync();
 
-        return new PagedResponse<MembershipResponse>
+        var muResult = new PagedResponse<MembershipResponse>
         {
             Data = items.Select(MapToResponse).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount
         };
+        await _cache.SetAsync(muKey, muResult, ListCacheTtl);
+        return muResult;
     }
 
     public async Task<PagedResponse<MembershipResponse>> SearchDoctorsAsync(SearchDoctorsRequest request)
@@ -577,6 +638,9 @@ public class OrganizationService : IOrganizationService
         membership.UpdatedBy = actorUserId;
 
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"member:{membershipId}");
+        await _cache.RemoveByPatternAsync($"members:org:{membership.OrgId}:*");
+        await _cache.RemoveByPatternAsync($"members:user:{membership.UserId}:*");
 
         return new ApiResponse<MembershipResponse>
         {
@@ -600,6 +664,9 @@ public class OrganizationService : IOrganizationService
         membership.UpdatedAt = VietnamTimeHelper.Now;
         membership.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"member:{membershipId}");
+        await _cache.RemoveByPatternAsync($"members:org:{membership.OrgId}:*");
+        await _cache.RemoveByPatternAsync($"members:user:{membership.UserId}:*");
 
         return new ApiResponse<bool> { Success = true, Message = "Membership terminated", Data = true };
     }
