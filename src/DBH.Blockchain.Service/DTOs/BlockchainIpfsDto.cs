@@ -19,6 +19,9 @@ public class EncryptIpfsPayloadResponseDto
     public string IpfsCid { get; set; } = string.Empty;
     public string WrappedAesKey { get; set; } = string.Empty;
     public string DataHash { get; set; } = string.Empty;
+    public bool IsBinary { get; set; }
+    public string? FileName { get; set; }
+    public string? ContentType { get; set; }
 }
 
 public class DecryptIpfsPayloadRequestDto
@@ -39,9 +42,22 @@ public class DecryptIpfsMultipartRequestDto
     public string WrappedAesKey { get; set; } = string.Empty;
 }
 
+public class DecryptIpfsRawFileRequestDto
+{
+    [Required]
+    public string WrappedAesKey { get; set; } = string.Empty;
+
+    [Required]
+    public IFormFile File { get; set; } = default!;
+}
+
 public class DecryptIpfsPayloadResponseDto
 {
     public string Data { get; set; } = string.Empty;
+    public bool IsBinary { get; set; }
+    public string? DataBase64 { get; set; }
+    public string? FileName { get; set; }
+    public string? ContentType { get; set; }
 }
 
 public class IpfsRawDownloadResponseDto

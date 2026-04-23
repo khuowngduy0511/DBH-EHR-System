@@ -28,7 +28,7 @@ public class AppointmentServiceTests_CheckInAppointment_WithValidId_ShouldCheckI
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
             organizationId = freshUsers.OrganizationId,
-            appointmentDate = DateTime.UtcNow.AddDays(7), 
+            appointmentDate = DateTime.UtcNow.AddDays(7),
             reason = "Check-in test", 
             notes = "Test check-in" 
         };

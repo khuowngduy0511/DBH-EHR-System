@@ -28,7 +28,7 @@ public class AppointmentServiceTests_ConfirmAppointment_WithValidId_ShouldConfir
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
             organizationId = freshUsers.OrganizationId,
-            appointmentDate = DateTime.UtcNow.AddDays(7), 
+            appointmentDate = DateTime.UtcNow.AddDays(7),
             reason = "Confirm test", 
             notes = "Test confirmation" 
         };

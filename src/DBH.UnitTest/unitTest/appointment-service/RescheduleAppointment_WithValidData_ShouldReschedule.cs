@@ -26,8 +26,8 @@ public class AppointmentServiceTests_RescheduleAppointment_WithValidData_ShouldR
         { 
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
-            organizationId = freshUsers.OrganizationId,
-            appointmentDate = DateTime.UtcNow.AddDays(7), 
+            orgId = freshUsers.OrganizationId,
+            scheduledAt = DateTime.UtcNow.AddDays(7), 
             reason = "Reschedule test", 
             notes = "Test rescheduling" 
         };

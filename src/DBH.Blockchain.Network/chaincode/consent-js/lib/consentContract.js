@@ -15,6 +15,10 @@
 
 const { Contract } = require('fabric-contract-api');
 
+function getVietnamNowIsoString() {
+    return new Date(Date.now() + (7 * 60 * 60 * 1000)).toISOString().replace('Z', '+07:00');
+}
+
 class ConsentContract extends Contract {
 
     // ========================================================================
@@ -38,7 +42,7 @@ class ConsentContract extends Contract {
         record.txId = ctx.stub.getTxID();
         record.status = 'ACTIVE';
         if (!record.grantedAt) {
-            record.grantedAt = new Date().toISOString();
+            record.grantedAt = getVietnamNowIsoString();
         }
 
         const recordBytes = Buffer.from(JSON.stringify(record));
@@ -230,7 +234,7 @@ class ConsentContract extends Contract {
                 history.push({
                     txId: modification.txId,
                     timestamp: modification.timestamp
-                        ? new Date(modification.timestamp.seconds.low * 1000).toISOString()
+                        ? new Date(modification.timestamp.seconds.low * 1000 + (7 * 60 * 60 * 1000)).toISOString().replace('Z', '+07:00')
                         : '',
                     isDelete: modification.isDelete,
                     record: record,

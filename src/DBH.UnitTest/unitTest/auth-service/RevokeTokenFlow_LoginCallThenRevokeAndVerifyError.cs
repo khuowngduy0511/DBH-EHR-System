@@ -15,12 +15,10 @@ public class AuthServiceTests_RevokeTokenFlow_LoginCallThenRevokeAndVerifyError 
     [SkippableFact]
     public async Task RevokeTokenFlow_LoginCallThenRevokeAndVerifyError_ShouldSucceed()
     {
-        // 1. Login to get token via AuthenticateAsDoctorAsync
+        // 1. Login to get token via a fresh doctor identity
         var tempClient = new HttpClient { BaseAddress = AuthClient.BaseAddress };
-        var loginJson = await AuthenticateAsDoctorAsync(tempClient);
-        // Token is already set on tempClient by AuthenticateAsDoctorAsync
-        var accessToken = loginJson.GetProperty("token").GetString() ?? 
-                         tempClient.DefaultRequestHeaders.Authorization?.Parameter;
+        await AuthenticateAsFreshDoctorAsync(tempClient);
+        Assert.NotNull(tempClient.DefaultRequestHeaders.Authorization?.Parameter);
         
         // 2. Create authenticated client with token and use the token that was set
         var authenticatedClient = tempClient;

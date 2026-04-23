@@ -28,7 +28,7 @@ public class AppointmentServiceTests_CancelAppointment_WithValidData_ShouldCance
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
             organizationId = freshUsers.OrganizationId,
-            appointmentDate = DateTime.UtcNow.AddDays(7), 
+            appointmentDate = DateTime.UtcNow.AddDays(7),
             reason = "Cancel test", 
             notes = "Test cancellation" 
         };

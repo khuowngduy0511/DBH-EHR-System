@@ -23,8 +23,8 @@ public class AppointmentServiceTests_RescheduleFlow_CreateThenRescheduleAndClean
         { 
             patientId = freshUsers.PatientUserId,
             doctorId = freshUsers.DoctorUserId,
-            appointmentDate = DateTime.UtcNow.AddDays(5).ToString("o"),
-            reason = "Test appointment for reschedule"
+            orgId = freshUsers.OrganizationId,
+            scheduledAt = DateTime.UtcNow.AddDays(5).ToString("o")
         };
         
         var createResponse = await PostAsJsonWithRetryAsync(AppointmentClient, ApiEndpoints.Appointments.Create, createRequest);

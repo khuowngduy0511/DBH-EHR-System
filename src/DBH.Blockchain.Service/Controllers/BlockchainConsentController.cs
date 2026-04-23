@@ -1,4 +1,5 @@
 using DBH.Blockchain.Service.DTOs;
+using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,7 +31,7 @@ public class BlockchainConsentController : ControllerBase
     [ProducesResponseType(typeof(BlockchainTransactionResult), StatusCodes.Status200OK)]
     public async Task<ActionResult<BlockchainTransactionResult>> RevokeConsentAsync([FromBody] ConsentRevokeRequestDto request)
     {
-        var revokedAt = string.IsNullOrWhiteSpace(request.RevokedAt) ? DateTime.UtcNow.ToString("o") : request.RevokedAt;
+        var revokedAt = string.IsNullOrWhiteSpace(request.RevokedAt) ? VietnamTimeHelper.Now.ToString("o") : request.RevokedAt;
         var result = await _consentService.RevokeConsentAsync(request.ConsentId, revokedAt!, request.Reason);
         return Ok(result);
     }
