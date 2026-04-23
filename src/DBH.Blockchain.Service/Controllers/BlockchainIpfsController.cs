@@ -89,7 +89,11 @@ public class BlockchainIpfsController : ControllerBase
             return BadRequest(ModelState);
         }
 
-        var result = await EncryptToIpfsForCurrentUserAsync(request.Data);
+        var result = await EncryptToIpfsForCurrentUserAsync(
+            Encoding.UTF8.GetBytes(request.Data),
+            isBinary: false,
+            fileName: null,
+            contentType: "text/plain");
         if (result == null)
         {
             return BadRequest(new { Message = "Failed to encrypt payload for current user" });
@@ -104,19 +108,42 @@ public class BlockchainIpfsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<EncryptIpfsPayloadResponseDto>> EncryptToIpfsMultipart([FromForm] EncryptIpfsMultipartRequestDto request)
     {
-        var payload = request.Data;
-        if (string.IsNullOrWhiteSpace(payload) && request.File != null)
+        if (request.File != null)
         {
-            using var reader = new StreamReader(request.File.OpenReadStream());
-            payload = await reader.ReadToEndAsync();
+            await using var stream = request.File.OpenReadStream();
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+
+            var fileBytes = memoryStream.ToArray();
+            if (fileBytes.Length == 0)
+            {
+                return BadRequest(new { Message = "Uploaded file is empty." });
+            }
+
+            var resultFromFile = await EncryptToIpfsForCurrentUserAsync(
+                fileBytes,
+                isBinary: true,
+                fileName: request.File.FileName,
+                contentType: request.File.ContentType);
+
+            if (resultFromFile == null)
+            {
+                return BadRequest(new { Message = "Failed to encrypt uploaded file for current user" });
+            }
+
+            return Ok(resultFromFile);
         }
 
-        if (string.IsNullOrWhiteSpace(payload))
+        if (string.IsNullOrWhiteSpace(request.Data))
         {
             return BadRequest(new { Message = "Provide either form field 'data' or file upload in 'file'." });
         }
 
-        var result = await EncryptToIpfsForCurrentUserAsync(payload);
+        var result = await EncryptToIpfsForCurrentUserAsync(
+            Encoding.UTF8.GetBytes(request.Data),
+            isBinary: false,
+            fileName: null,
+            contentType: "text/plain");
         if (result == null)
         {
             return BadRequest(new { Message = "Failed to encrypt payload for current user" });
@@ -136,12 +163,12 @@ public class BlockchainIpfsController : ControllerBase
         }
 
         var decrypted = await DecryptIpfsForCurrentUserAsync(request.IpfsCid, request.WrappedAesKey);
-        if (string.IsNullOrWhiteSpace(decrypted))
+        if (decrypted == null)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Decrypt failed. Ensure the wrapped key belongs to current user." });
         }
 
-        return Ok(new DecryptIpfsPayloadResponseDto { Data = decrypted });
+        return Ok(decrypted);
     }
 
     [HttpPost("decrypt/multipart")]
@@ -156,12 +183,64 @@ public class BlockchainIpfsController : ControllerBase
         }
 
         var decrypted = await DecryptIpfsForCurrentUserAsync(request.IpfsCid, request.WrappedAesKey);
-        if (string.IsNullOrWhiteSpace(decrypted))
+        if (decrypted == null)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Decrypt failed. Ensure the wrapped key belongs to current user." });
         }
 
-        return Ok(new DecryptIpfsPayloadResponseDto { Data = decrypted });
+        return Ok(decrypted);
+    }
+
+    [HttpPost("decrypt/raw-file")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> DecryptFromRawFile([FromForm] DecryptIpfsRawFileRequestDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        if (request.File.Length == 0)
+        {
+            return BadRequest(new { Message = "Uploaded raw IPFS file is empty." });
+        }
+
+        string encryptedText;
+        await using (var stream = request.File.OpenReadStream())
+        using (var reader = new StreamReader(stream, Encoding.UTF8, true))
+        {
+            encryptedText = await reader.ReadToEndAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(encryptedText))
+        {
+            return BadRequest(new { Message = "Uploaded raw IPFS file does not contain encrypted content." });
+        }
+
+        var decrypted = await DecryptEncryptedPayloadAsync(encryptedText, request.WrappedAesKey);
+        if (decrypted == null)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = "Decrypt failed. Ensure the wrapped key belongs to current user." });
+        }
+
+        if (decrypted.IsBinary)
+        {
+            if (string.IsNullOrWhiteSpace(decrypted.DataBase64))
+            {
+                return BadRequest(new { Message = "Binary payload is missing its data." });
+            }
+
+            var fileBytes = Convert.FromBase64String(decrypted.DataBase64);
+            var downloadFileName = BuildDownloadFileName(decrypted.FileName, decrypted.ContentType, request.File.FileName);
+            return File(fileBytes, decrypted.ContentType ?? "application/octet-stream", downloadFileName);
+        }
+
+        var textBytes = Encoding.UTF8.GetBytes(decrypted.Data);
+        var textFileName = BuildDownloadFileName(decrypted.FileName, decrypted.ContentType, request.File.FileName, ".txt");
+        return File(textBytes, decrypted.ContentType ?? "text/plain", textFileName);
     }
 
     [HttpGet("keys/current")]
@@ -209,10 +288,14 @@ public class BlockchainIpfsController : ControllerBase
         });
     }
 
-    private async Task<EncryptIpfsPayloadResponseDto?> EncryptToIpfsForCurrentUserAsync(string payload)
+    private async Task<EncryptIpfsPayloadResponseDto?> EncryptToIpfsForCurrentUserAsync(
+        byte[] payloadBytes,
+        bool isBinary,
+        string? fileName,
+        string? contentType)
     {
         var currentUserId = GetCurrentUserIdFromContext();
-        if (!currentUserId.HasValue || string.IsNullOrWhiteSpace(payload))
+        if (!currentUserId.HasValue || payloadBytes.Length == 0)
         {
             return null;
         }
@@ -228,7 +311,18 @@ public class BlockchainIpfsController : ControllerBase
         aes.GenerateKey();
         var blueKeyBytes = aes.Key;
 
-        var encryptedDataStr = SymmetricEncryptionService.EncryptString(payload, blueKeyBytes);
+        var envelope = new IpfsEncryptedPayloadEnvelope
+        {
+            IsBinary = isBinary,
+            Data = isBinary
+                ? Convert.ToBase64String(payloadBytes)
+                : Encoding.UTF8.GetString(payloadBytes),
+            FileName = fileName,
+            ContentType = contentType
+        };
+
+        var envelopeJson = JsonSerializer.Serialize(envelope);
+        var encryptedDataStr = SymmetricEncryptionService.EncryptString(envelopeJson, blueKeyBytes);
         var wrappedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
 
         string? ipfsCid = null;
@@ -264,11 +358,14 @@ public class BlockchainIpfsController : ControllerBase
         {
             IpfsCid = ipfsCid,
             WrappedAesKey = wrappedAesKey,
-            DataHash = ComputeHash(payload)
+            DataHash = ComputeHash(payloadBytes),
+            IsBinary = isBinary,
+            FileName = fileName,
+            ContentType = contentType
         };
     }
 
-    private async Task<string?> DecryptIpfsForCurrentUserAsync(string ipfsCid, string wrappedAesKey)
+    private async Task<DecryptIpfsPayloadResponseDto?> DecryptIpfsForCurrentUserAsync(string ipfsCid, string wrappedAesKey)
     {
         var currentUserId = GetCurrentUserIdFromContext();
         if (!currentUserId.HasValue
@@ -284,6 +381,19 @@ public class BlockchainIpfsController : ControllerBase
             return null;
         }
 
+        return await DecryptEncryptedPayloadAsync(encryptedText, wrappedAesKey);
+    }
+
+    private async Task<DecryptIpfsPayloadResponseDto?> DecryptEncryptedPayloadAsync(string encryptedText, string wrappedAesKey)
+    {
+        var currentUserId = GetCurrentUserIdFromContext();
+        if (!currentUserId.HasValue
+            || string.IsNullOrWhiteSpace(encryptedText)
+            || string.IsNullOrWhiteSpace(wrappedAesKey))
+        {
+            return null;
+        }
+
         var keys = await GetUserKeysAsync(currentUserId.Value);
         if (keys == null || string.IsNullOrWhiteSpace(keys.EncryptedPrivateKey))
         {
@@ -294,7 +404,8 @@ public class BlockchainIpfsController : ControllerBase
         {
             var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
             var blueKeyBytes = AsymmetricEncryptionService.UnwrapKey(wrappedAesKey, privateKey);
-            return SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
+            var decryptedJson = SymmetricEncryptionService.DecryptString(encryptedText, blueKeyBytes);
+            return ParseDecryptedPayload(decryptedJson);
         }
         catch (Exception ex)
         {
@@ -386,11 +497,99 @@ public class BlockchainIpfsController : ControllerBase
         return null;
     }
 
-    private static string ComputeHash(string content)
+    private static DecryptIpfsPayloadResponseDto ParseDecryptedPayload(string decryptedValue)
+    {
+        if (!string.IsNullOrWhiteSpace(decryptedValue))
+        {
+            try
+            {
+                var envelope = JsonSerializer.Deserialize<IpfsEncryptedPayloadEnvelope>(decryptedValue, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (envelope != null && envelope.Data != null)
+                {
+                    return new DecryptIpfsPayloadResponseDto
+                    {
+                        Data = envelope.IsBinary ? string.Empty : envelope.Data,
+                        IsBinary = envelope.IsBinary,
+                        DataBase64 = envelope.IsBinary ? envelope.Data : null,
+                        FileName = envelope.FileName,
+                        ContentType = envelope.ContentType
+                    };
+                }
+            }
+            catch (JsonException)
+            {
+                // Backward compatibility for records encrypted before envelope support.
+            }
+        }
+
+        return new DecryptIpfsPayloadResponseDto
+        {
+            Data = decryptedValue,
+            IsBinary = false,
+            DataBase64 = null,
+            FileName = null,
+            ContentType = "text/plain"
+        };
+    }
+
+    private static string ComputeHash(byte[] content)
     {
         using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        var bytes = sha256.ComputeHash(content);
         return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static string BuildDownloadFileName(string? envelopeFileName, string? contentType, string fallbackSourceFileName, string? fallbackExtension = null)
+    {
+        if (!string.IsNullOrWhiteSpace(envelopeFileName))
+        {
+            return envelopeFileName;
+        }
+
+        var extension = fallbackExtension ?? GetExtensionForContentType(contentType);
+        var sourceName = Path.GetFileNameWithoutExtension(fallbackSourceFileName);
+        if (string.IsNullOrWhiteSpace(sourceName))
+        {
+            sourceName = "decrypted";
+        }
+
+        return string.Concat(sourceName, extension);
+    }
+
+    private static string GetExtensionForContentType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            return ".bin";
+        }
+
+        return contentType.Split(';')[0].Trim().ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/jpg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "application/pdf" => ".pdf",
+            "text/plain" => ".txt",
+            "application/json" => ".json",
+            "text/html" => ".html",
+            "video/mp4" => ".mp4",
+            "application/octet-stream" => ".bin",
+            _ => ".bin"
+        };
+    }
+
+    private sealed class IpfsEncryptedPayloadEnvelope
+    {
+        public bool IsBinary { get; set; }
+        public string Data { get; set; } = string.Empty;
+        public string? FileName { get; set; }
+        public string? ContentType { get; set; }
     }
 
     private sealed class AuthUserKeysDto
