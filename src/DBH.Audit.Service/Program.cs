@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using DBH.Audit.Service.Consumers;
 using DBH.Audit.Service.DbContext;
 using DBH.Audit.Service.Services;
 using DBH.Shared.Contracts;
@@ -79,6 +80,17 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 // Hyperledger Fabric Blockchain Integration
 // ============================================================================
 builder.Services.AddHyperledgerFabric(builder.Configuration, "Audit", new[] { BlockchainSyncJobType.AuditLog });
+
+// ============================================================================
+// RabbitMQ + Redis
+// ============================================================================
+
+builder.Services.AddRabbitMQ(builder.Configuration, x =>
+{
+    x.AddConsumer<DomainEventAuditConsumer>();
+});
+
+builder.Services.AddRedisCache(builder.Configuration);
 
 // ============================================================================
 // JWT Authentication
