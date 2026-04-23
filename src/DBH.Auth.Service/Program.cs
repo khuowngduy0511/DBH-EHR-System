@@ -77,6 +77,9 @@
 
     builder.Services.AddHyperledgerFabric(builder.Configuration, "Auth", new[] { BlockchainSyncJobType.FabricCaEnrollment });
 
+    // Redis Cache
+    builder.Services.AddRedisCache(builder.Configuration);
+
     // JWT Authentication Configuration
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");
     var secretKey = jwtSettings["Key"];
