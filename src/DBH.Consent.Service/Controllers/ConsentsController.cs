@@ -154,7 +154,7 @@ public class AccessRequestsController : ControllerBase
     /// Create access request (doctor/org requests patient consent)
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Doctor,Nurse,Admin")]
+    [Authorize(Roles = "Doctor,Nurse,Admin,Receptionist")]
     public async Task<IActionResult> CreateAccessRequest([FromBody] CreateAccessRequestDto request)
     {
         // TODO: Verify request.RequesterId matches authenticated user

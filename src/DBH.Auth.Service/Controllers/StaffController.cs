@@ -61,7 +61,6 @@ public class StaffController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Receptionist")]
-    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStaffRequest request)
     {
