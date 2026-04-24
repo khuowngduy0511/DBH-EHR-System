@@ -10,7 +10,7 @@
 #   Invoices (create + pay cash + cancel) across 3 organizations
 # =============================================================================
 
-$BASE  = "http://localhost:5000"
+$BASE  = "http://127.0.0.1:5000"
 $AUTH   = "$BASE/api/v1/auth"
 $ORG    = "$BASE/api/v1/organizations"
 $DEPT   = "$BASE/api/v1/departments"
