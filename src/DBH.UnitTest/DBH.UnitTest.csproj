@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -29,9 +30,23 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="TestMapper\**" />
+    <EmbeddedResource Remove="TestMapper\**" />
+    <None Remove="TestMapper\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DBH.Appointment.Service\DBH.Appointment.Service.csproj" />
+    <ProjectReference Include="..\DBH.Audit.Service\DBH.Audit.Service.csproj" />
     <ProjectReference Include="..\DBH.Consent.Service\DBH.Consent.Service.csproj" />
     <ProjectReference Include="..\DBH.EHR.Service\DBH.EHR.Service.csproj" />
+    <ProjectReference Include="..\DBH.Organization.Service\DBH.Organization.Service.csproj" />
+    <ProjectReference Include="..\DBH.Auth.Service\DBH.Auth.Service.csproj" />
+    <ProjectReference Include="..\DBH.Notification.Service\DBH.Notification.Service.csproj" />
+    <ProjectReference Include="..\DBH.Payment.Service\DBH.Payment.Service.csproj" />
     <ProjectReference Include="..\DBH.Shared.Infrastructure\DBH.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\DBH.Shared.Contracts\DBH.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\DBH.Shared.Domain\DBH.Shared.Domain.csproj" />
   </ItemGroup>
 
 </Project>

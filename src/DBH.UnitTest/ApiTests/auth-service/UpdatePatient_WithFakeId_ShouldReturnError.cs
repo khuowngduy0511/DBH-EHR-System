@@ -1,0 +1,24 @@
+using System.Net;
+using System.Net.Http.Json;
+using DBH.UnitTest.Shared;
+
+namespace DBH.UnitTest.ApiTests;
+
+public class AuthServiceTests_UpdatePatient_WithFakeId_ShouldReturnError : ApiTestBase
+{
+    protected override IReadOnlyCollection<string> RequiredServices => new[] { "AuthService" };
+
+    [SkippableFact]
+    public async Task UpdatePatient_WithFakeId_ShouldReturnError()
+    {
+        await AuthenticateAsAdminAsync(AuthClient);
+
+        var fakePatientId = Guid.NewGuid();
+        var request = new { dob = "1990-01-01", bloodType = "O+" };
+        var url = ApiEndpoints.Patients.Update(fakePatientId);
+        
+        var response = await PutAsJsonWithRetryAsync(AuthClient, url, request);
+        
+        Assert.True(response.StatusCode == HttpStatusCode.NotFound || response.StatusCode == HttpStatusCode.BadRequest);
+    }
+}
