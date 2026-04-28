@@ -191,7 +191,8 @@ public class ConsentService : IConsentService
                 ? VietnamTime.DatabaseNow.AddDays(request.DurationDays.Value)
                 : null,
             Status = ConsentStatus.ACTIVE,
-            GrantTxHash = txHash
+            GrantTxHash = txHash,
+            EncryptedAesKey = wrappedKeyForGrantee
         };
 
         _context.Consents.Add(consent);
