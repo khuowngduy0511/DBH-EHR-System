@@ -669,6 +669,8 @@ services:
       - N8N_CORS_ALLOWED_HEADERS=Content-Type,Authorization
       # Basic auth (tắt để dev dễ hơn)
       - N8N_BASIC_AUTH_ACTIVE=false
+      # Disable secure cookie (cho phép truy cập qua HTTP)
+      - N8N_SECURE_COOKIE=false
       # Timezone
       - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
       - TZ=Asia/Ho_Chi_Minh
