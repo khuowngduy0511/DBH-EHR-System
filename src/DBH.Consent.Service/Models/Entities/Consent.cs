@@ -121,10 +121,4 @@ public class Consent
 
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = VietnamTime.DatabaseNow;
-
-    /// <summary>
-    /// Local cache for AES Wrapper Key (ONLY for Dev fallback)
-    /// </summary>
-    [Column("encrypted_aes_key")]
-    public string? EncryptedAesKey { get; set; }
 }
