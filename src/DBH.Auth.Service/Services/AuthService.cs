@@ -870,7 +870,7 @@ public class AuthService : IAuthService
         }, isAdminOverride: true);
     }
 
-    public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
+    public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId, Guid? staffId = null)
     {
         if (patientId.HasValue)
         {
@@ -894,6 +894,20 @@ public class AuthService : IAuthService
 
             var doctor = await _doctorRepository.FindAsync(d => d.DoctorId == doctorId.Value);
             return doctor?.UserId;
+        }
+
+        if (staffId.HasValue)
+        {
+            // First check if staffId is directly a userId (fallback for already-normalized IDs)
+            var staffUser = await _userRepository.GetByIdAsync(staffId.Value);
+            if (staffUser != null)
+            {
+                return staffUser.UserId;
+            }
+
+            // Look up the Staff profile by StaffId to get the linked UserId
+            var staff = await _staffRepository.FindAsync(s => s.StaffId == staffId.Value);
+            return staff?.UserId;
         }
 
         return null;
