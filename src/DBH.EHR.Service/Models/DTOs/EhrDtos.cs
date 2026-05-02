@@ -91,7 +91,7 @@ public class UpdateEhrRecordDto
 }
 
 /// <summary>
-/// Chi tiết version EHR (bao gồm IPFS CID)
+/// Chi tiết version EHR (bao gồm IPFS CID và data hash)
 /// </summary>
 public class EhrVersionDetailDto
 {
@@ -99,7 +99,21 @@ public class EhrVersionDetailDto
     public Guid EhrId { get; set; }
     public int VersionNumber { get; set; }
     public string? IpfsCid { get; set; }
+    public string? DataHash { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Response nội dung tài liệu của một version EHR cụ thể
+/// </summary>
+public class EhrVersionDocumentResponseDto
+{
+    public Guid VersionId { get; set; }
+    public Guid EhrId { get; set; }
+    public int VersionNumber { get; set; }
+    public string? DataHash { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string Document { get; set; } = string.Empty;
 }
 
 /// <summary>

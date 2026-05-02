@@ -15,6 +15,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
+      - TZ=Asia/Ho_Chi_Minh
     depends_on:
       - auth_service
       - organization_service
@@ -55,6 +56,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5101
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__PostgreSQL=Host=pg_primary;Port=5432;Database=dbh_identity;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -108,6 +110,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5002
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__OrganizationDb=Host=pg_primary;Port=5432;Database=dbh_organization;Username=admin;Password=dbh_123
       - InternalApi__SecretKey=${INTERNAL_API_SECRET_KEY:-dbh-internal-s2s-secret-key-2026!}
       - Redis__ConnectionString=redis:6379,password=dbh_123
@@ -148,6 +151,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5003
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__EhrDb=Host=pg_primary;Port=5432;Database=dbh_ehr;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -212,6 +216,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5004
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__ConsentDb=Host=pg_primary;Port=5432;Database=dbh_consent;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -271,6 +276,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5005
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__AuditDb=Host=pg_primary;Port=5432;Database=dbh_audit;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -326,6 +332,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5006
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__NotificationDb=Host=pg_primary;Port=5432;Database=dbh_notification;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -375,6 +382,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5007
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__AppointmentDb=Host=pg_primary;Port=5432;Database=dbh_appointment;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -423,6 +431,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5008
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__PaymentDb=Host=pg_primary;Port=5432;Database=dbh_payment;Username=admin;Password=dbh_123
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
@@ -468,6 +477,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5090
+      - TZ=Asia/Ho_Chi_Minh
       - ConnectionStrings__BlockchainDb=Host=pg_primary;Port=5432;Database=dbh_blockchain;Username=admin;Password=dbh_123
       - ServiceUrls__AuthService=http://gateway:5000
       - ServiceUrls__EhrService=http://gateway:5000
@@ -674,6 +684,8 @@ services:
       - N8N_CORS_ALLOWED_HEADERS=Content-Type,Authorization
       # Basic auth (tắt để dev dễ hơn)
       - N8N_BASIC_AUTH_ACTIVE=false
+      # Disable secure cookie (cho phép truy cập qua HTTP)
+      - N8N_SECURE_COOKIE=false
       # Timezone
       - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
       - TZ=Asia/Ho_Chi_Minh

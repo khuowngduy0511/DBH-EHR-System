@@ -266,19 +266,23 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("user-id")]
-    public async Task<IActionResult> GetUserId([FromQuery] Guid? patientId, [FromQuery] Guid? doctorId)
+    public async Task<IActionResult> GetUserId(
+        [FromQuery] Guid? patientId,
+        [FromQuery] Guid? doctorId,
+        [FromQuery] Guid? staffId)
     {
-        if (!patientId.HasValue && !doctorId.HasValue)
+        if (!patientId.HasValue && !doctorId.HasValue && !staffId.HasValue)
         {
-            return BadRequest("Either patientId or doctorId is required.");
+            return BadRequest("Either patientId, doctorId, or staffId is required.");
         }
 
-        if (patientId.HasValue && doctorId.HasValue)
+        var provided = new[] { patientId.HasValue, doctorId.HasValue, staffId.HasValue }.Count(x => x);
+        if (provided > 1)
         {
-            return BadRequest("Provide only one of patientId or doctorId.");
+            return BadRequest("Provide only one of patientId, doctorId, or staffId.");
         }
 
-        var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId);
+        var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId, staffId);
         if (!userId.HasValue)
         {
             return NotFound(Failed("User not found."));

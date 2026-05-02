@@ -993,28 +993,53 @@ public class ConsentService : IConsentService
 
     private async Task<Guid?> ResolveUserIdAsync(HttpClient authClient, Guid profileOrUserId, bool isPatientProfile, string? bearerToken)
     {
+        // Primary lookup: patientId for patients, doctorId for everyone else (also accepts userId directly)
         var queryKey = isPatientProfile ? "patientId" : "doctorId";
         var response = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?{queryKey}={profileOrUserId}", bearerToken);
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            return null;
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+
+            if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+                && camelUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+            {
+                return parsedCamel;
+            }
+
+            if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                && pascalUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+            {
+                return parsedPascal;
+            }
         }
 
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-
-        if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
-            && camelUserId.ValueKind == JsonValueKind.String
-            && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+        // Fallback for Staff roles (Nurse, LabTech, Pharmacist, Receptionist):
+        // doctorId lookup above fails for staffId, so try the staffId endpoint explicitly.
+        if (!isPatientProfile)
         {
-            return parsedCamel;
-        }
+            var staffResponse = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?staffId={profileOrUserId}", bearerToken);
+            if (staffResponse.IsSuccessStatusCode)
+            {
+                var staffBody = await staffResponse.Content.ReadAsStringAsync();
+                using var staffDoc = JsonDocument.Parse(staffBody);
 
-        if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
-            && pascalUserId.ValueKind == JsonValueKind.String
-            && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
-        {
-            return parsedPascal;
+                if (staffDoc.RootElement.TryGetProperty("userId", out var camelUserId)
+                    && camelUserId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+                {
+                    return parsedCamel;
+                }
+
+                if (staffDoc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                    && pascalUserId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+                {
+                    return parsedPascal;
+                }
+            }
         }
 
         return null;

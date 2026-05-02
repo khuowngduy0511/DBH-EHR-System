@@ -653,7 +653,7 @@ public class EhrService : IEhrService
         }
     }
 
-    public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId)
+    public async Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, Guid? requesterId = null)
     {
         var allRecords = (await _ehrRecordRepo.GetByPatientIdAsync(patientId)).ToList();
 
@@ -977,6 +977,7 @@ public class EhrService : IEhrService
             EhrId = version.EhrId,
             VersionNumber = version.VersionNumber,
             IpfsCid = version.IpfsCid,
+            DataHash = version.DataHash,
             CreatedAt = version.CreatedAt
         };
     }
@@ -1656,6 +1657,7 @@ public class EhrService : IEhrService
 
     private async Task<Guid?> ResolveRequesterUserIdAsync(HttpClient authClient, Guid requesterId, string? bearerToken)
     {
+        // Try as doctorId (also works when requesterId IS a userId, because Auth checks Users table first)
         var asDoctor = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?doctorId={requesterId}", bearerToken);
         if (asDoctor.IsSuccessStatusCode)
         {
@@ -1676,6 +1678,28 @@ public class EhrService : IEhrService
             }
         }
 
+        // Try as staffId (for Nurse, LabTech, Pharmacist, Receptionist roles)
+        var asStaff = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?staffId={requesterId}", bearerToken);
+        if (asStaff.IsSuccessStatusCode)
+        {
+            var body = await asStaff.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+                && camelUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+            {
+                return parsedCamel;
+            }
+
+            if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                && pascalUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+            {
+                return parsedPascal;
+            }
+        }
+
+        // Try as patientId (last resort)
         var asPatient = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?patientId={requesterId}", bearerToken);
         if (!asPatient.IsSuccessStatusCode)
         {

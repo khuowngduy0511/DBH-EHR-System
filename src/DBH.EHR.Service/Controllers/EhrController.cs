@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using DBH.EHR.Service.Models.DTOs;
 using DBH.EHR.Service.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -19,6 +20,15 @@ public class EhrController : ControllerBase
     {
         _ehrService = ehrService;
         _logger = logger;
+    }
+
+    // Helper: lấy userId của user đang đăng nhập từ JWT claims
+    private Guid? GetCallerUserId()
+    {
+        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier)
+               ?? User.FindFirstValue("sub")
+               ?? User.FindFirstValue("userId");
+        return Guid.TryParse(raw, out var id) ? id : null;
     }
 
     // EHR Records
@@ -77,38 +87,41 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy EHR theo ID - Nếu có X-Requester-Id header sẽ kiểm tra consent
+    /// Lấy EHR theo ID — Admin không cần consent; các role khác bắt buộc kiểm tra consent.
     /// </summary>
     [HttpGet("records/{ehrId:guid}")]
     [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(
-        Guid ehrId, 
+        Guid ehrId,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
-        // Nếu có requester ID → kiểm tra consent trước khi trả data
-        if (requesterId.HasValue)
+        // Admin không cần kiểm tra consent
+        if (User.IsInRole("Admin"))
         {
-            var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(
-                ehrId, requesterId.Value);
-            
-            if (consentDenied)
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
-            
-            if (record == null)
+            var adminResult = await _ehrService.GetEhrRecordAsync(ehrId);
+            if (adminResult == null)
                 return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
-            
-            return Ok(record);
+            return Ok(adminResult);
         }
 
-        // Không có requester ID → trả trực tiếp (internal service call)
-        var result = await _ehrService.GetEhrRecordAsync(ehrId);
-        
-        if (result == null)
+        // Xác định requester: header > JWT
+        var effectiveId = requesterId ?? GetCallerUserId();
+        if (!effectiveId.HasValue)
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+
+        var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(
+            ehrId, effectiveId.Value);
+
+        if (consentDenied)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+
+        if (record == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 
-        return Ok(result);
+        return Ok(record);
     }
 
     /// <summary>
@@ -160,21 +173,34 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy EHR của bệnh nhân
+    /// Lấy EHR của bệnh nhân — Admin thấy tất cả; bệnh nhân thấy của mình; bác sĩ/nhân viên chỉ thấy record mình có consent.
     /// </summary>
     [HttpGet("records/patient/{patientId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetPatientEhrRecords(
         Guid patientId)
     {
-        var records = await _ehrService.GetPatientEhrRecordsAsync(patientId);
-        return Ok(records);
+        // Admin thấy tất cả
+        if (User.IsInRole("Admin"))
+        {
+            var records = await _ehrService.GetPatientEhrRecordsAsync(patientId, null);
+            return Ok(records);
+        }
+
+        var callerId = GetCallerUserId();
+        if (!callerId.HasValue)
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+
+        var result = await _ehrService.GetPatientEhrRecordsAsync(patientId, callerId.Value);
+        return Ok(result);
     }
 
     /// <summary>
-    /// Lấy EHR theo tổ chức (organization)
+    /// Lấy EHR theo tổ chức — chỉ Admin, Doctor, Nurse, Staff trong org mới được phép.
     /// </summary>
     [HttpGet("records/org/{orgId:guid}")]
+    [Authorize(Roles = "Admin,Doctor,Nurse,Receptionist,Pharmacist,LabTech")]
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetOrgEhrRecords(
         Guid orgId)
@@ -198,7 +224,7 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy chi tiết một version của EHR 
+    /// Lấy chi tiết một version của EHR (metadata)
     /// </summary>
     [HttpGet("records/{ehrId:guid}/versions/{versionId:guid}")]
     [ProducesResponseType(typeof(EhrVersionDetailDto), StatusCodes.Status200OK)]
@@ -211,6 +237,34 @@ public class EhrController : ControllerBase
             return NotFound(new { Message = $"Không tìm thấy phiên bản {versionId} của EHR {ehrId}" });
 
         return Ok(version);
+    }
+
+    /// <summary>
+    /// Đọc nội dung đã giải mã của một version EHR cụ thể (bao gồm phiên bản cũ)
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/versions/{versionId:guid}/document")]
+    [ProducesResponseType(typeof(EhrVersionDocumentResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EhrVersionDocumentResponseDto>> GetVersionDocument(
+        Guid ehrId, Guid versionId,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
+    {
+        var effectiveId = requesterId ?? GetCallerUserId();
+        if (!effectiveId.HasValue)
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+
+        var (result, consentDenied, denyMessage) = await _ehrService.GetVersionDocumentAsync(
+            ehrId, versionId, effectiveId.Value);
+
+        if (consentDenied)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+
+        if (result == null)
+            return NotFound(new { Message = denyMessage ?? $"Không tìm thấy phiên bản {versionId} hoặc giải mã thất bại" });
+
+        return Ok(result);
     }
 
     // EHR Files
