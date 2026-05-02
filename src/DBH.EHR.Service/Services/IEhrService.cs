@@ -31,7 +31,7 @@ public interface IEhrService
 
     Task<string?> DecryptIpfsForCurrentUserAsync(DecryptIpfsPayloadRequestDto request);
     
-    Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId);
+    Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, Guid? requesterId = null);
 
     Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId);
     
@@ -42,6 +42,12 @@ public interface IEhrService
     Task<EhrRecordResponseDto?> UpdateEhrRecordAsync(Guid ehrId, UpdateEhrRecordDto request);
     
     Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
+
+    /// <summary>
+    /// Đọc nội dung đã giải mã của một version EHR cụ thể
+    /// </summary>
+    Task<(EhrVersionDocumentResponseDto? Result, bool ConsentDenied, string? DenyMessage)> GetVersionDocumentAsync(
+        Guid ehrId, Guid versionId, Guid requesterId);
     
     Task<EhrFileDto?> AddFileAsync(Guid ehrId, Stream fileStream, string fileName);
     
