@@ -56,7 +56,7 @@ public interface IEhrService
     Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
 
     /// <summary>
-    /// Đọc nội dung đã giải mã của một version EHR cụ thể
+    /// L?y n?i dung t�i li?u d� gi?i m� c?a m?t version EHR c? th?
     /// </summary>
     Task<(EhrVersionDocumentResponseDto? Result, bool ConsentDenied, string? DenyMessage)> GetVersionDocumentAsync(
         Guid ehrId, Guid versionId, Guid requesterId);

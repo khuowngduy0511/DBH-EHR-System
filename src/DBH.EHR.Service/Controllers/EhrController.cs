@@ -179,7 +179,8 @@ public class EhrController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<EhrRecordResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IEnumerable<EhrRecordResponseDto>>> GetPatientEhrRecords(
-        Guid patientId)
+        Guid patientId,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         // Admin thấy tất cả
         if (User.IsInRole("Admin"))
@@ -240,7 +241,7 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Đọc nội dung đã giải mã của một version EHR cụ thể (bao gồm phiên bản cũ)
+    /// Lấy nội dung đã giải mã của một version EHR cụ thể
     /// </summary>
     [HttpGet("records/{ehrId:guid}/versions/{versionId:guid}/document")]
     [ProducesResponseType(typeof(EhrVersionDocumentResponseDto), StatusCodes.Status200OK)]
@@ -316,5 +317,14 @@ public class EhrController : ControllerBase
             return NotFound(new { Message = $"File {fileId} trong EHR {ehrId} không tìm thấy" });
 
         return NoContent();
+    }
+
+    private Guid? GetCallerUserId()
+    {
+        var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+                    ?? User.FindFirst("sub");
+        if (claim != null && Guid.TryParse(claim.Value, out var id))
+            return id;
+        return null;
     }
 }
