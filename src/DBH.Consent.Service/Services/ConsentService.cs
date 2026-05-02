@@ -468,9 +468,16 @@ public class ConsentService : IConsentService
         if (request.RequiredPermission.HasValue)
         {
             var requiredPerm = request.RequiredPermission.Value;
+            // Permission hierarchy:
+            //   FULL_ACCESS >= WRITE, DOWNLOAD, READ
+            //   WRITE >= READ (write implies read)
+            //   DOWNLOAD >= READ (download implies read)
             query = query.Where(c =>
                 c.Permission == ConsentPermission.FULL_ACCESS ||
-                c.Permission == requiredPerm);
+                c.Permission == requiredPerm ||
+                (requiredPerm == ConsentPermission.READ &&
+                 (c.Permission == ConsentPermission.WRITE ||
+                  c.Permission == ConsentPermission.DOWNLOAD)));
         }
 
         var consent = await query.FirstOrDefaultAsync();
