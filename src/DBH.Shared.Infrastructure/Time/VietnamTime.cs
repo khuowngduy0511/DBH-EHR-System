@@ -2,7 +2,10 @@ namespace DBH.Shared.Infrastructure.Time;
 
 public static class VietnamTime
 {
-    private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
+    public static readonly TimeZoneInfo TimeZone = ResolveVietnamTimeZone();
+
+    // Keep private alias for internal compat
+    private static readonly TimeZoneInfo VietnamTimeZone = TimeZone;
 
     /// <summary>
     /// Thời gian hiện tại theo múi giờ Việt Nam (UTC+7) — dùng cho business logic (hiển thị, so sánh, expiry).

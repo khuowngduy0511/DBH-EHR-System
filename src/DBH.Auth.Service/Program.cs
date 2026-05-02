@@ -21,6 +21,8 @@
         .AddJsonOptions(options =>
         {
             options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+            options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         });
     builder.Services.AddEndpointsApiExplorer();
 
