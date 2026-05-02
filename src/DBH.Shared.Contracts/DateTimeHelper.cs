@@ -2,7 +2,6 @@ namespace DBH.Shared.Contracts;
 
 /// <summary>
 /// Helper tập trung cho timezone Việt Nam (UTC+7).
-/// Sử dụng VietnamTimeHelper.Now thay cho DateTime.UtcNow ở tất cả business timestamp.
 /// </summary>
 public static class VietnamTimeHelper
 {
@@ -11,15 +10,13 @@ public static class VietnamTimeHelper
             OperatingSystem.IsWindows() ? "SE Asia Standard Time" : "Asia/Ho_Chi_Minh");
 
     /// <summary>
-    /// Thời gian hiện tại theo múi giờ Việt Nam (UTC+7), đánh dấu Kind=Utc để tương thích PostgreSQL timestamptz.
-    /// Giá trị số lưu trong DB là giờ VN (UTC+7), không phải UTC.
+    /// UTC thực sự — dùng để lưu timestamp vào DB (timestamptz).
+    /// FE nhận UTC và tự convert sang giờ Việt Nam (UTC+7) khi hiển thị.
     /// </summary>
-    public static DateTime Now => DateTime.SpecifyKind(
-        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone),
-        DateTimeKind.Utc);
+    public static DateTime Now => DateTime.UtcNow;
 
     /// <summary>
-    /// Ngày hiện tại theo múi giờ Việt Nam
+    /// Ngày hiện tại theo múi giờ Việt Nam (UTC+7).
     /// </summary>
-    public static DateOnly Today => DateOnly.FromDateTime(Now);
+    public static DateOnly Today => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone));
 }
