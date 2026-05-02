@@ -40,7 +40,19 @@ public interface IEhrService
     Task<IEnumerable<EhrFileDto>> GetEhrFilesAsync(Guid ehrId);
     
     Task<EhrRecordResponseDto?> UpdateEhrRecordAsync(Guid ehrId, UpdateEhrRecordDto request);
-    
+
+    /// <summary>
+    /// Cập nhật EHR với kiểm tra consent WRITE — trả ConsentDenied nếu không có quyền
+    /// </summary>
+    Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> UpdateEhrRecordWithConsentCheckAsync(
+        Guid ehrId, UpdateEhrRecordDto request, Guid requesterId);
+
+    /// <summary>
+    /// Tải xuống tài liệu EHR với kiểm tra consent DOWNLOAD — bệnh nhân chủ sở hữu không cần consent
+    /// </summary>
+    Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> DownloadEhrDocumentAsync(
+        Guid ehrId, Guid requesterId);
+
     Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
     
     Task<EhrFileDto?> AddFileAsync(Guid ehrId, Stream fileStream, string fileName);

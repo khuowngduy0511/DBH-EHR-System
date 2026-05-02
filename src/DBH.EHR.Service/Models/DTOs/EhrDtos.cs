@@ -102,6 +102,24 @@ public class EhrVersionDetailDto
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
+/// Response nội dung tài liệu của một version EHR cụ thể
+/// </summary>
+public class EhrVersionDocumentResponseDto
+{
+    public Guid VersionId { get; set; }
+    public Guid EhrId { get; set; }
+    public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
+    public Guid? EncounterId { get; set; }
+    public Guid? OrgId { get; set; }
+    public int VersionNumber { get; set; }
+    public string? DataHash { get; set; }
+    public List<EhrFileDto>? Files { get; set; }
+    public DateTime EhrCreatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string Document { get; set; } = string.Empty;
+}
 public class EncryptIpfsPayloadRequestDto
 {
     [Required]

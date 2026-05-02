@@ -63,11 +63,13 @@ public class ConsentService : IConsentService
         var normalizedPatientId = await ResolveUserIdAsync(authClient, request.PatientId, isPatientProfile: true, bearerToken) ?? request.PatientId;
         var normalizedGranteeId = await ResolveUserIdAsync(authClient, request.GranteeId, isPatientProfile: false, bearerToken) ?? request.GranteeId;
 
-        // Check if active consent already exists
+        // Check if active consent already exists FOR THE SAME PERMISSION
+        // (different permissions can coexist: e.g. WRITE + DOWNLOAD for same patient+grantee+EHR)
         var existingConsent = await _context.Consents.FirstOrDefaultAsync(c =>
             c.PatientId == normalizedPatientId &&
             c.GranteeId == normalizedGranteeId &&
             c.EhrId == request.EhrId &&
+            c.Permission == request.Permission &&
             c.Status == ConsentStatus.ACTIVE);
 
         if (existingConsent != null)
@@ -75,7 +77,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "Đã tồn tại consent đang hiệu lực cho bệnh nhân-người được cấp-EHR này"
+                Message = "Đã tồn tại consent đang hiệu lực với quyền này cho bệnh nhân-người được cấp-EHR này"
             };
         }
 
@@ -460,6 +462,17 @@ public class ConsentService : IConsentService
             query = query.Where(c => c.EhrId == null || c.EhrId == request.EhrId.Value);
         }
 
+        // Filter by required permission IN the query so that if multiple consents exist
+        // (e.g. READ with null EhrId + WRITE with specific EhrId), we pick the one
+        // that satisfies the required permission rather than returning an arbitrary one.
+        if (request.RequiredPermission.HasValue)
+        {
+            var requiredPerm = request.RequiredPermission.Value;
+            query = query.Where(c =>
+                c.Permission == ConsentPermission.FULL_ACCESS ||
+                c.Permission == requiredPerm);
+        }
+
         var consent = await query.FirstOrDefaultAsync();
 
         if (consent == null)
@@ -467,24 +480,8 @@ public class ConsentService : IConsentService
             return new VerifyConsentResponse
             {
                 HasAccess = false,
-                Message = "Không tìm thấy consent "
+                Message = "Không tìm thấy consent hoặc không đủ quyền"
             };
-        }
-
-        // Check permission level if required
-        if (request.RequiredPermission.HasValue)
-        {
-            var hasPermission = consent.Permission == ConsentPermission.FULL_ACCESS ||
-                consent.Permission == request.RequiredPermission.Value;
-
-            if (!hasPermission)
-            {
-                return new VerifyConsentResponse
-                {
-                    HasAccess = false,
-                    Message = $"Consent có tồn tại nhưng không đủ quyền. Hiện có: {consent.Permission}, Yêu cầu: {request.RequiredPermission}"
-                };
-            }
         }
 
         return new VerifyConsentResponse

@@ -44,6 +44,13 @@ public class EhrVersion
     [MaxLength(255)]
     public string? DataHash { get; set; }
 
+    /// <summary>
+    /// AES key encrypted with patient's RSA public key — stored here for immediate availability
+    /// without waiting for async blockchain commit.
+    /// </summary>
+    [Column("encrypted_aes_key_for_patient")]
+    public string? EncryptedAesKeyForPatient { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
 

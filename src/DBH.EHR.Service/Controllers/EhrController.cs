@@ -45,22 +45,35 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Cập nhật EHR - Tạo version mới 
+    /// Cập nhật EHR - Tạo version mới. Tất cả role (kể cả Admin) đều cần consent WRITE.
     /// </summary>
     [HttpPut("records/{ehrId:guid}")]
     [Authorize(Roles = "Doctor,Admin")]
     [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrRecordResponseDto>> UpdateEhrRecord(Guid ehrId, [FromBody] UpdateEhrRecordDto request)
+    public async Task<ActionResult<EhrRecordResponseDto>> UpdateEhrRecord(
+        Guid ehrId,
+        [FromBody] UpdateEhrRecordDto request,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        var result = await _ehrService.UpdateEhrRecordAsync(ehrId, request);
-        if (result == null)
+        var effectiveRequesterId = requesterId ?? GetCallerUserId();
+        if (!effectiveRequesterId.HasValue)
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+
+        var (record, consentDenied, denyMessage) = await _ehrService.UpdateEhrRecordWithConsentCheckAsync(
+            ehrId, request, effectiveRequesterId.Value);
+
+        if (consentDenied)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+
+        if (record == null)
             return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
 
-        return Ok(result);
+        return Ok(record);
     }
 
     /// <summary>
@@ -99,7 +112,7 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy EHR Payload (Document) theo ID - Bắt buộc có X-Requester-Id
+    /// Lấy EHR Payload (Document) theo ID - Bắt buộc có X-Requester-Id. Bệnh nhân chủ sở hữu không cần consent; người khác cần consent DOWNLOAD.
     /// </summary>
     [HttpGet("records/{ehrId:guid}/document")]
     [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
@@ -110,18 +123,19 @@ public class EhrController : ControllerBase
         Guid ehrId,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
-        if (!requesterId.HasValue)
-            return BadRequest(new { Message = "Bắt buộc có header X-Requester-Id để tải tài liệu EHR" });
+        var effectiveId = requesterId ?? GetCallerUserId();
+        if (!effectiveId.HasValue)
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
 
-        var (decryptedData, consentDenied, denyMessage) = await _ehrService.GetEhrDocumentAsync(
-            ehrId, requesterId.Value);
-        
+        var (decryptedData, consentDenied, denyMessage) = await _ehrService.DownloadEhrDocumentAsync(
+            ehrId, effectiveId.Value);
+
         if (consentDenied)
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
-        
+
         if (string.IsNullOrEmpty(decryptedData))
             return NotFound(new { Message = denyMessage ?? $"Không tìm thấy tài liệu EHR {ehrId} hoặc trích xuất thất bại" });
-        
+
         return Content(decryptedData, "application/json");
     }
 

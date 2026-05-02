@@ -228,6 +228,10 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("ehr_id");
 
+                    b.Property<string>("EncryptedAesKeyForPatient")
+                        .HasColumnType("text")
+                        .HasColumnName("encrypted_aes_key_for_patient");
+
                     b.Property<string>("EncryptedFallbackData")
                         .HasColumnType("text")
                         .HasColumnName("encrypted_fallback_data");
