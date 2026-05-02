@@ -21,7 +21,8 @@ public interface IAuthService
     Task<UserProfileResponse?> GetMyProfileAsync(Guid userId);
     Task<UserProfileResponse?> GetProfileByContactAsync(string? email, string? phone);
     Task<AuthResponse> UpdateProfileAsync(Guid userId, UpdateProfileRequest request);
-    Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId);
+    Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId, Guid? staffId = null);
+
     Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
     Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor);
     Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status);
