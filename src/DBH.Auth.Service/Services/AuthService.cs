@@ -1101,6 +1101,26 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<List<Guid>> SearchUserIdsAsync(string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return new List<Guid>();
+
+        var searchPattern = $"%{keyword.Trim()}%";
+        var userIds = await _dbContext.Users
+            .AsNoTracking()
+            .Where(u =>
+                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                u.UserId.ToString() == keyword.Trim()
+            )
+            .Select(u => u.UserId)
+            .Take(200) // limit for safety in memory
+            .ToListAsync();
+
+        return userIds;
+    }
+
 
 
     /// <summary>

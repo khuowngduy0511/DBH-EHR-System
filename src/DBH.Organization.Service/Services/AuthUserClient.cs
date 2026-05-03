@@ -131,4 +131,37 @@ public class AuthUserClient : IAuthUserClient
             return null;
         }
     }
+
+    public async Task<List<Guid>> SearchUserIdsAsync(string bearerToken, string keyword)
+    {
+        var baseUrl = _configuration["ServiceUrls:AuthService"] ?? "http://auth_service:5101";
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/v1/auth/users/search-ids?keyword={Uri.EscapeDataString(keyword)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+        try
+        {
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning(
+                    "Failed to search user ids from auth service. Keyword: {Keyword}. Status: {StatusCode}. Body: {Body}",
+                    keyword,
+                    response.StatusCode,
+                    body);
+                return new List<Guid>();
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<List<Guid>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<Guid>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to search user ids from auth service. Keyword: {Keyword}", keyword);
+            return new List<Guid>();
+        }
+    }
 }

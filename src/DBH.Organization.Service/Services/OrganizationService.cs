@@ -462,9 +462,9 @@ public class OrganizationService : IOrganizationService
         return mResult;
     }
 
-    public async Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, int page = 1, int pageSize = 10)
+    public async Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, string? search = null, int page = 1, int pageSize = 10)
     {
-        var moKey = $"members:org:{orgId}:{page}:{pageSize}";
+        var moKey = $"members:org:{orgId}:{search}:{page}:{pageSize}";
         var moCached = await _cache.GetAsync<PagedResponse<MembershipResponse>>(moKey);
         if (moCached != null) return moCached;
 
@@ -473,6 +473,28 @@ public class OrganizationService : IOrganizationService
             .Include(m => m.Department)
             .Where(m => m.OrgId == orgId);
 
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchStr = search.Trim();
+            var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+            var token = authHeader?.Replace("Bearer ", "");
+
+            List<Guid> matchingUserIds = new List<Guid>();
+            if (!string.IsNullOrEmpty(token))
+            {
+                matchingUserIds = await _authUserClient.SearchUserIdsAsync(token, searchStr);
+            }
+
+            var searchPattern = $"%{searchStr}%";
+            query = query.Where(m => 
+                matchingUserIds.Contains(m.UserId) ||
+                (m.EmployeeId != null && EF.Functions.ILike(m.EmployeeId, searchPattern)) ||
+                (m.JobTitle != null && EF.Functions.ILike(m.JobTitle, searchPattern)) ||
+                (m.Specialty != null && EF.Functions.ILike(m.Specialty, searchPattern)) ||
+                (m.Department != null && EF.Functions.ILike(m.Department.DepartmentName, searchPattern))
+            );
+        }
+
         var totalCount = await query.CountAsync();
         var items = await query
             .OrderByDescending(m => m.CreatedAt)
@@ -480,9 +502,26 @@ public class OrganizationService : IOrganizationService
             .Take(pageSize)
             .ToListAsync();
 
+        var authHeaderToken = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString()?.Replace("Bearer ", "");
+        var tasks = items.Select(async m =>
+        {
+            var response = MapToResponse(m);
+            if (!string.IsNullOrWhiteSpace(authHeaderToken))
+            {
+                var userInfo = await _authUserClient.GetUserProfileDetailAsync(authHeaderToken, m.UserId);
+                if (userInfo != null && response.User != null)
+                {
+                    response.User.FullName = userInfo.FullName;
+                    response.User.Email = userInfo.Email;
+                }
+            }
+            return response;
+        });
+        var mappedItems = await Task.WhenAll(tasks);
+
         var moResult = new PagedResponse<MembershipResponse>
         {
-            Data = items.Select(MapToResponse).ToList(),
+            Data = mappedItems.ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount

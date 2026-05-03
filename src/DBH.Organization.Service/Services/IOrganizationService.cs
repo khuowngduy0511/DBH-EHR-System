@@ -23,7 +23,7 @@ public interface IOrganizationService
     // Memberships
     Task<ApiResponse<MembershipResponse>> CreateMembershipAsync(CreateMembershipRequest request);
     Task<ApiResponse<MembershipResponse>> GetMembershipByIdAsync(Guid membershipId);
-    Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, int page = 1, int pageSize = 10);
+    Task<PagedResponse<MembershipResponse>> GetMembershipsByOrgAsync(Guid orgId, string? search = null, int page = 1, int pageSize = 10);
     Task<PagedResponse<MembershipResponse>> GetMembershipsByUserAsync(Guid userId, int page = 1, int pageSize = 10);
     Task<PagedResponse<MembershipResponse>> SearchDoctorsAsync(SearchDoctorsRequest request);
     Task<ApiResponse<MembershipResponse>> UpdateMembershipAsync(Guid membershipId, UpdateMembershipRequest request);
