@@ -76,6 +76,7 @@ public class EhrVersionDto
 public class EhrFileDto
 {
     public Guid FileId { get; set; }
+    public string? FileName { get; set; }
     public string? FileUrl { get; set; }
     public string? FileHash { get; set; }
     public DateTime CreatedAt { get; set; }

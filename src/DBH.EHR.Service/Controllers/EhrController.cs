@@ -304,6 +304,46 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
+    /// Tải file đính kèm đã giải mã — bệnh nhân chủ sở hữu không cần consent; người khác cần DOWNLOAD
+    /// </summary>
+    [HttpGet("records/{ehrId:guid}/files/{fileId:guid}/download")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadEhrFile(
+        Guid ehrId, Guid fileId,
+        [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
+    {
+        var effectiveId = requesterId ?? GetCallerUserId();
+        if (!effectiveId.HasValue)
+            return Unauthorized(new { Message = "Khong xac dinh duoc danh tinh nguoi yeu cau" });
+
+        var (content, fileName, consentDenied, message) =
+            await _ehrService.DownloadFileAsync(ehrId, fileId, effectiveId.Value);
+
+        if (consentDenied)
+            return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
+
+        if (content == null)
+            return NotFound(new { Message = message ?? $"Khong the tai file {fileId}" });
+
+        // Detect content type from file extension
+        var ext = Path.GetExtension(fileName)?.ToLowerInvariant() ?? "";
+        var contentType = ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => "application/octet-stream"
+        };
+
+        return File(content, contentType, fileName ?? "ehr_file");
+    }
+
+    /// <summary>
     /// Xóa file khỏi EHR
     /// </summary>
     [HttpDelete("records/{ehrId:guid}/files/{fileId:guid}")]

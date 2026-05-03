@@ -48,6 +48,13 @@ public class EhrFile
     [Column("encrypted_fallback_data")]
     public string? EncryptedFallbackData { get; set; }
 
+    /// <summary>
+    /// AES key (wrapped with patient's public key) used to encrypt this file
+    /// </summary>
+    [Column("encrypted_aes_key")]
+    [MaxLength(2000)]
+    public string? EncryptedAesKey { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
 

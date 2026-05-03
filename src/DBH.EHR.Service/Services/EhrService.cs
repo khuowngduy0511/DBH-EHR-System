@@ -1226,28 +1226,48 @@ public class EhrService : IEhrService
             _logger.LogWarning("IPFS upload failed for EHR {EhrId}, using encrypted fallback storage in PostgreSQL. FileHash={FileHash}", ehrId, fileHash);
         }
 
+        // Wrap AES key with patient's public key for later decryption
+        string? encryptedAesKey = null;
+        try
+        {
+            var authClient = _httpClientFactory.CreateClient("AuthService");
+            var bearerToken = GetBearerTokenFromContext();
+            var patientUserId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken);
+            var keyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{patientUserId ?? record.PatientId}/keys", bearerToken);
+            if (keyRes.IsSuccessStatusCode)
+            {
+                var keysJson = await keyRes.Content.ReadAsStringAsync();
+                var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (keys != null && !string.IsNullOrEmpty(keys.PublicKey))
+                    encryptedAesKey = AsymmetricEncryptionService.WrapKey(blueKeyBytes, keys.PublicKey);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to wrap AES key for file in EHR {EhrId}. File can still be stored but decryption may not be possible without the key.", ehrId);
+        }
+
         var file = new EhrFile
         {
             EhrId = ehrId,
             FileUrl = fileName,
             FileHash = fileHash,
             IpfsCid = ipfsCid,
-            EncryptedFallbackData = encryptedFallbackData
+            EncryptedFallbackData = encryptedFallbackData,
+            EncryptedAesKey = encryptedAesKey
         };
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
         _logger.LogInformation("Added file {FileId} to EHR {EhrId}, IPFS CID: {IpfsCid}", savedFile.FileId, ehrId, ipfsCid ?? "fallback");
 
-        // Audit log for file addition
         EnqueueEhrAuditLog("CREATE", ehrId, record.PatientId, record.OrgId);
 
-        // Notify patient about new file
         if (_notificationClient != null)
         {
             await _notificationClient.SendAsync(
                 record.PatientId,
-                "File mới trong hồ sơ bệnh án",
-                "Một file mới đã được thêm vào hồ sơ bệnh án của bạn.",
+                "File moi trong ho so benh an",
+                "Mot file moi da duoc them vao ho so benh an cua ban.",
                 "EhrFileAdded", "Low",
                 ehrId.ToString(), "EHR");
         }
@@ -1255,10 +1275,100 @@ public class EhrService : IEhrService
         return new EhrFileDto
         {
             FileId = savedFile.FileId,
+            FileName = savedFile.FileUrl,
             FileUrl = savedFile.FileUrl,
             FileHash = savedFile.FileHash,
             CreatedAt = savedFile.CreatedAt
         };
+    }
+
+    public async Task<(byte[]? Content, string? FileName, bool ConsentDenied, string? DenyMessage)>
+        DownloadFileAsync(Guid ehrId, Guid fileId, Guid requesterId)
+    {
+        var record = await _ehrRecordRepo.GetByIdAsync(ehrId);
+        if (record == null) return (null, null, false, "EHR not found");
+
+        var file = await _ehrRecordRepo.GetFileByIdAsync(ehrId, fileId);
+        if (file == null) return (null, null, false, "File not found");
+
+        var authClient = _httpClientFactory.CreateClient("AuthService");
+        var bearerToken = GetBearerTokenFromContext();
+        var normalizedPatientId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken) ?? record.PatientId;
+        var normalizedRequesterId = await ResolveRequesterUserIdAsync(authClient, requesterId, bearerToken) ?? requesterId;
+
+        bool isPatientOwner = requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId;
+
+        if (!isPatientOwner)
+        {
+            var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "DOWNLOAD");
+            if (!consentResult.HasAccess)
+                return (null, null, true, "Nguoi yeu cau khong co consent DOWNLOAD de tai file nay.");
+        }
+
+        // Get encrypted content from IPFS or fallback
+        string encryptedText;
+        if (!string.IsNullOrEmpty(file.IpfsCid))
+        {
+            try
+            {
+                var downloadedPath = await IpfsClientService.RetrieveAsync(file.IpfsCid);
+                encryptedText = await System.IO.File.ReadAllTextAsync(downloadedPath);
+                if (System.IO.File.Exists(downloadedPath)) System.IO.File.Delete(downloadedPath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve file {FileId} from IPFS: {Cid}", fileId, file.IpfsCid);
+                return (null, null, false, "Khong the tai file tu IPFS");
+            }
+        }
+        else if (!string.IsNullOrEmpty(file.EncryptedFallbackData))
+        {
+            encryptedText = file.EncryptedFallbackData;
+        }
+        else
+        {
+            return (null, null, false, "Khong co du lieu file");
+        }
+
+        // Unwrap AES key — try patient private key from DB-stored wrapped key
+        if (string.IsNullOrEmpty(file.EncryptedAesKey))
+            return (null, null, false, "File nay khong co AES key (upload cu, chua ho tro tai ve).");
+
+        var requesterKeyRes = await SendAuthGetAsync(authClient,
+            $"/api/v1/auth/{(isPatientOwner ? normalizedRequesterId : normalizedPatientId)}/keys", bearerToken);
+        if (!requesterKeyRes.IsSuccessStatusCode)
+            return (null, null, false, "Khong the lay private key de giai ma file");
+
+        var keysJson = await requesterKeyRes.Content.ReadAsStringAsync();
+        var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (keys == null || string.IsNullOrEmpty(keys.EncryptedPrivateKey))
+            return (null, null, false, "Private key khong ton tai");
+
+        byte[] aesKey;
+        try
+        {
+            var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
+            aesKey = AsymmetricEncryptionService.UnwrapKey(file.EncryptedAesKey, privateKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to unwrap AES key for file {FileId}", fileId);
+            return (null, null, false, "Giai ma AES key that bai");
+        }
+
+        try
+        {
+            var decryptedBase64 = SymmetricEncryptionService.DecryptString(encryptedText, aesKey);
+            var fileBytes = Convert.FromBase64String(decryptedBase64);
+            EnqueueEhrAuditLog("DOWNLOAD", ehrId, record.PatientId, record.OrgId);
+            return (fileBytes, file.FileUrl ?? "ehr_file", false, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Decryption failed for file {FileId}", fileId);
+            return (null, null, false, "Giai ma file that bai");
+        }
     }
 
     public async Task<bool> DeleteFileAsync(Guid ehrId, Guid fileId)
