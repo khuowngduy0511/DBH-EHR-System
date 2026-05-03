@@ -319,12 +319,4 @@ public class EhrController : ControllerBase
         return NoContent();
     }
 
-    private Guid? GetCallerUserId()
-    {
-        var claim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
-                    ?? User.FindFirst("sub");
-        if (claim != null && Guid.TryParse(claim.Value, out var id))
-            return id;
-        return null;
-    }
 }
