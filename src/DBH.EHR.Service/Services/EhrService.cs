@@ -716,6 +716,7 @@ public class EhrService : IEhrService
         {
             FileId = f.FileId,
             FileUrl = f.FileUrl,
+            FileName = f.FileUrl,
             FileHash = f.FileHash,
             CreatedAt = f.CreatedAt
         });
@@ -1155,6 +1156,7 @@ public class EhrService : IEhrService
             {
                 FileId = f.FileId,
                 FileUrl = f.FileUrl,
+                FileName = f.FileUrl,
                 FileHash = f.FileHash,
                 CreatedAt = f.CreatedAt
             }).ToList();
@@ -1864,6 +1866,7 @@ public class EhrService : IEhrService
             {
                 FileId = f.FileId,
                 FileUrl = f.FileUrl,
+                FileName = f.FileUrl,
                 FileHash = f.FileHash,
                 CreatedAt = f.CreatedAt
             }).ToList(),
