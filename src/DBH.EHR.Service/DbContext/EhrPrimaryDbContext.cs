@@ -1,4 +1,5 @@
 using DBH.EHR.Service.Models.Entities;
+using DBH.EHR.Service.Models.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace DBH.EHR.Service.DbContext;
@@ -19,6 +20,9 @@ public class EhrPrimaryDbContext : Microsoft.EntityFrameworkCore.DbContext
     public DbSet<EhrFile> EhrFiles => Set<EhrFile>();
     public DbSet<EhrSubscription> EhrSubscriptions => Set<EhrSubscription>();
     public DbSet<EhrAccessLog> EhrAccessLogs => Set<EhrAccessLog>();
+
+    // Bảng Lab Orders
+    public DbSet<LabOrder> LabOrders => Set<LabOrder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +82,23 @@ public class EhrPrimaryDbContext : Microsoft.EntityFrameworkCore.DbContext
             entity.Property(e => e.VerifyStatus)
                 .HasConversion<string>()
                 .HasMaxLength(10);
+
+            entity.HasOne(e => e.EhrRecord)
+                .WithMany()
+                .HasForeignKey(e => e.EhrId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LabOrder>(entity =>
+        {
+            entity.HasIndex(e => new { e.PatientId, e.Status });
+            entity.HasIndex(e => new { e.OrgId, e.Status });
+            entity.HasIndex(e => e.RequestedBy);
+            entity.HasIndex(e => e.EhrId);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
 
             entity.HasOne(e => e.EhrRecord)
                 .WithMany()
