@@ -83,6 +83,20 @@ public class EhrFileDto
 }
 
 /// <summary>
+/// Metadata tối thiểu của EHR — không chứa data nhạy cảm, không cần consent.
+/// Dùng để biết patient có hồ sơ không và lấy ehrId trước khi gửi access request.
+/// </summary>
+public class EhrMetadataDto
+{
+    public Guid EhrId { get; set; }
+    public Guid PatientId { get; set; }
+    public Guid? OrgId { get; set; }
+    public Guid? EncounterId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public int VersionCount { get; set; }
+}
+
+/// <summary>
 /// Request cập nhật EHR — tạo version mới
 /// </summary>
 public class UpdateEhrRecordDto

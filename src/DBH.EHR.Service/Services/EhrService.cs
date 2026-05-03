@@ -690,8 +690,21 @@ public class EhrService : IEhrService
         return responses;
     }
 
-    public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId)
+    public async Task<IEnumerable<EhrMetadataDto>> GetPatientEhrMetadataAsync(Guid patientId)
     {
+        var records = await _ehrRecordRepo.GetByPatientIdAsync(patientId);
+        return records.Select(r => new EhrMetadataDto
+        {
+            EhrId        = r.EhrId,
+            PatientId    = r.PatientId,
+            OrgId        = r.OrgId,
+            EncounterId  = r.EncounterId,
+            CreatedAt    = r.CreatedAt,
+            VersionCount = r.Versions?.Count ?? 0
+        });
+    }
+
+    public async Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId)    {
         var records = await _ehrRecordRepo.GetByOrgIdAsync(orgId);
         var responses = records.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);

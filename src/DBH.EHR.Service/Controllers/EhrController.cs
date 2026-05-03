@@ -173,6 +173,21 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy metadata tối thiểu của EHR patient (ehrId, orgId, createdAt...) mà KHÔNG cần consent.
+    /// Dùng để frontend biết patient có hồ sơ không và lấy ehrId trước khi gửi access request.
+    /// Chỉ trả về thông tin định danh, không chứa data y tế nhạy cảm.
+    /// </summary>
+    [HttpGet("records/patient/{patientId:guid}/metadata")]
+    [Authorize]
+    [ProducesResponseType(typeof(IEnumerable<EhrMetadataDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IEnumerable<EhrMetadataDto>>> GetPatientEhrMetadata(Guid patientId)
+    {
+        var metadata = await _ehrService.GetPatientEhrMetadataAsync(patientId);
+        return Ok(metadata);
+    }
+
+    /// <summary>
     /// Lấy EHR của bệnh nhân — Admin thấy tất cả; bệnh nhân thấy của mình; bác sĩ/nhân viên chỉ thấy record mình có consent.
     /// </summary>
     [HttpGet("records/patient/{patientId:guid}")]

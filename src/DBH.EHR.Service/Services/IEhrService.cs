@@ -33,6 +33,12 @@ public interface IEhrService
     
     Task<IEnumerable<EhrRecordResponseDto>> GetPatientEhrRecordsAsync(Guid patientId, Guid? requesterId = null);
 
+    /// <summary>
+    /// Lấy metadata tối thiểu (ehrId, orgId, createdAt...) — không kiểm tra consent.
+    /// Dùng để xác định patient có hồ sơ không trước khi gửi access request.
+    /// </summary>
+    Task<IEnumerable<EhrMetadataDto>> GetPatientEhrMetadataAsync(Guid patientId);
+
     Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId);
     
     Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId);
