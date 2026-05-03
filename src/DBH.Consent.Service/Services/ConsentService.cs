@@ -292,10 +292,6 @@ public class ConsentService : IConsentService
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByGranteeAsync(Guid granteeId, int page = 1, int pageSize = 10)
     {
-        var gKey = $"consents:grantee:{granteeId}:{page}:{pageSize}";
-        var gCached = await _cache.GetAsync<PagedResponse<ConsentResponse>>(gKey);
-        if (gCached != null) return gCached;
-
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var bearerToken = GetBearerTokenFromContext();
         var normalizedGranteeId = await ResolveUserIdAsync(authClient, granteeId, isPatientProfile: false, bearerToken);
@@ -306,9 +302,7 @@ public class ConsentService : IConsentService
             .ToList();
 
         var query = _context.Consents.Where(c => granteeCandidates.Contains(c.GranteeId));
-        var gResult = await ExecutePagedQueryAsync(query, page, pageSize);
-        await _cache.SetAsync(gKey, gResult, ConsentListCacheTtl);
-        return gResult;
+        return await ExecutePagedQueryAsync(query, page, pageSize);
     }
 
     public async Task<PagedResponse<ConsentResponse>> SearchConsentsAsync(ConsentQueryParams queryParams)
