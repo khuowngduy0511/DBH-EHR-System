@@ -238,7 +238,7 @@ public class AppointmentService : IAppointmentService
     }
 
     public async Task<PagedResponse<AppointmentResponse>> GetAppointmentsAsync(
-        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, 
+        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, string? statusList = null,
         DateTime? fromDate = null, DateTime? toDate = null, string? searchTerm = null,
         int page = 1, int pageSize = 10)
     {
@@ -257,6 +257,20 @@ public class AppointmentService : IAppointmentService
 
         if (status.HasValue)
             query = query.Where(a => a.Status == status.Value);
+
+        if (!string.IsNullOrEmpty(statusList))
+        {
+            var statuses = statusList.Split(',')
+                .Select(s => Enum.TryParse<AppointmentStatus>(s, true, out var parsed) ? parsed : (AppointmentStatus?)null)
+                .Where(s => s.HasValue)
+                .Select(s => s.Value)
+                .ToList();
+
+            if (statuses.Any())
+            {
+                query = query.Where(a => statuses.Contains(a.Status));
+            }
+        }
 
         if (fromDate.HasValue)
         {

@@ -71,13 +71,14 @@ public class AppointmentsController : ControllerBase
         [FromQuery] Guid? doctorId,
         [FromQuery] Guid? orgId,
         [FromQuery] AppointmentStatus? status,
+        [FromQuery] string? statusList,
         [FromQuery] DateTime? fromDate,
         [FromQuery] DateTime? toDate,
         [FromQuery] string? searchTerm,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
-        var result = await _appointmentService.GetAppointmentsAsync(patientId, doctorId, orgId, status, fromDate, toDate, searchTerm, page, pageSize);
+        var result = await _appointmentService.GetAppointmentsAsync(patientId, doctorId, orgId, status, statusList, fromDate, toDate, searchTerm, page, pageSize);
         return Ok(result);
     }
 
