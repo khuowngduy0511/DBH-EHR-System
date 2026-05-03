@@ -100,6 +100,9 @@ public class EhrPrimaryDbContext : Microsoft.EntityFrameworkCore.DbContext
                 .HasConversion<string>()
                 .HasMaxLength(20);
 
+            entity.Property(e => e.ResultValuesJson)
+                .HasColumnType("jsonb");
+
             entity.HasOne(e => e.EhrRecord)
                 .WithMany()
                 .HasForeignKey(e => e.EhrId)
