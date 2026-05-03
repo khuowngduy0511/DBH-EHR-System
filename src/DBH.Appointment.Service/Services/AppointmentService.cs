@@ -457,11 +457,11 @@ public class AppointmentService : IAppointmentService
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
-        if (appointment.Status != AppointmentStatus.PENDING)
+        if (appointment.Status != AppointmentStatus.PENDING && appointment.Status != AppointmentStatus.RESCHEDULED)
             return new ApiResponse<AppointmentResponse> 
             { 
                 Success = false, 
-                Message = $"Không thể xác nhận lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING mới có thể được xác nhận." 
+                Message = $"Không thể xác nhận lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING hoặc RESCHEDULED mới có thể được xác nhận." 
             };
 
         var oldStatus = appointment.Status.ToString();
