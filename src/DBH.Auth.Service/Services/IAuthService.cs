@@ -25,6 +25,7 @@ public interface IAuthService
 
     Task<UserKeysDto?> GetUserKeysAsync(Guid userId);
     Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor);
+    Task<List<Guid>> SearchUserIdsAsync(string keyword);
     Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status);
     Task<AuthResponse> DeactivateAccountAsync(Guid userId);
 }

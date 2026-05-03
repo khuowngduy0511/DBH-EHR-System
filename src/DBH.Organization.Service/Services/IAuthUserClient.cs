@@ -8,6 +8,7 @@ public interface IAuthUserClient
     Task<Guid?> GetUserIdByPatientIdAsync(string bearerToken, Guid patientId);
     Task<Guid?> GetUserIdByDoctorIdAsync(string bearerToken, Guid doctorId);
     Task<AuthUserProfileDetailDto?> GetUserProfileDetailAsync(string bearerToken, Guid userId);
+    Task<List<Guid>> SearchUserIdsAsync(string bearerToken, string keyword);
 }
 
 public class DoctorUserInfoDto

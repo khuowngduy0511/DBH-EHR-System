@@ -249,6 +249,14 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [Authorize]
+    [HttpGet("users/search-ids")]
+    public async Task<IActionResult> SearchUserIds([FromQuery] string keyword)
+    {
+        var ids = await _authService.SearchUserIdsAsync(keyword);
+        return Ok(ids);
+    }
+
 
     [Authorize]
     [HttpGet("users/by-contact")]
