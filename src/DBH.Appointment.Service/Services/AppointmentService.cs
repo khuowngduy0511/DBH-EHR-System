@@ -532,6 +532,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.CancelReason = reason;
         appointment.UpdatedAt = VietnamTime.DatabaseNow;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
@@ -588,6 +589,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.CancelReason = reason;
         appointment.UpdatedAt = VietnamTime.DatabaseNow;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
@@ -1469,6 +1471,7 @@ public class AppointmentService : IAppointmentService
             ScheduledAt = appt.ScheduledAt,
             Status = appt.Status.ToString(),
             CreatedAt = appt.CreatedAt,
+            CancelReason = appt.CancelReason,
             EncounterCount = appt.Encounters?.Count ?? 0
         };
     }
