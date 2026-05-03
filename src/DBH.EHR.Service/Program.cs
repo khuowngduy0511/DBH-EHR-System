@@ -85,6 +85,7 @@ builder.Services.AddScoped<IEhrRecordRepository, EhrRecordRepository>();
 // ============================================================================
 
 builder.Services.AddScoped<IEhrService, EhrService>();
+builder.Services.AddScoped<ILabOrderService, LabOrderService>();
 builder.Services.AddScoped<IAuthServiceClient, AuthServiceClient>();
 builder.Services.AddHttpContextAccessor();
 
