@@ -1156,6 +1156,7 @@ public class AuthService : IAuthService
         existingUser.UpdatedBy = actorUserId;
 
         await _userRepository.UpdateAsync(existingUser);
+        await _cache.RemoveAsync($"profile:{existingUser.UserId}");
 
         // Remove old encrypted private key and store new one
         var oldPrivateKey = await _credentialRepository.FindAsync(c =>
@@ -1244,6 +1245,7 @@ public class AuthService : IAuthService
         user.UpdatedBy = userId;
 
         await _userRepository.UpdateAsync(user);
+        await _cache.RemoveAsync($"profile:{userId}");
 
         // Revoke all refresh tokens
         await RevokeTokenAsync(userId);
