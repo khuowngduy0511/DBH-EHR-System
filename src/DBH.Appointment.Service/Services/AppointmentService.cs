@@ -194,16 +194,17 @@ public class AppointmentService : IAppointmentService
         await ScheduleReminderAsync(appointment);
 
         // Notify doctor about new appointment
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone);
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn mới",
-            $"Bạn có lịch hẹn mới vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}",
+            $"Bạn có lịch hẹn mới vào lúc {vnTime:dd/MM/yyyy HH:mm}",
             "AppointmentCreated", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
         // Notify patient about appointment created
         await NotifyPatientAsync(appointment.PatientId,
             "Đặt lịch hẹn thành công",
-            $"Bạn đã đặt lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}.",
+            $"Bạn đã đặt lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentCreated", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -438,14 +439,15 @@ public class AppointmentService : IAppointmentService
         _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDateUtc);
 
         // Notify both parties about reschedule
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(newDateUtc, VietnamTime.TimeZone);
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "High",
             appointment.AppointmentId.ToString(), "Appointment");
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -515,7 +517,7 @@ public class AppointmentService : IAppointmentService
 
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được xác nhận",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã được bác sĩ xác nhận.",
+            $"Lịch hẹn vào lúc {TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone):dd/MM/yyyy HH:mm} đã được bác sĩ xác nhận.",
             "AppointmentReminder", "High",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -620,14 +622,15 @@ public class AppointmentService : IAppointmentService
         });
 
         // Notify both patient and doctor
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone);
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã bị hủy",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
+            $"Lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "High",
             appointment.AppointmentId.ToString(), "Appointment");
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã bị hủy",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
+            $"Lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
