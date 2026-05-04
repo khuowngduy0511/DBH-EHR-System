@@ -720,7 +720,7 @@ public class EhrService : IEhrService
         }
 
         Guid? orgId = null;
-        var orgIdClaim = _httpContextAccessor.HttpContext?.User?.Claims.FirstOrDefault(c => c.Type == "OrgId")?.Value;
+        var orgIdClaim = _httpContextAccessor.HttpContext?.User?.Claims.FirstOrDefault(c => c.Type == "OrgId" || c.Type == System.Security.Claims.ClaimTypes.GroupSid)?.Value;
         if (Guid.TryParse(orgIdClaim, out var parsedOrgId))
         {
             orgId = parsedOrgId;
