@@ -146,6 +146,27 @@ public class AppointmentService : IAppointmentService
             };
         }
 
+        var patientSameDayValidation = await ValidatePatientSameDayAppointmentRulesAsync(
+            request.PatientId,
+            request.OrgId,
+            scheduledAtUtc);
+
+        if (!patientSameDayValidation.Success)
+        {
+            _logger.LogWarning(
+                "Create appointment rejected: same-day rule validation failed for Patient {PatientId}, Org {OrgId}, ScheduledAt {ScheduledAtUtc}. Reason: {Reason}",
+                request.PatientId,
+                request.OrgId,
+                scheduledAtUtc,
+                patientSameDayValidation.Message);
+
+            return new ApiResponse<AppointmentResponse>
+            {
+                Success = false,
+                Message = patientSameDayValidation.Message
+            };
+        }
+
         // var patientDoctorOrgConflictExists = await _context.Appointments.AnyAsync(a =>
         //     a.PatientId == request.PatientId &&
         //     a.OrgId == request.OrgId &&
@@ -1298,6 +1319,60 @@ public class AppointmentService : IAppointmentService
             {
                 Success = false,
                 Message = "Doctor does not belong to this organization"
+            };
+        }
+
+        return new ApiResponse<bool>
+        {
+            Success = true,
+            Data = true
+        };
+    }
+
+    private async Task<ApiResponse<bool>> ValidatePatientSameDayAppointmentRulesAsync(
+        Guid patientId,
+        Guid orgId,
+        DateTime scheduledAtUtc)
+    {
+        var dayStart = scheduledAtUtc.Date;
+        var dayEnd = dayStart.AddDays(1);
+
+        var sameDayPendingOrConfirmedAppointments = await _context.Appointments
+            .Where(a =>
+                a.PatientId == patientId &&
+                (a.Status == AppointmentStatus.PENDING || a.Status == AppointmentStatus.CONFIRMED) &&
+                a.ScheduledAt >= dayStart &&
+                a.ScheduledAt < dayEnd)
+            .ToListAsync();
+
+        var hasPendingOrConfirmedInSameOrg = sameDayPendingOrConfirmedAppointments.Any(a => a.OrgId == orgId);
+        if (hasPendingOrConfirmedInSameOrg)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Trong cùng một ngày, bệnh nhân chỉ được có tối đa 1 lịch hẹn PENDING/CONFIRMED tại cùng cơ sở y tế."
+            };
+        }
+
+        if (sameDayPendingOrConfirmedAppointments.Count >= 2)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Trong cùng một ngày, bệnh nhân chỉ được có tối đa 2 lịch hẹn PENDING/CONFIRMED nếu khác cơ sở y tế."
+            };
+        }
+
+        var hasLessThanTwoHoursGap = sameDayPendingOrConfirmedAppointments
+            .Any(a => Math.Abs((a.ScheduledAt - scheduledAtUtc).TotalHours) < 2);
+
+        if (hasLessThanTwoHoursGap)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Các lịch hẹn PENDING/CONFIRMED trong cùng ngày phải cách nhau ít nhất 2 giờ."
             };
         }
 
