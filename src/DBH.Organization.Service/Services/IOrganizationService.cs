@@ -34,4 +34,7 @@ public interface IOrganizationService
     Task<ApiResponse<PaymentConfigStatusResponse>> UpdatePaymentConfigAsync(Guid orgId, ConfigurePaymentRequest request);
     Task<ApiResponse<PaymentConfigStatusResponse>> GetPaymentConfigStatusAsync(Guid orgId);
     Task<ApiResponse<PaymentKeysResponse>> GetPaymentKeysAsync(Guid orgId);
+    
+    // Fabric config
+    Task<ApiResponse<OrganizationResponse>> UpdateOrganizationFabricConfigAsync(Guid orgId, UpdateOrganizationFabricConfigRequest request);
 }
