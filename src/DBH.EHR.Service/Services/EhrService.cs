@@ -968,9 +968,9 @@ public class EhrService : IEhrService
 
         if (!isPatientOwner)
         {
-            var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "DOWNLOAD");
+            var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "READ");
             if (!consentResult.HasAccess)
-                return (null, true, "Người yêu cầu không có consent DOWNLOAD để xuất EHR này.");
+                return (null, true, "Người yêu cầu không có consent READ để xuất EHR này.");
         }
 
         var (decryptedData, consentDenied, denyMessage) = await GetEhrDocumentAsync(ehrId, requesterId);
