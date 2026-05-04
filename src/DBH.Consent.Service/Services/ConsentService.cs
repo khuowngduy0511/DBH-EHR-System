@@ -372,6 +372,14 @@ public class ConsentService : IConsentService
         consent.RevokeReason = request.RevokeReason;
         consent.RevokeTxHash = txHash;
 
+        // Also cancel the linked AccessRequest so the Nurse's UI updates
+        var linkedRequest = await _context.AccessRequests
+            .FirstOrDefaultAsync(r => r.ConsentId == consentId && r.Status == AccessRequestStatus.APPROVED);
+        if (linkedRequest != null)
+        {
+            linkedRequest.Status = AccessRequestStatus.CANCELLED;
+        }
+
         await _context.SaveChangesAsync();
         await _cache.RemoveAsync($"consent:{consentId}");
         await _cache.RemoveByPatternAsync($"consents:grantee:{consent.GranteeId}:*");
