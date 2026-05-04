@@ -352,30 +352,41 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Quyền (Role) không tồn tại trong hệ thống." };
         }
 
-        var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == user.UserId);
-        if (existingUserRole != null)
+        // Remove all existing roles to ensure one primary role (unless you explicitly support multiple, which current UI does not)
+        var existingUserRoles = await _userRoleRepository.FindManyAsync(ur => ur.UserId == user.UserId);
+        var existingRolesList = existingUserRoles.ToList();
+        
+        if (existingRolesList.Count == 1 && existingRolesList[0].RoleId == newRoleEntity.RoleId)
         {
-            if (existingUserRole.RoleId == newRoleEntity.RoleId)
-            {
-                return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
-            }
-            await _userRoleRepository.DeleteAsync(existingUserRole);
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = newRoleEntity.RoleId
-            });
+            return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
         }
-        else
+
+        foreach (var userRole in existingRolesList)
         {
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = newRoleEntity.RoleId
-            });
+            await _userRoleRepository.DeleteAsync(userRole);
+        }
+
+        // Add the new role
+        await _userRoleRepository.AddAsync(new UserRole
+        {
+            UserId = user.UserId,
+            RoleId = newRoleEntity.RoleId
+        });
+
+        // Clean up ghost profiles based on role transition
+        if (newRoleEnum == RoleName.Doctor)
+        {
+            var staffProfile = await _staffRepository.FindAsync(s => s.UserId == user.UserId);
+            if (staffProfile != null) await _staffRepository.DeleteAsync(staffProfile);
+        }
+        else if (newRoleEnum is RoleName.Nurse or RoleName.Pharmacist or RoleName.Receptionist or RoleName.LabTech or RoleName.Admin)
+        {
+            var doctorProfile = await _doctorRepository.FindAsync(d => d.UserId == user.UserId);
+            if (doctorProfile != null) await _doctorRepository.DeleteAsync(doctorProfile);
         }
 
         await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
+        await RevokeTokenAsync(request.UserId);
         await _cache.RemoveAsync($"profile:{request.UserId}");
 
         return new AuthResponse { Success = true, Message = "Cập nhật quyền thành công." };
