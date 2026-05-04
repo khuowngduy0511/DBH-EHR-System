@@ -764,7 +764,14 @@ public class EhrService : IEhrService
             _logger.LogError(ex, "Error fetching consents for GetMyVisibleRecordsAsync");
         }
 
-        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, page, pageSize);
+        List<Guid>? matchingUserIds = null;
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var bearerToken = GetBearerTokenFromContext();
+            matchingUserIds = await _authServiceClient.SearchUserIdsAsync(search, bearerToken);
+        }
+
+        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, matchingUserIds, page, pageSize);
 
         var responses = items.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);
