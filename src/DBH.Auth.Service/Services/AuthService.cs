@@ -1182,7 +1182,7 @@ public class AuthService : IAuthService
         var patientRole = await _roleRepository.FindAsync(r => r.RoleName == RoleName.Patient);
         if (patientRole != null)
         {
-            var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == existingUser.UserId);
+            var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == existingUser.UserId && ur.RoleId == patientRole.RoleId);
             if (existingUserRole == null)
             {
                 await _userRoleRepository.AddAsync(new UserRole
@@ -1207,6 +1207,8 @@ public class AuthService : IAuthService
         }
 
         _logger.LogInformation("Account reactivated for user {UserId} ({Email})", existingUser.UserId, existingUser.Email);
+
+        await _cache.RemoveAsync($"profile:{existingUser.UserId}");
 
         return new AuthResponse
         {
