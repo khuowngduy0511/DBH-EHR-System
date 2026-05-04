@@ -55,6 +55,21 @@ public class EhrController : ControllerBase
     }
 
     /// <summary>
+    /// Lấy danh sách EHR mà người dùng hiện tại có quyền xem (kết hợp OrgId và Consents).
+    /// Hỗ trợ phân trang và tìm kiếm.
+    /// </summary>
+    [HttpGet("records/my-visible")]
+    [ProducesResponseType(typeof(PaginatedResult<EhrRecordResponseDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PaginatedResult<EhrRecordResponseDto>>> GetMyVisibleRecords(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null)
+    {
+        var result = await _ehrService.GetMyVisibleRecordsAsync(page, pageSize, search);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Cập nhật EHR - Tạo version mới. Tất cả role (kể cả Admin) đều cần consent WRITE.
     /// </summary>
     [HttpPut("records/{ehrId:guid}")]

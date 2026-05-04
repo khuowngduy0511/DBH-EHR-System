@@ -1,4 +1,4 @@
-﻿using DBH.EHR.Service.Models.DTOs;
+using DBH.EHR.Service.Models.DTOs;
 
 namespace DBH.EHR.Service.Services;
 
@@ -40,6 +40,8 @@ public interface IEhrService
     Task<IEnumerable<EhrMetadataDto>> GetPatientEhrMetadataAsync(Guid patientId);
 
     Task<IEnumerable<EhrRecordResponseDto>> GetOrgEhrRecordsAsync(Guid orgId);
+    
+    Task<PaginatedResult<EhrRecordResponseDto>> GetMyVisibleRecordsAsync(int page, int pageSize, string? search);
     
     Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId);
     
