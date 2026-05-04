@@ -154,4 +154,41 @@ public class EhrRecordRepository : IEhrRecordRepository
         await _db.SaveChangesAsync();
         _logger.LogInformation("Deleted EhrFile {FileId} from EHR {EhrId}", file.FileId, file.EhrId);
     }
+
+    public async Task<(IEnumerable<EhrRecord> Items, int TotalCount)> GetAccessibleRecordsPaginatedAsync(
+        Guid? orgId,
+        List<Guid> consentedEhrIds,
+        string? search,
+        int page,
+        int pageSize)
+    {
+        var query = _db.EhrRecords
+            .Include(e => e.Versions.OrderByDescending(v => v.VersionNumber))
+            .Include(e => e.Files)
+            .AsQueryable();
+
+        // Access Control Filter
+        query = query.Where(r => 
+            (orgId.HasValue && r.OrgId == orgId) || 
+            consentedEhrIds.Contains(r.EhrId));
+
+        // Search Filter (EhrId or PatientId)
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLower();
+            query = query.Where(r => 
+                r.EhrId.ToString().ToLower().Contains(searchLower) || 
+                r.PatientId.ToString().ToLower().Contains(searchLower));
+        }
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
+    }
 }

@@ -22,4 +22,11 @@ public interface IEhrRecordRepository
     Task<EhrVersion?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
     Task<EhrFile?> GetFileByIdAsync(Guid ehrId, Guid fileId);
     Task DeleteFileAsync(EhrFile file);
+
+    Task<(IEnumerable<EhrRecord> Items, int TotalCount)> GetAccessibleRecordsPaginatedAsync(
+        Guid? orgId, 
+        List<Guid> consentedEhrIds, 
+        string? search, 
+        int page, 
+        int pageSize);
 }

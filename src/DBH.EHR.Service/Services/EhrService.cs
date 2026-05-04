@@ -711,6 +711,73 @@ public class EhrService : IEhrService
         return responses;
     }
 
+    public async Task<PaginatedResult<EhrRecordResponseDto>> GetMyVisibleRecordsAsync(int page, int pageSize, string? search)
+    {
+        var requesterId = GetCurrentUserIdFromContext();
+        if (!requesterId.HasValue)
+        {
+            throw new UnauthorizedAccessException("Người dùng không hợp lệ.");
+        }
+
+        Guid? orgId = null;
+        var orgIdClaim = _httpContextAccessor.HttpContext?.User?.Claims.FirstOrDefault(c => c.Type == "OrgId")?.Value;
+        if (Guid.TryParse(orgIdClaim, out var parsedOrgId))
+        {
+            orgId = parsedOrgId;
+        }
+
+        // Fetch Consents via Consent Service (simulate internal call or use HttpClient)
+        var consentedEhrIds = new List<Guid>();
+        try
+        {
+            var consentClient = _httpClientFactory.CreateClient("ConsentService");
+            var bearerToken = GetBearerTokenFromContext();
+            
+            // Note: Request a large page size to get all possible consented EhrIds
+            var response = await SendAuthGetAsync(consentClient, $"/api/v1/consents/by-grantee/{requesterId.Value}?page=1&pageSize=1000", bearerToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("data", out var dataElement) && dataElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in dataElement.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("ehrId", out var ehrIdElement) && Guid.TryParse(ehrIdElement.GetString(), out var ehrId))
+                        {
+                            // Optional: Check status is active, and permission includes READ
+                            if (item.TryGetProperty("status", out var statusEl) && statusEl.GetString() == "Active")
+                            {
+                                consentedEhrIds.Add(ehrId);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Failed to fetch consents for grantee {GranteeId}. Status: {StatusCode}", requesterId.Value, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching consents for GetMyVisibleRecordsAsync");
+        }
+
+        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, page, pageSize);
+
+        var responses = items.Select(r => MapToEhrRecordResponse(r)).ToList();
+        await AttachPatientProfilesAsync(responses);
+
+        return new PaginatedResult<EhrRecordResponseDto>
+        {
+            Items = responses,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
     public async Task<IEnumerable<EhrVersionDto>> GetEhrVersionsAsync(Guid ehrId)
     {
         var versions = await _ehrRecordRepo.GetVersionsAsync(ehrId);
