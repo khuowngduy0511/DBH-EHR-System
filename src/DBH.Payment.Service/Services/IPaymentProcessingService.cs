@@ -9,4 +9,5 @@ public interface IPaymentProcessingService
     Task<ApiResponse<PaymentResponse>> GetPaymentByIdAsync(Guid paymentId);
     Task<ApiResponse<bool>> HandleWebhookAsync(PayOSWebhookRequest webhookRequest);
     Task<ApiResponse<PaymentResponse>> VerifyPaymentAsync(Guid paymentId);
+    Task<ApiResponse<PaymentResponse>> VerifyByOrderCodeAsync(long orderCode);
 }

@@ -350,6 +350,18 @@ public class PaymentProcessingService : IPaymentProcessingService
         return new ApiResponse<PaymentResponse> { Success = true, Data = MapToResponse(payment) };
     }
 
+    public async Task<ApiResponse<PaymentResponse>> VerifyByOrderCodeAsync(long orderCode)
+    {
+        var payment = await _context.Payments
+            .Include(p => p.Invoice)
+            .FirstOrDefaultAsync(p => p.OrderCode == orderCode);
+
+        if (payment == null)
+            return new ApiResponse<PaymentResponse> { Success = false, Message = "Payment not found for this order code." };
+
+        return await VerifyPaymentAsync(payment.PaymentId);
+    }
+
     // =========================================================================
     // Helpers
     // =========================================================================
