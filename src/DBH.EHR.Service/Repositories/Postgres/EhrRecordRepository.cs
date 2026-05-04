@@ -159,8 +159,9 @@ public class EhrRecordRepository : IEhrRecordRepository
         Guid? orgId,
         List<Guid> consentedEhrIds,
         string? search,
-        int page,
-        int pageSize)
+        List<Guid>? matchingUserIds = null,
+        int page = 1,
+        int pageSize = 10)
     {
         var query = _db.EhrRecords
             .Include(e => e.Versions.OrderByDescending(v => v.VersionNumber))
@@ -172,12 +173,13 @@ public class EhrRecordRepository : IEhrRecordRepository
             (orgId.HasValue && r.OrgId == orgId) || 
             consentedEhrIds.Contains(r.EhrId));
 
-        // Search Filter (EhrId or PatientId)
+        // Search Filter (EhrId, PatientId, or matchingUserIds)
         if (!string.IsNullOrWhiteSpace(search))
         {
             var searchLower = search.ToLower();
             query = query.Where(r => 
                 r.EhrId.ToString().ToLower().Contains(searchLower) || 
+                (matchingUserIds != null && matchingUserIds.Contains(r.PatientId)) ||
                 r.PatientId.ToString().ToLower().Contains(searchLower));
         }
 

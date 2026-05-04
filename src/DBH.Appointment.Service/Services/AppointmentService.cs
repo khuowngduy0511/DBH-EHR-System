@@ -287,11 +287,12 @@ public class AppointmentService : IAppointmentService
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            searchTerm = searchTerm.ToLower();
+            var matchingUserIds = await _authServiceClient.SearchUserIdsAsync(searchTerm);
+            var lowerSearchTerm = searchTerm.ToLower();
             query = query.Where(a => 
-                a.AppointmentId.ToString().ToLower().Contains(searchTerm) ||
-                a.PatientId.ToString().ToLower().Contains(searchTerm) ||
-                a.DoctorId.ToString().ToLower().Contains(searchTerm));
+                a.AppointmentId.ToString().ToLower().Contains(lowerSearchTerm) ||
+                matchingUserIds.Contains(a.PatientId) ||
+                matchingUserIds.Contains(a.DoctorId));
         }
 
         var totalCount = await query.CountAsync();

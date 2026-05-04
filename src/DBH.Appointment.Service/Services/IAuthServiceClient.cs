@@ -7,4 +7,5 @@ public interface IAuthServiceClient
     Task<Guid?> GetUserIdByPatientIdAsync(Guid patientId);
     Task<Guid?> GetUserIdByDoctorIdAsync(Guid doctorId);
     Task<AuthUserProfileDetailDto?> GetUserProfileDetailAsync(Guid userId);
+    Task<List<Guid>> SearchUserIdsAsync(string keyword);
 }
