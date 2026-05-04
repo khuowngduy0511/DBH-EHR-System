@@ -97,6 +97,13 @@ public class AuthService : IAuthService
     {
         var actorUserId = GetCurrentActorId();
 
+        // Validate email format
+        if (!IsValidEmail(request.Email))
+        {
+            _logger.LogWarning("Invalid email format provided: {Email}", request.Email);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
+
         // Check if user with this email already exists
         var existingUser = await _dbContext.Users
             .FirstOrDefaultAsync(u => u.Email == request.Email);
@@ -267,6 +274,13 @@ public class AuthService : IAuthService
     public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
                 var actorUserId = GetCurrentActorId();
+
+        // Validate email format
+        if (!IsValidEmail(request.Email))
+        {
+            _logger.LogWarning("Invalid email format provided: {Email}", request.Email);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
 
         // Check if user with this email already exists
         var existingUser = await _dbContext.Users
@@ -581,6 +595,13 @@ public class AuthService : IAuthService
     {
         var actorUserId = GetCurrentActorId();
         var normalizedEmail = request.Email.Trim();
+
+        // Validate email format
+        if (!IsValidEmail(normalizedEmail))
+        {
+            _logger.LogWarning("Registration rejected for role {Role}: invalid email format {Email}", roleName, normalizedEmail);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
 
         if (await _userRepository.ExistsAsync(u => u.Email == normalizedEmail))
         {
@@ -1395,6 +1416,18 @@ public class AuthService : IAuthService
         return user?.IsInRole(RoleName.Admin.ToString()) == true
             ? VerificationStatus.Verified
             : VerificationStatus.Pending;
+    }
+
+    private bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+
+        // Email regex pattern: basic validation
+        // Allows alphanumeric, dots, hyphens, underscores before @
+        // Allows alphanumeric, dots, hyphens after @
+        // Requires a dot in domain with at least 2 character extension
+        return Regex.IsMatch(email, @"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$");
     }
 }
 
