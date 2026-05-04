@@ -305,19 +305,20 @@ $orgs = @(
 
 $orgData = @()
 foreach ($o in $orgs) {
-    $created = Api POST $ORG $o $adminToken
-    $orgId = if ($created.data.orgId) { $created.data.orgId } elseif ($created.orgId) { $created.orgId } else { $null }
+    $orgId = $null
+    # Fetch existing org by code instead of creating it
+    $existingOrgs = Api GET "$ORG`?search=$($o.orgCode)&pageSize=50" $null $adminToken
+    $orgList = if ($existingOrgs.data) { $existingOrgs.data } elseif ($existingOrgs -is [array]) { $existingOrgs } else { @() }
+    $match = $orgList | Where-Object { $_.orgCode -eq $o.orgCode } | Select-Object -First 1
+    if ($match) { $orgId = $match.orgId }
 
-    # Fallback: if create failed (duplicate), fetch existing org by code
     if (-not $orgId) {
-        $existingOrgs = Api GET "$ORG`?search=$($o.orgCode)&pageSize=50" $null $adminToken
-        $orgList = if ($existingOrgs.data) { $existingOrgs.data } elseif ($existingOrgs -is [array]) { $existingOrgs } else { @() }
-        $match = $orgList | Where-Object { $_.orgCode -eq $o.orgCode } | Select-Object -First 1
-        if ($match) { $orgId = $match.orgId }
+        Write-Host "  FATAL: Organization $($o.orgCode) not found. Make sure it is pre-seeded." -ForegroundColor Red
+        exit 1
     }
 
     $orgData += @{ orgId = $orgId; name = $o.orgName; code = $o.orgCode }
-    Write-Host "  Org: $($o.orgName) | orgId=$orgId"
+    Write-Host "  Org (Found): $($o.orgName) | orgId=$orgId"
 }
 
 # Verify ALL organizations

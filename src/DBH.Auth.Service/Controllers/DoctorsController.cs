@@ -133,7 +133,7 @@ public class DoctorsController : ControllerBase
         };
 
         await _doctorRepository.AddAsync(doctor);
-        await EnsureUserRoleAsync(request.UserId, RoleName.Doctor);
+        await _authService.UpdateRoleAsync(new UpdateRoleRequest { UserId = request.UserId, NewRole = RoleName.Doctor.ToString() });
 
         return CreatedAtAction(nameof(GetById), new { doctorId = doctor.DoctorId }, MapToResponse(doctor));
     }
@@ -190,35 +190,7 @@ public class DoctorsController : ControllerBase
         return Ok("Doctor deleted successfully.");
     }
 
-    private async Task EnsureUserRoleAsync(Guid userId, RoleName roleName)
-    {
-        var role = await _roleRepository.FindAsync(r => r.RoleName == roleName);
-        if (role == null)
-        {
-            return;
-        }
 
-        var userRole = await _userRoleRepository.FindAsync(ur => ur.UserId == userId);
-        if (userRole == null)
-        {
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = userId,
-                RoleId = role.RoleId
-            });
-            return;
-        }
-
-        if (userRole.RoleId != role.RoleId)
-        {
-            await _userRoleRepository.DeleteAsync(userRole);
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = userId,
-                RoleId = role.RoleId
-            });
-        }
-    }
 
     private static DoctorResponse MapToResponse(Doctor doctor)
     {
