@@ -1223,11 +1223,14 @@ public class AuthService : IAuthService
             );
         }
 
+        Console.WriteLine($"[AuthService] Searching for users with keyword: '{keyword}' (pattern: '{searchPattern}')");
+        
         var userIds = await query
             .Select(u => u.UserId)
             .Take(1000)
             .ToListAsync();
 
+        Console.WriteLine($"[AuthService] Found {userIds.Count} matching user IDs");
         return userIds;
     }
 
