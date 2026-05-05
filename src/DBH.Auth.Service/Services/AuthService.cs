@@ -1203,11 +1203,11 @@ public class AuthService : IAuthService
         var normalizedKeyword = keyword.Trim().Normalize(System.Text.NormalizationForm.FormC);
         var searchPattern = $"%{normalizedKeyword}%";
         
-        Console.WriteLine($"[AuthService] SEARCH START: keyword='{keyword}', normalized='{normalizedKeyword}'");
+        _logger.LogError("[AuthService] DEBUG SEARCH: keyword='{Keyword}', normalized='{Normalized}'", keyword, normalizedKeyword);
 
-        // DEBUG: Check what's actually in the DB for similar names
-        var firstFew = await _dbContext.Users.AsNoTracking().Select(u => u.FullName).Take(5).ToListAsync();
-        Console.WriteLine($"[AuthService] DB Sample FullNames: {string.Join(", ", firstFew)}");
+        // EMERGENCY DEBUG: Dump all users if we find nothing
+        var allUsers = await _dbContext.Users.AsNoTracking().Select(u => u.FullName).ToListAsync();
+        _logger.LogError("[AuthService] ALL USERS IN DB ({Count}): {Names}", allUsers.Count, string.Join(", ", allUsers));
 
         var query = _dbContext.Users.AsNoTracking();
 
@@ -1240,7 +1240,7 @@ public class AuthService : IAuthService
             .Take(1000)
             .ToListAsync();
 
-        Console.WriteLine($"[AuthService] SEARCH END: Found {userIds.Count} users");
+        _logger.LogError("[AuthService] SEARCH RESULT: Found {Count} users for keyword '{Keyword}'", userIds.Count, keyword);
         return userIds;
     }
 
