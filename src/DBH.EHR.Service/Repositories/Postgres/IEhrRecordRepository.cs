@@ -24,5 +24,5 @@ public interface IEhrRecordRepository
     Task DeleteFileAsync(EhrFile file);
 
     Task<(IEnumerable<EhrRecord> Items, int TotalCount)> GetAccessibleRecordsPaginatedAsync(
-        Guid? orgId, List<Guid> consentedEhrIds, string? searchTerm, List<Guid>? matchingUserIds = null, int page = 1, int pageSize = 10);
+        Guid? orgId, List<Guid> consentedEhrIds, List<Guid> consentedPatientIds, string? searchTerm, List<Guid>? matchingUserIds = null, int page = 1, int pageSize = 10);
 }
