@@ -100,6 +100,8 @@ public class AuthServiceClient : IAuthServiceClient
             }
 
             var json = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[AuthServiceClient] RAW RESPONSE for '{keyword}': {json}");
+            
             var ids = JsonSerializer.Deserialize<List<Guid>>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -109,6 +111,7 @@ public class AuthServiceClient : IAuthServiceClient
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[AuthServiceClient] ERROR for '{keyword}': {ex.Message}");
             _logger.LogWarning(ex, "Failed to search user ids by keyword {Keyword}", keyword);
             return new List<Guid>();
         }
