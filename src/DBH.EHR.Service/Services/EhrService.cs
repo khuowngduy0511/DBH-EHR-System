@@ -731,6 +731,7 @@ public class EhrService : IEhrService
 
         // Fetch Consents via Consent Service (simulate internal call or use HttpClient)
         var consentedEhrIds = new List<Guid>();
+        var consentedPatientIds = new List<Guid>();
         try
         {
             var consentClient = _httpClientFactory.CreateClient("ConsentService");
@@ -746,12 +747,15 @@ public class EhrService : IEhrService
                 {
                     foreach (var item in dataElement.EnumerateArray())
                     {
-                        if (item.TryGetProperty("ehrId", out var ehrIdElement) && Guid.TryParse(ehrIdElement.GetString(), out var ehrId))
+                        if (item.TryGetProperty("status", out var statusEl) && statusEl.GetString()?.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase) == true)
                         {
-                            // Optional: Check status is active, and permission includes READ
-                            if (item.TryGetProperty("status", out var statusEl) && statusEl.GetString() == "Active")
+                            if (item.TryGetProperty("ehrId", out var ehrIdElement) && ehrIdElement.ValueKind != JsonValueKind.Null && Guid.TryParse(ehrIdElement.GetString(), out var ehrId))
                             {
                                 consentedEhrIds.Add(ehrId);
+                            }
+                            else if (item.TryGetProperty("patientId", out var patientIdElement) && patientIdElement.ValueKind != JsonValueKind.Null && Guid.TryParse(patientIdElement.GetString(), out var patientId))
+                            {
+                                consentedPatientIds.Add(patientId);
                             }
                         }
                     }
@@ -776,7 +780,7 @@ public class EhrService : IEhrService
             matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(search, bearerToken);
         }
 
-        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, matchingUserIds, matchingOrgIds, page, pageSize);
+        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, consentedPatientIds, search, matchingUserIds, matchingOrgIds, page, pageSize);
 
         var responses = items.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);

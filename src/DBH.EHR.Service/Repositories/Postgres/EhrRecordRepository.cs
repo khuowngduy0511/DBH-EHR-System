@@ -158,6 +158,7 @@ public class EhrRecordRepository : IEhrRecordRepository
     public async Task<(IEnumerable<EhrRecord> Items, int TotalCount)> GetAccessibleRecordsPaginatedAsync(
         Guid? orgId,
         List<Guid> consentedEhrIds,
+        List<Guid> consentedPatientIds,
         string? search,
         List<Guid>? matchingUserIds = null,
         List<Guid>? matchingOrgIds = null,
@@ -172,7 +173,8 @@ public class EhrRecordRepository : IEhrRecordRepository
         // Access Control Filter
         query = query.Where(r => 
             (orgId.HasValue && r.OrgId == orgId) || 
-            consentedEhrIds.Contains(r.EhrId));
+            consentedEhrIds.Contains(r.EhrId) ||
+            consentedPatientIds.Contains(r.PatientId));
 
         // Search Filter (EhrId, PatientId, OrgId, EncounterId, Date, or matchingUserIds/matchingOrgIds)
         if (!string.IsNullOrWhiteSpace(search))

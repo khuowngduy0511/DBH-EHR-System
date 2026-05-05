@@ -581,12 +581,6 @@ public class OrganizationService : IOrganizationService
             query = query.Where(m => m.DepartmentId == request.DepartmentId.Value);
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Specialty))
-        {
-            var searchPattern = $"%{request.Specialty.Trim()}%";
-            query = query.Where(m => m.Specialty != null && EF.Functions.ILike(m.Specialty, searchPattern));
-        }
-
         var candidates = await query
             .OrderByDescending(m => m.CreatedAt)
             .ToListAsync();
@@ -633,6 +627,27 @@ public class OrganizationService : IOrganizationService
                     r.User.DateOfBirth.HasValue && 
                     r.User.DateOfBirth.Value.Date == searchDob.Date).ToList();
             }
+        }
+
+        // Filter by Specialty in memory (accent-insensitive)
+        if (!string.IsNullOrWhiteSpace(request.Specialty))
+        {
+            var searchSpecialty = RemoveDiacritics(request.Specialty.Trim().ToLower());
+            filteredResults = filteredResults.Where(r => 
+                (!string.IsNullOrWhiteSpace(r.Specialty) && RemoveDiacritics(r.Specialty.ToLower()).Contains(searchSpecialty)) ||
+                (!string.IsNullOrWhiteSpace(r.DepartmentName) && RemoveDiacritics(r.DepartmentName.ToLower()).Contains(searchSpecialty))
+            ).ToList();
+        }
+
+        // Filter by DoctorName in memory (accent-insensitive)
+        if (!string.IsNullOrWhiteSpace(request.DoctorName))
+        {
+            var searchName = RemoveDiacritics(request.DoctorName.Trim().ToLower());
+            filteredResults = filteredResults.Where(r => 
+                (!string.IsNullOrWhiteSpace(r.User?.FullName) && RemoveDiacritics(r.User.FullName.ToLower()).Contains(searchName)) ||
+                (!string.IsNullOrWhiteSpace(r.JobTitle) && RemoveDiacritics(r.JobTitle.ToLower()).Contains(searchName)) ||
+                (!string.IsNullOrWhiteSpace(r.EmployeeId) && RemoveDiacritics(r.EmployeeId.ToLower()).Contains(searchName))
+            ).ToList();
         }
 
         var totalCount = filteredResults.Count;
@@ -827,6 +842,36 @@ public class OrganizationService : IOrganizationService
         };
     }
 
+    // Fabric config
+    public async Task<ApiResponse<OrganizationResponse>> UpdateOrganizationFabricConfigAsync(Guid orgId, UpdateOrganizationFabricConfigRequest request)
+    {
+        var org = await _context.Organizations.FindAsync(orgId);
+        if (org == null)
+        {
+            return new ApiResponse<OrganizationResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy tổ chức / bệnh viện."
+            };
+        }
+
+        if (request.FabricMspId != null) org.FabricMspId = request.FabricMspId;
+        if (request.FabricChannelPeers != null) org.FabricChannelPeers = request.FabricChannelPeers;
+        if (request.FabricCaUrl != null) org.FabricCaUrl = request.FabricCaUrl;
+        org.UpdatedAt = VietnamTimeHelper.Now;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Updated fabric config for organization {OrgId}", orgId);
+
+        return new ApiResponse<OrganizationResponse>
+        {
+            Success = true,
+            Message = "Fabric config updated successfully",
+            Data = MapToResponse(org)
+        };
+    }
+
     // =========================================================================
     // MAPPERS
     // =========================================================================
@@ -898,6 +943,24 @@ public class OrganizationService : IOrganizationService
             Status = membership.Status,
             CreatedAt = membership.CreatedAt
         };
+    }
+
+    private static string RemoveDiacritics(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+        var normalizedString = text.Normalize(System.Text.NormalizationForm.FormD);
+        var stringBuilder = new System.Text.StringBuilder(capacity: normalizedString.Length);
+
+        foreach (var c in normalizedString)
+        {
+            var unicodeCategory = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (unicodeCategory != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                stringBuilder.Append(c);
+            }
+        }
+
+        return stringBuilder.ToString().Normalize(System.Text.NormalizationForm.FormC).Replace("đ", "d").Replace("Đ", "D");
     }
 }
 

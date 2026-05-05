@@ -95,7 +95,7 @@ public class LabOrderController : ControllerBase
     /// Lấy chỉ định XN theo EHR
     /// </summary>
     [HttpGet("ehr/{ehrId:guid}")]
-    [Authorize(Roles = "Doctor,Admin,LabTech")]
+    [Authorize(Roles = "Doctor,Admin,LabTech,Patient,Nurse")]
     [ProducesResponseType(typeof(IEnumerable<LabOrderResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<LabOrderResponseDto>>> GetByEhr(Guid ehrId)
     {
