@@ -103,6 +103,24 @@ public class LabOrderService : ILabOrderService
             .Where(o => o.EhrId == ehrId)
             .OrderByDescending(o => o.RequestedAt)
             .ToListAsync();
+
+        // BOLA / IDOR Protection for Patient Role
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user != null && user.IsInRole("Patient") && orders.Any())
+        {
+            var callerId = GetCurrentUserId();
+            var bearerToken = GetBearerToken();
+            if (callerId.HasValue && !string.IsNullOrEmpty(bearerToken))
+            {
+                var ownerUserId = await _authServiceClient.GetUserIdByPatientIdAsync(orders.First().PatientId, bearerToken);
+                if (ownerUserId != callerId.Value)
+                {
+                    _logger.LogWarning("Phát hiện truy cập trái phép (BOLA/IDOR): Patient {CallerId} cố truy cập xét nghiệm của EHR {EhrId}", callerId.Value, ehrId);
+                    return new List<LabOrderResponseDto>(); // Trả về rỗng để chặn truy cập
+                }
+            }
+        }
+
         return await MapToResponseListAsync(orders);
     }
 
@@ -112,6 +130,24 @@ public class LabOrderService : ILabOrderService
             .Where(o => o.PatientId == patientId)
             .OrderByDescending(o => o.RequestedAt)
             .ToListAsync();
+
+        // BOLA / IDOR Protection for Patient Role
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user != null && user.IsInRole("Patient"))
+        {
+            var callerId = GetCurrentUserId();
+            var bearerToken = GetBearerToken();
+            if (callerId.HasValue && !string.IsNullOrEmpty(bearerToken))
+            {
+                var ownerUserId = await _authServiceClient.GetUserIdByPatientIdAsync(patientId, bearerToken);
+                if (ownerUserId != callerId.Value)
+                {
+                    _logger.LogWarning("Phát hiện truy cập trái phép (BOLA/IDOR): Patient {CallerId} cố truy cập xét nghiệm của Patient Profile {PatientId}", callerId.Value, patientId);
+                    return new List<LabOrderResponseDto>(); // Trả về rỗng
+                }
+            }
+        }
+
         return await MapToResponseListAsync(orders);
     }
 
