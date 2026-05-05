@@ -160,6 +160,7 @@ public class EhrRecordRepository : IEhrRecordRepository
         List<Guid> consentedEhrIds,
         string? search,
         List<Guid>? matchingUserIds = null,
+        List<Guid>? matchingOrgIds = null,
         int page = 1,
         int pageSize = 10)
     {
@@ -173,13 +174,16 @@ public class EhrRecordRepository : IEhrRecordRepository
             (orgId.HasValue && r.OrgId == orgId) || 
             consentedEhrIds.Contains(r.EhrId));
 
-        // Search Filter (EhrId, PatientId, or matchingUserIds)
+        // Search Filter (EhrId, PatientId, OrgId, EncounterId, Date, or matchingUserIds/matchingOrgIds)
         if (!string.IsNullOrWhiteSpace(search))
         {
             var searchLower = search.ToLower();
             query = query.Where(r => 
                 r.EhrId.ToString().ToLower().Contains(searchLower) || 
                 (matchingUserIds != null && matchingUserIds.Contains(r.PatientId)) ||
+                (matchingOrgIds != null && r.OrgId.HasValue && matchingOrgIds.Contains(r.OrgId.Value)) ||
+                (r.EncounterId.HasValue && r.EncounterId.ToString().ToLower().Contains(searchLower)) ||
+                r.CreatedAt.ToString().Contains(search) || // Simple date string match
                 r.PatientId.ToString().ToLower().Contains(searchLower));
         }
 

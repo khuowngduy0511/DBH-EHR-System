@@ -29,6 +29,7 @@ public class EhrService : IEhrService
     private readonly IBlockchainSyncService _blockchainSyncService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAuthServiceClient _authServiceClient;
+    private readonly IOrganizationServiceClient _organizationServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly INotificationServiceClient? _notificationClient;
 
@@ -37,6 +38,7 @@ public class EhrService : IEhrService
         ILogger<EhrService> logger,
         IHttpClientFactory httpClientFactory,
         IAuthServiceClient authServiceClient,
+        IOrganizationServiceClient organizationServiceClient,
         IHttpContextAccessor httpContextAccessor,
         IBlockchainSyncService blockchainSyncService,
         IEhrBlockchainService? blockchainService = null,
@@ -47,6 +49,7 @@ public class EhrService : IEhrService
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _authServiceClient = authServiceClient;
+        _organizationServiceClient = organizationServiceClient;
         _httpContextAccessor = httpContextAccessor;
         _blockchainSyncService = blockchainSyncService;
         _blockchainService = blockchainService;
@@ -765,13 +768,15 @@ public class EhrService : IEhrService
         }
 
         List<Guid>? matchingUserIds = null;
+        List<Guid>? matchingOrgIds = null;
         if (!string.IsNullOrWhiteSpace(search))
         {
             var bearerToken = GetBearerTokenFromContext();
             matchingUserIds = await _authServiceClient.SearchUserIdsAsync(search, bearerToken);
+            matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(search, bearerToken);
         }
 
-        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, matchingUserIds, page, pageSize);
+        var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, search, matchingUserIds, matchingOrgIds, page, pageSize);
 
         var responses = items.Select(r => MapToEhrRecordResponse(r)).ToList();
         await AttachPatientProfilesAsync(responses);

@@ -1123,10 +1123,11 @@ public class AuthService : IAuthService
                 (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
                 (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                (u.DateOfBirth.HasValue && EF.Functions.ILike(u.DateOfBirth.Value.ToString("yyyy-MM-dd"), searchPattern)) ||
                 u.UserId.ToString() == keyword.Trim()
             )
             .Select(u => u.UserId)
-            .Take(200) // limit for safety in memory
+            .Take(1000) // Increase limit to reduce truncation issues for common names
             .ToListAsync();
 
         return userIds;

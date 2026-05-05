@@ -87,6 +87,7 @@ builder.Services.AddScoped<IEhrRecordRepository, EhrRecordRepository>();
 builder.Services.AddScoped<IEhrService, EhrService>();
 builder.Services.AddScoped<ILabOrderService, LabOrderService>();
 builder.Services.AddScoped<IAuthServiceClient, AuthServiceClient>();
+builder.Services.AddScoped<IOrganizationServiceClient, OrganizationServiceClient>();
 builder.Services.AddHttpContextAccessor();
 
 // ============================================================================
@@ -107,6 +108,12 @@ builder.Services.AddHttpClient("AuthService", client =>
 {
     var authUrl = builder.Configuration["ServiceUrls:AuthService"] ?? "http://localhost:5001";
     client.BaseAddress = new Uri(authUrl);
+});
+
+builder.Services.AddHttpClient("OrganizationService", client =>
+{
+    var orgUrl = builder.Configuration["ServiceUrls:OrganizationService"] ?? "http://localhost:5002";
+    client.BaseAddress = new Uri(orgUrl);
 });
 
 builder.Services.AddHttpClient("AuditService", client =>
