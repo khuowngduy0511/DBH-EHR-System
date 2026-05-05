@@ -171,6 +171,12 @@ public class EhrRecordRepository : IEhrRecordRepository
             .AsQueryable();
 
         // Access Control Filter
+        Console.WriteLine($"[EhrRecordRepository] Access Check: orgId={orgId}, ConsentedEhrCount={consentedEhrIds.Count}, ConsentedPatientCount={consentedPatientIds.Count}");
+        if (consentedPatientIds.Count > 0) 
+        {
+             Console.WriteLine($"[EhrRecordRepository] Consented Patient IDs: {string.Join(", ", consentedPatientIds.Take(10))}");
+        }
+
         query = query.Where(r => 
             (orgId.HasValue && r.OrgId == orgId) || 
             consentedEhrIds.Contains(r.EhrId) ||
