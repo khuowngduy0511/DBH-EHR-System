@@ -1211,7 +1211,10 @@ public class AuthService : IAuthService
         {
             query = query.Where(u => 
                 u.UserId == searchGuid ||
-                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.FullName != null && (
+                    EF.Functions.ILike(u.FullName, searchPattern) || 
+                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(normalizedKeyword))
+                )) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
                 (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
             );
@@ -1219,13 +1222,16 @@ public class AuthService : IAuthService
         else
         {
             query = query.Where(u =>
-                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.FullName != null && (
+                    EF.Functions.ILike(u.FullName, searchPattern) || 
+                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(normalizedKeyword))
+                )) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
                 (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
             );
         }
 
-        _logger.LogWarning("[AuthService] Searching for users with keyword: '{Keyword}' (pattern: '{Pattern}')", normalizedKeyword, searchPattern);
+        _logger.LogWarning("[AuthService] Searching for users with keyword: '{Keyword}'", normalizedKeyword);
         
         var userIds = await query
             .Select(u => u.UserId)
