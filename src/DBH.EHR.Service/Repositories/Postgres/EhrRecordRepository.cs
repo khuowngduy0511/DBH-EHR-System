@@ -183,6 +183,7 @@ public class EhrRecordRepository : IEhrRecordRepository
             
             // Handle Guid parsing for ID fields
             Guid.TryParse(search.Trim(), out var searchGuid);
+            Console.WriteLine($"[EhrRecordRepository] Searching with term: '{search}', searchGuid: '{searchGuid}'");
 
             query = query.Where(r => 
                 (searchGuid != Guid.Empty && (r.EhrId == searchGuid || r.PatientId == searchGuid || (r.EncounterId.HasValue && r.EncounterId.Value == searchGuid))) || 
