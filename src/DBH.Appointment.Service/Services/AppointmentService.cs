@@ -23,6 +23,7 @@ public class AppointmentService : IAppointmentService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthServiceClient _authServiceClient;
+    private readonly IOrganizationServiceClient _organizationServiceClient;
     private readonly INotificationServiceClient? _notificationClient;
 
     public AppointmentService(
@@ -31,6 +32,7 @@ public class AppointmentService : IAppointmentService
         IHttpClientFactory httpClientFactory,
         IHttpContextAccessor httpContextAccessor,
         IAuthServiceClient authServiceClient,
+        IOrganizationServiceClient organizationServiceClient,
         IMessagePublisher? messagePublisher = null,
         INotificationServiceClient? notificationClient = null)
     {
@@ -39,6 +41,7 @@ public class AppointmentService : IAppointmentService
         _httpClientFactory = httpClientFactory;
         _httpContextAccessor = httpContextAccessor;
         _authServiceClient = authServiceClient;
+        _organizationServiceClient = organizationServiceClient;
         _messagePublisher = messagePublisher;
         _notificationClient = notificationClient;
     }
@@ -308,12 +311,18 @@ public class AppointmentService : IAppointmentService
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
+            var bearerToken = GetBearerToken();
             var matchingUserIds = await _authServiceClient.SearchUserIdsAsync(searchTerm);
+            var matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(searchTerm, bearerToken ?? "");
+            
             var lowerSearchTerm = searchTerm.ToLower();
             query = query.Where(a => 
                 a.AppointmentId.ToString().ToLower().Contains(lowerSearchTerm) ||
                 matchingUserIds.Contains(a.PatientId) ||
-                matchingUserIds.Contains(a.DoctorId));
+                matchingUserIds.Contains(a.DoctorId) ||
+                matchingOrgIds.Contains(a.OrgId) ||
+                a.ScheduledAt.ToString().Contains(searchTerm) ||
+                a.Encounters.Any(e => e.EncounterId.ToString().ToLower().Contains(lowerSearchTerm)));
         }
 
         var totalCount = await query.CountAsync();
@@ -1644,5 +1653,14 @@ public class AppointmentService : IAppointmentService
             response.DoctorProfile = await _authServiceClient.GetUserProfileDetailAsync(doctorUserIdTask.Result.Value);
         }
     }
+
+    private string? GetBearerToken()
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return authHeader.Substring("Bearer ".Length).Trim();
+    }
+
 }
 
