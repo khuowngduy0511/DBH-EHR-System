@@ -4,6 +4,7 @@ using DBH.Audit.Service.Models.Entities;
 using DBH.Audit.Service.Models.Enums;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,14 +15,17 @@ public class AuditService : IAuditService
     private readonly AuditDbContext _db;
     private readonly ILogger<AuditService> _logger;
     private readonly IAuditBlockchainService? _blockchainService;
+    private readonly ICacheService _cache;
 
     public AuditService(
         AuditDbContext db, 
         ILogger<AuditService> logger,
+        ICacheService cache,
         IAuditBlockchainService? blockchainService = null)
     {
         _db = db;
         _logger = logger;
+        _cache = cache;
         _blockchainService = blockchainService;
     }
 
@@ -210,6 +214,10 @@ public class AuditService : IAuditService
 
     public async Task<AuditStatsResponse> GetAuditStatsAsync(Guid? organizationId, DateTime? fromDate, DateTime? toDate)
     {
+        var statsKey = $"stats:{organizationId}:{fromDate?.ToString("yyyyMMdd")}:{toDate?.ToString("yyyyMMdd")}";
+        var statsCached = await _cache.GetAsync<AuditStatsResponse>(statsKey);
+        if (statsCached != null) return statsCached;
+
         var q = _db.AuditLogs.AsQueryable();
 
         if (organizationId.HasValue)
@@ -221,7 +229,7 @@ public class AuditService : IAuditService
 
         var logs = await q.ToListAsync();
 
-        return new AuditStatsResponse
+        var statsResult = new AuditStatsResponse
         {
             TotalLogs = logs.Count,
             SuccessCount = logs.Count(l => l.Result == AuditResult.SUCCESS),
@@ -231,6 +239,8 @@ public class AuditService : IAuditService
                 .GroupBy(l => l.Action.ToString())
                 .ToDictionary(g => g.Key, g => g.Count())
         };
+        await _cache.SetAsync(statsKey, statsResult, TimeSpan.FromMinutes(5));
+        return statsResult;
     }
 
     // ========================================================================

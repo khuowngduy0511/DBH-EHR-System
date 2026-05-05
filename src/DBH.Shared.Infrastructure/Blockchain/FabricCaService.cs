@@ -170,7 +170,9 @@ public sealed class FabricCaService : IFabricCaService
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"{runtimeIdentity.CaUrl.TrimEnd('/')}/api/v1/register");
 
-        request.Headers.Add("Authorization", token);
+        // Fabric CA expects the raw token format "<base64-cert>.<base64-signature>"
+        // in Authorization, which does not conform to the standard scheme-based parser.
+        request.Headers.TryAddWithoutValidation("Authorization", token);
         request.Content = new ByteArrayContent(bodyBytes);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 

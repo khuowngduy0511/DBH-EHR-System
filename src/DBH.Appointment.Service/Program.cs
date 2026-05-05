@@ -18,6 +18,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
@@ -81,6 +83,7 @@ builder.Services.AddDbContext<AppointmentDbContext>(options =>
 builder.Services.AddInfrastructure(builder.Configuration, options =>
 {
     options.UseRabbitMQ = true;
+    options.UseRedisCache = true;
     options.UseNotificationClient = true;
 });
 

@@ -29,6 +29,10 @@ namespace DBH.Appointment.Service.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("appointment_id");
 
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text")
+                        .HasColumnName("cancel_reason");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");

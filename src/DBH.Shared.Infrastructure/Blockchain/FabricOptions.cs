@@ -8,7 +8,7 @@ public class FabricOptions
     public const string SectionName = "HyperledgerFabric";
 
     /// <summary>Bật/tắt blockchain integration</summary>
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; } = true;
 
     /// <summary>
     /// Khi true: trả kết quả giả (development mode, không cần Fabric network).
@@ -41,6 +41,12 @@ public class FabricOptions
 
     /// <summary>Path đến TLS CA certificate</summary>
     public string TlsCertificatePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional crypto root folder containing peerOrganizations/ and fabric-ca/.
+    /// When empty, runtime will derive root from configured certificate/key paths.
+    /// </summary>
+    public string? CryptoRoot { get; set; }
 
     /// <summary>Path đến Connection Profile JSON (optional)</summary>
     public string? ConnectionProfilePath { get; set; }

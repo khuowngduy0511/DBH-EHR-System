@@ -55,10 +55,11 @@ public class MembershipsController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetMembershipsByOrg(
         Guid orgId,
+        [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
     {
-        var result = await _organizationService.GetMembershipsByOrgAsync(orgId, page, pageSize);
+        var result = await _organizationService.GetMembershipsByOrgAsync(orgId, search, page, pageSize);
         return Ok(result);
     }
 

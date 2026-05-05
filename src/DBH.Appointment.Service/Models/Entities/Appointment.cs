@@ -41,6 +41,9 @@ public class Appointment
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = VietnamTime.DatabaseNow;
 
+    [Column("cancel_reason")]
+    public string? CancelReason { get; set; }
+
     [Column("created_by")]
     public Guid? CreatedBy { get; set; }
 

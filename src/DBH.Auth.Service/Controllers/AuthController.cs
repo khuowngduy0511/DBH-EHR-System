@@ -189,9 +189,6 @@ public class AuthController : ControllerBase
         return Ok(profile);
     }
 
-    /// <summary>
-    /// Updates the profile of the currently authenticated user (Progressive Profiling).
-    /// </summary>
     [Authorize]
     [HttpPut("me/profile")]
     public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateProfileRequest request)
@@ -207,7 +204,25 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
 
-    [Authorize]
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}/profile")]
+    public async Task<IActionResult> UpdateUserProfileByAdmin(Guid userId, [FromBody] UpdateProfileRequest request)
+    {
+        var response = await _authService.UpdateProfileAsync(userId, request);
+        if (!response.Success) return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("users/{userId:guid}/status")]
+    public async Task<IActionResult> UpdateUserStatus(Guid userId, [FromQuery] string status)
+    {
+        var response = await _authService.UpdateUserStatusAsync(userId, status);
+        if (!response.Success) return BadRequest(response);
+        return Ok(response);
+    }
+
+    [Authorize(Roles = "Admin, Doctor, Patient, Nurse, Receptionist, Pharmacist, LabTech")]
     [HttpGet("users/{userId:guid}")]
     public async Task<IActionResult> GetUserProfile(Guid userId)
     {
@@ -234,6 +249,14 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [Authorize]
+    [HttpGet("users/search-ids")]
+    public async Task<IActionResult> SearchUserIds([FromQuery] string keyword)
+    {
+        var ids = await _authService.SearchUserIdsAsync(keyword);
+        return Ok(ids);
+    }
+
 
     [Authorize]
     [HttpGet("users/by-contact")]
@@ -251,19 +274,23 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("user-id")]
-    public async Task<IActionResult> GetUserId([FromQuery] Guid? patientId, [FromQuery] Guid? doctorId)
+    public async Task<IActionResult> GetUserId(
+        [FromQuery] Guid? patientId,
+        [FromQuery] Guid? doctorId,
+        [FromQuery] Guid? staffId)
     {
-        if (!patientId.HasValue && !doctorId.HasValue)
+        if (!patientId.HasValue && !doctorId.HasValue && !staffId.HasValue)
         {
-            return BadRequest("Either patientId or doctorId is required.");
+            return BadRequest("Either patientId, doctorId, or staffId is required.");
         }
 
-        if (patientId.HasValue && doctorId.HasValue)
+        var provided = new[] { patientId.HasValue, doctorId.HasValue, staffId.HasValue }.Count(x => x);
+        if (provided > 1)
         {
-            return BadRequest("Provide only one of patientId or doctorId.");
+            return BadRequest("Provide only one of patientId, doctorId, or staffId.");
         }
 
-        var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId);
+        var userId = await _authService.GetUserIdByProfileIdAsync(patientId, doctorId, staffId);
         if (!userId.HasValue)
         {
             return NotFound(Failed("User not found."));

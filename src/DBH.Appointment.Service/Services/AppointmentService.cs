@@ -215,16 +215,17 @@ public class AppointmentService : IAppointmentService
         await ScheduleReminderAsync(appointment);
 
         // Notify doctor about new appointment
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone);
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn mới",
-            $"Bạn có lịch hẹn mới vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}",
+            $"Bạn có lịch hẹn mới vào lúc {vnTime:dd/MM/yyyy HH:mm}",
             "AppointmentCreated", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
         // Notify patient about appointment created
         await NotifyPatientAsync(appointment.PatientId,
             "Đặt lịch hẹn thành công",
-            $"Bạn đã đặt lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm}.",
+            $"Bạn đã đặt lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentCreated", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -259,7 +260,9 @@ public class AppointmentService : IAppointmentService
     }
 
     public async Task<PagedResponse<AppointmentResponse>> GetAppointmentsAsync(
-        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, int page = 1, int pageSize = 10)
+        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, string? statusList = null,
+        DateTime? fromDate = null, DateTime? toDate = null, string? searchTerm = null,
+        int page = 1, int pageSize = 10)
     {
         var query = _context.Appointments
             .Include(a => a.Encounters)
@@ -277,9 +280,51 @@ public class AppointmentService : IAppointmentService
         if (status.HasValue)
             query = query.Where(a => a.Status == status.Value);
 
+        if (!string.IsNullOrEmpty(statusList))
+        {
+            var statuses = statusList.Split(',')
+                .Select(s => Enum.TryParse<AppointmentStatus>(s, true, out var parsed) ? parsed : (AppointmentStatus?)null)
+                .Where(s => s.HasValue)
+                .Select(s => s.Value)
+                .ToList();
+
+            if (statuses.Any())
+            {
+                query = query.Where(a => statuses.Contains(a.Status));
+            }
+        }
+
+        if (fromDate.HasValue)
+        {
+            var fromUtc = fromDate.Value.Kind == DateTimeKind.Utc ? fromDate.Value : DateTime.SpecifyKind(fromDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.ScheduledAt >= fromUtc);
+        }
+
+        if (toDate.HasValue)
+        {
+            var toUtc = toDate.Value.Kind == DateTimeKind.Utc ? toDate.Value : DateTime.SpecifyKind(toDate.Value, DateTimeKind.Utc);
+            query = query.Where(a => a.ScheduledAt <= toUtc);
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var matchingUserIds = await _authServiceClient.SearchUserIdsAsync(searchTerm);
+            var lowerSearchTerm = searchTerm.ToLower();
+            query = query.Where(a => 
+                a.AppointmentId.ToString().ToLower().Contains(lowerSearchTerm) ||
+                matchingUserIds.Contains(a.PatientId) ||
+                matchingUserIds.Contains(a.DoctorId));
+        }
+
         var totalCount = await query.CountAsync();
         var items = await query
-            .OrderByDescending(a => a.ScheduledAt)
+            .OrderBy(a => a.Status == AppointmentStatus.PENDING ? 1 :
+                          a.Status == AppointmentStatus.CONFIRMED ? 2 :
+                          a.Status == AppointmentStatus.CHECKED_IN ? 3 :
+                          a.Status == AppointmentStatus.IN_PROGRESS ? 4 :
+                          a.Status == AppointmentStatus.COMPLETED ? 5 :
+                          a.Status == AppointmentStatus.CANCELLED ? 6 : 99)
+            .ThenBy(a => a.ScheduledAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -416,14 +461,15 @@ public class AppointmentService : IAppointmentService
         _logger.LogInformation("Rescheduled appointment {Id} to {Date}", appointmentId, newDateUtc);
 
         // Notify both parties about reschedule
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(newDateUtc, VietnamTime.TimeZone);
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "High",
             appointment.AppointmentId.ToString(), "Appointment");
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã được đổi",
-            $"Lịch hẹn đã được đổi sang {newDateUtc:dd/MM/yyyy HH:mm}.",
+            $"Lịch hẹn đã được đổi sang {vnTime:dd/MM/yyyy HH:mm}.",
             "AppointmentRescheduled", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -449,11 +495,11 @@ public class AppointmentService : IAppointmentService
         if (appointment == null)
             return new ApiResponse<AppointmentResponse> { Success = false, Message = "Không tìm thấy lịch hẹn." };
 
-        if (appointment.Status != AppointmentStatus.PENDING)
+        if (appointment.Status != AppointmentStatus.PENDING && appointment.Status != AppointmentStatus.RESCHEDULED)
             return new ApiResponse<AppointmentResponse> 
             { 
                 Success = false, 
-                Message = $"Không thể xác nhận lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING mới có thể được xác nhận." 
+                Message = $"Không thể xác nhận lịch hẹn ở trạng thái {appointment.Status}. Chỉ những lịch hẹn PENDING hoặc RESCHEDULED mới có thể được xác nhận." 
             };
 
         var oldStatus = appointment.Status.ToString();
@@ -493,7 +539,7 @@ public class AppointmentService : IAppointmentService
 
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã được xác nhận",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã được bác sĩ xác nhận.",
+            $"Lịch hẹn vào lúc {TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone):dd/MM/yyyy HH:mm} đã được bác sĩ xác nhận.",
             "AppointmentReminder", "High",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -524,6 +570,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.CancelReason = reason;
         appointment.UpdatedAt = VietnamTime.DatabaseNow;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
@@ -580,6 +627,7 @@ public class AppointmentService : IAppointmentService
 
         var oldStatus = appointment.Status.ToString();
         appointment.Status = AppointmentStatus.CANCELLED;
+        appointment.CancelReason = reason;
         appointment.UpdatedAt = VietnamTime.DatabaseNow;
         appointment.UpdatedBy = actorUserId;
         await _context.SaveChangesAsync();
@@ -596,14 +644,15 @@ public class AppointmentService : IAppointmentService
         });
 
         // Notify both patient and doctor
+        var vnTime = TimeZoneInfo.ConvertTimeFromUtc(appointment.ScheduledAt, VietnamTime.TimeZone);
         await NotifyPatientAsync(appointment.PatientId,
             "Lịch hẹn đã bị hủy",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
+            $"Lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "High",
             appointment.AppointmentId.ToString(), "Appointment");
         await NotifyDoctorAsync(appointment.DoctorId,
             "Lịch hẹn đã bị hủy",
-            $"Lịch hẹn vào lúc {appointment.ScheduledAt:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
+            $"Lịch hẹn vào lúc {vnTime:dd/MM/yyyy HH:mm} đã bị hủy. Lý do: {reason}",
             "AppointmentReminder", "Normal",
             appointment.AppointmentId.ToString(), "Appointment");
 
@@ -981,9 +1030,9 @@ public class AppointmentService : IAppointmentService
     /// Flow: Encounters → Consent Service (verify) → Auth Service (patient info)
     /// </summary>
     public async Task<PagedResponse<DoctorPatientResponse>> GetPatientsByDoctorAsync(
-        Guid doctorId, int page = 1, int pageSize = 10)
+        Guid doctorId, int page = 1, int pageSize = 10, string? searchTerm = null)
     {
-        // Step 1: Lấy danh sách patientIds đã khám (từ encounters có appointment COMPLETED)
+        // Step 1: Lấy danh sách record encounters đã khám của bác sĩ (Status = COMPLETED)
         var encounterGroups = await _context.Encounters
             .Include(e => e.Appointment)
             .Where(e => e.DoctorId == doctorId 
@@ -1013,13 +1062,27 @@ public class AppointmentService : IAppointmentService
         }
 
         // Step 2: Kiểm tra consent cho từng patient với doctor (gọi Consent Service)
-        var consentedPatientIds = await GetConsentedPatientIdsAsync(
-            doctorId, encounterGroups.Select(g => g.PatientId).ToList());
+        var listPatientIds = encounterGroups.Select(g => g.PatientId).ToList();
+        var consentedPatientIds = await GetConsentedPatientIdsAsync(doctorId, listPatientIds);
 
         // Filter chỉ giữ patient có consent
         var filteredGroups = encounterGroups
             .Where(g => consentedPatientIds.Contains(g.PatientId))
             .ToList();
+
+        // Step 3: Xử lý tìm kiếm (Search)
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            // Để tìm theo tên, ta cần load thông tin patient từ AuthService trước cho danh sách này
+            var allPatientInfos = await GetPatientInfosAsync(filteredGroups.Select(g => g.PatientId).ToList());
+            
+            filteredGroups = filteredGroups.Where(g => {
+                var info = allPatientInfos.GetValueOrDefault(g.PatientId);
+                return g.PatientId.ToString().ToLower().Contains(term) || 
+                       (info != null && (info.FullName?.ToLower().Contains(term) == true || info.Email?.ToLower().Contains(term) == true));
+            }).ToList();
+        }
 
         var totalCount = filteredGroups.Count;
 
@@ -1029,14 +1092,13 @@ public class AppointmentService : IAppointmentService
             .Take(pageSize)
             .ToList();
 
-        // Step 3: Lấy thông tin patient (tên, email, sdt) từ Auth Service
-        var patientInfos = await GetPatientInfosAsync(
-            pagedGroups.Select(g => g.PatientId).ToList());
+        // Step 4: Lấy thông tin chi tiết cho trang hiện tại (nếu chưa load ở trên hoặc load lại để đảm bảo)
+        var pagedPatientInfos = await GetPatientInfosAsync(pagedGroups.Select(g => g.PatientId).ToList());
 
         // Map kết quả
         var result = pagedGroups.Select(g =>
         {
-            var info = patientInfos.GetValueOrDefault(g.PatientId);
+            var info = pagedPatientInfos.GetValueOrDefault(g.PatientId);
             return new DoctorPatientResponse
             {
                 PatientId = g.PatientId,
@@ -1298,7 +1360,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor not found"
+                Message = "Không tìm thấy bác sĩ."
             };
         }
 
@@ -1308,7 +1370,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Organization not found"
+                Message = "Không tìm thấy cơ sở y tế."
             };
         }
 
@@ -1318,7 +1380,7 @@ public class AppointmentService : IAppointmentService
             return new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Doctor does not belong to this organization"
+                Message = "Bác sĩ không thuộc cơ sở y tế này. Vui lòng chọn lại."
             };
         }
 
@@ -1502,6 +1564,7 @@ public class AppointmentService : IAppointmentService
             ScheduledAt = appt.ScheduledAt,
             Status = appt.Status.ToString(),
             CreatedAt = appt.CreatedAt,
+            CancelReason = appt.CancelReason,
             EncounterCount = appt.Encounters?.Count ?? 0
         };
     }

@@ -76,9 +76,24 @@ public class EhrVersionDto
 public class EhrFileDto
 {
     public Guid FileId { get; set; }
+    public string? FileName { get; set; }
     public string? FileUrl { get; set; }
     public string? FileHash { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Metadata tối thiểu của EHR — không chứa data nhạy cảm, không cần consent.
+/// Dùng để biết patient có hồ sơ không và lấy ehrId trước khi gửi access request.
+/// </summary>
+public class EhrMetadataDto
+{
+    public Guid EhrId { get; set; }
+    public Guid PatientId { get; set; }
+    public Guid? OrgId { get; set; }
+    public Guid? EncounterId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public int VersionCount { get; set; }
 }
 
 /// <summary>
@@ -91,7 +106,7 @@ public class UpdateEhrRecordDto
 }
 
 /// <summary>
-/// Chi tiết version EHR (bao gồm IPFS CID)
+/// Chi tiết version EHR (bao gồm IPFS CID và data hash)
 /// </summary>
 public class EhrVersionDetailDto
 {
@@ -99,9 +114,28 @@ public class EhrVersionDetailDto
     public Guid EhrId { get; set; }
     public int VersionNumber { get; set; }
     public string? IpfsCid { get; set; }
+    public string? DataHash { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
+/// Response nội dung tài liệu của một version EHR cụ thể
+/// </summary>
+public class EhrVersionDocumentResponseDto
+{
+    public Guid VersionId { get; set; }
+    public Guid EhrId { get; set; }
+    public Guid PatientId { get; set; }
+    public AuthUserProfileDetailDto? PatientProfile { get; set; }
+    public Guid? EncounterId { get; set; }
+    public Guid? OrgId { get; set; }
+    public int VersionNumber { get; set; }
+    public string? DataHash { get; set; }
+    public List<EhrFileDto>? Files { get; set; }
+    public DateTime EhrCreatedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string Document { get; set; } = string.Empty;
+}
 public class EncryptIpfsPayloadRequestDto
 {
     [Required]

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using DBH.Notification.Service.Consumers;
 using DBH.Notification.Service.DbContext;
 using DBH.Notification.Service.Services;
 using DBH.Notification.Service.Models.Config;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +22,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
@@ -101,7 +105,21 @@ builder.Services.AddDbContext<NotificationDbContext>(options =>
 // ============================================================================
 
 // TODO: Add Firebase Admin SDK initialization
-// TODO: Add RabbitMQ/Azure Service Bus consumer
+
+// ============================================================================
+// RabbitMQ + Redis
+// ============================================================================
+
+builder.Services.AddRabbitMQ(builder.Configuration, x =>
+{
+    x.AddConsumer<AppointmentEventConsumer>();
+    x.AddConsumer<ConsentEventConsumer>();
+    x.AddConsumer<EhrEventConsumer>();
+    x.AddConsumer<PaymentEventConsumer>();
+    x.AddConsumer<UserEventConsumer>();
+});
+
+builder.Services.AddRedisCache(builder.Configuration);
 
 var app = builder.Build();
 

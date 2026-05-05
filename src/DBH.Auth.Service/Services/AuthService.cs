@@ -8,6 +8,7 @@ using System.Security.Claims;
 using BCrypt.Net;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Time;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
@@ -32,6 +33,10 @@ public class AuthService : IAuthService
     private readonly IOrganizationServiceClient _organizationServiceClient;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly AuthDbContext _dbContext;
+    private readonly ICacheService _cache;
+
+    private static readonly TimeSpan ProfileCacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan KeysCacheTtl = TimeSpan.FromMinutes(60);
 
     public AuthService(
         IUserRepository userRepository, 
@@ -47,7 +52,8 @@ public class AuthService : IAuthService
         IBlockchainSyncService blockchainSyncService,
         IOrganizationServiceClient organizationServiceClient,
         IHttpContextAccessor httpContextAccessor,
-        AuthDbContext dbContext)
+        AuthDbContext dbContext,
+        ICacheService cache)
     {
         _userRepository = userRepository;
         _credentialRepository = credentialRepository;
@@ -63,6 +69,7 @@ public class AuthService : IAuthService
         _organizationServiceClient = organizationServiceClient;
         _httpContextAccessor = httpContextAccessor;
         _dbContext = dbContext;
+        _cache = cache;
     }
 
 
@@ -393,30 +400,42 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "Quyền (Role) không tồn tại trong hệ thống." };
         }
 
-        var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == user.UserId);
-        if (existingUserRole != null)
+        // Remove all existing roles to ensure one primary role (unless you explicitly support multiple, which current UI does not)
+        var existingUserRoles = await _userRoleRepository.FindManyAsync(ur => ur.UserId == user.UserId);
+        var existingRolesList = existingUserRoles.ToList();
+        
+        if (existingRolesList.Count == 1 && existingRolesList[0].RoleId == newRoleEntity.RoleId)
         {
-            if (existingUserRole.RoleId == newRoleEntity.RoleId)
-            {
-                return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
-            }
-            await _userRoleRepository.DeleteAsync(existingUserRole);
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = newRoleEntity.RoleId
-            });
+            return new AuthResponse { Success = true, Message = "Người dùng đã sở hữu quyền này." };
         }
-        else
+
+        foreach (var userRole in existingRolesList)
         {
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = user.UserId,
-                RoleId = newRoleEntity.RoleId
-            });
+            await _userRoleRepository.DeleteAsync(userRole);
+        }
+
+        // Add the new role
+        await _userRoleRepository.AddAsync(new UserRole
+        {
+            UserId = user.UserId,
+            RoleId = newRoleEntity.RoleId
+        });
+
+        // Clean up ghost profiles based on role transition
+        if (newRoleEnum == RoleName.Doctor)
+        {
+            var staffProfile = await _staffRepository.FindAsync(s => s.UserId == user.UserId);
+            if (staffProfile != null) await _staffRepository.DeleteAsync(staffProfile);
+        }
+        else if (newRoleEnum is RoleName.Nurse or RoleName.Pharmacist or RoleName.Receptionist or RoleName.LabTech or RoleName.Admin)
+        {
+            var doctorProfile = await _doctorRepository.FindAsync(d => d.UserId == user.UserId);
+            if (doctorProfile != null) await _doctorRepository.DeleteAsync(doctorProfile);
         }
 
         await EnsureRoleProfileAsync(user.UserId, newRoleEntity.RoleName);
+        await RevokeTokenAsync(request.UserId);
+        await _cache.RemoveAsync($"profile:{request.UserId}");
 
         return new AuthResponse { Success = true, Message = "Cập nhật quyền thành công." };
     }
@@ -475,10 +494,16 @@ public class AuthService : IAuthService
 
     public async Task<UserProfileResponse?> GetMyProfileAsync(Guid userId)
     {
+        var cacheKey = $"profile:{userId}";
+        var cached = await _cache.GetAsync<UserProfileResponse>(cacheKey);
+        if (cached != null) return cached;
+
         var user = await _userRepository.GetByIdWithProfileAsync(userId);
         if (user == null) return null;
 
-        return BuildUserProfileResponse(user);
+        var result = BuildUserProfileResponse(user);
+        await _cache.SetAsync(cacheKey, result, ProfileCacheTtl);
+        return result;
     }
 
     public async Task<UserProfileResponse?> GetProfileByContactAsync(string? email, string? phone)
@@ -770,6 +795,7 @@ public class AuthService : IAuthService
                 }
             }
         }
+        await _cache.RemoveAsync($"profile:{userId}");
 
         return new AuthResponse { Success = true, Message = "Cập nhật hồ sơ cá nhân thành công." };
     }
@@ -869,6 +895,7 @@ public class AuthService : IAuthService
             await _userRepository.UpdateAsync(user);
         }
 
+        await _cache.RemoveAsync($"profile:{userId}");
         return new AuthResponse
         {
             Success = true,
@@ -937,7 +964,7 @@ public class AuthService : IAuthService
         }, isAdminOverride: true);
     }
 
-    public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId)
+    public async Task<Guid?> GetUserIdByProfileIdAsync(Guid? patientId, Guid? doctorId, Guid? staffId = null)
     {
         if (patientId.HasValue)
         {
@@ -963,11 +990,29 @@ public class AuthService : IAuthService
             return doctor?.UserId;
         }
 
+        if (staffId.HasValue)
+        {
+            // First check if staffId is directly a userId (fallback for already-normalized IDs)
+            var staffUser = await _userRepository.GetByIdAsync(staffId.Value);
+            if (staffUser != null)
+            {
+                return staffUser.UserId;
+            }
+
+            // Look up the Staff profile by StaffId to get the linked UserId
+            var staff = await _staffRepository.FindAsync(s => s.StaffId == staffId.Value);
+            return staff?.UserId;
+        }
+
         return null;
     }
 
     public async Task<UserKeysDto?> GetUserKeysAsync(Guid userId)
     {
+        var keyCacheKey = $"keys:{userId}";
+        var keyCached = await _cache.GetAsync<UserKeysDto>(keyCacheKey);
+        if (keyCached != null) return keyCached;
+
         var user = await _userRepository.GetByIdAsync(userId);
         if (user == null || string.IsNullOrWhiteSpace(user.PublicKey))
         {
@@ -980,12 +1025,14 @@ public class AuthService : IAuthService
             return null;
         }
 
-        return new UserKeysDto
+        var keyResult = new UserKeysDto
         {
             UserId = userId,
             PublicKey = user.PublicKey,
             EncryptedPrivateKey = privateCredential.CredentialValue
         };
+        await _cache.SetAsync(keyCacheKey, keyResult, KeysCacheTtl);
+        return keyResult;
     }
 
     public async Task<PagedResponse<UserProfileResponse>> GetAllUsersAsync(GetAllUsersQuery query, bool isAdminActor)
@@ -1062,6 +1109,18 @@ public class AuthService : IAuthService
             .AsNoTracking()
             .AsQueryable();
 
+        if (!string.IsNullOrWhiteSpace(query.SearchTerm))
+        {
+            var searchTerm = query.SearchTerm.Trim();
+            var searchPattern = $"%{searchTerm}%";
+            userQuery = userQuery.Where(u => 
+                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                u.UserId.ToString() == searchTerm
+            );
+        }
+
         if (!string.IsNullOrWhiteSpace(normalizedGender))
         {
             userQuery = userQuery.Where(u => u.Gender != null && EF.Functions.ILike(u.Gender, normalizedGender));
@@ -1136,6 +1195,26 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<List<Guid>> SearchUserIdsAsync(string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return new List<Guid>();
+
+        var searchPattern = $"%{keyword.Trim()}%";
+        var userIds = await _dbContext.Users
+            .AsNoTracking()
+            .Where(u =>
+                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
+                u.UserId.ToString() == keyword.Trim()
+            )
+            .Select(u => u.UserId)
+            .Take(200) // limit for safety in memory
+            .ToListAsync();
+
+        return userIds;
+    }
+
 
 
     /// <summary>
@@ -1160,6 +1239,7 @@ public class AuthService : IAuthService
         existingUser.UpdatedBy = actorUserId;
 
         await _userRepository.UpdateAsync(existingUser);
+        await _cache.RemoveAsync($"profile:{existingUser.UserId}");
 
         // Remove old encrypted private key and store new one
         var oldPrivateKey = await _credentialRepository.FindAsync(c =>
@@ -1185,7 +1265,7 @@ public class AuthService : IAuthService
         var patientRole = await _roleRepository.FindAsync(r => r.RoleName == RoleName.Patient);
         if (patientRole != null)
         {
-            var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == existingUser.UserId);
+            var existingUserRole = await _userRoleRepository.FindAsync(ur => ur.UserId == existingUser.UserId && ur.RoleId == patientRole.RoleId);
             if (existingUserRole == null)
             {
                 await _userRoleRepository.AddAsync(new UserRole
@@ -1210,6 +1290,8 @@ public class AuthService : IAuthService
         }
 
         _logger.LogInformation("Account reactivated for user {UserId} ({Email})", existingUser.UserId, existingUser.Email);
+
+        await _cache.RemoveAsync($"profile:{existingUser.UserId}");
 
         return new AuthResponse
         {
@@ -1248,6 +1330,7 @@ public class AuthService : IAuthService
         user.UpdatedBy = userId;
 
         await _userRepository.UpdateAsync(user);
+        await _cache.RemoveAsync($"profile:{userId}");
 
         // Revoke all refresh tokens
         await RevokeTokenAsync(userId);
@@ -1422,12 +1505,45 @@ public class AuthService : IAuthService
     {
         if (string.IsNullOrWhiteSpace(email))
             return false;
-
-        // Email regex pattern: basic validation
-        // Allows alphanumeric, dots, hyphens, underscores before @
-        // Allows alphanumeric, dots, hyphens after @
-        // Requires a dot in domain with at least 2 character extension
         return Regex.IsMatch(email, @"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$");
+    }
+    
+    public async Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status)
+    {
+        if (!Enum.TryParse<UserStatus>(status, true, out var newStatus))
+        {
+            return new AuthResponse
+            {
+                Success = false,
+                Message = $"Trạng thái '{status}' không hợp lệ. Các giá trị hợp lệ: Active, Inactive, Suspended, Pending."
+            };
+        }
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            return new AuthResponse { Success = false, Message = "Không tìm thấy tài khoản người dùng." };
+        }
+
+        if (user.Status == newStatus)
+        {
+            return new AuthResponse { Success = true, Message = "Người dùng đã có trạng thái này." };
+        }
+
+        user.Status = newStatus;
+        user.UpdatedAt = VietnamTime.DatabaseNow;
+        user.UpdatedBy = GetCurrentActorId();
+        await _userRepository.UpdateAsync(user);
+
+        _logger.LogInformation("User {UserId} status updated to {Status} by actor {ActorId}.",
+            userId, newStatus, GetCurrentActorId());
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = $"Cập nhật trạng thái người dùng thành '{newStatus}' thành công.",
+            UserId = userId
+        };
     }
 }
 

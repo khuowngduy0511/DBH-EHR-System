@@ -4,6 +4,7 @@ using DBH.Consent.Service.Models.Enums;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
 using DBH.Shared.Infrastructure.Blockchain.Sync;
+using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.cryptography;
 using DBH.Shared.Infrastructure.Notification;
 using DBH.Shared.Infrastructure.Time;
@@ -24,6 +25,10 @@ public class ConsentService : IConsentService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly INotificationServiceClient? _notificationClient;
+    private readonly ICacheService _cache;
+
+    private static readonly TimeSpan ConsentCacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ConsentListCacheTtl = TimeSpan.FromMinutes(5);
 
     public ConsentService(
         ConsentDbContext context,
@@ -31,6 +36,7 @@ public class ConsentService : IConsentService
         IHttpClientFactory httpClientFactory,
         IHttpContextAccessor httpContextAccessor,
         IBlockchainSyncService blockchainSyncService,
+        ICacheService cache,
         IConsentBlockchainService? blockchainService = null,
         IEhrBlockchainService? ehrBlockchainService = null,
         INotificationServiceClient? notificationClient = null)
@@ -40,6 +46,7 @@ public class ConsentService : IConsentService
         _httpClientFactory = httpClientFactory;
         _httpContextAccessor = httpContextAccessor;
         _blockchainSyncService = blockchainSyncService;
+        _cache = cache;
         _blockchainService = blockchainService;
         _ehrBlockchainService = ehrBlockchainService;
         _notificationClient = notificationClient;
@@ -56,11 +63,13 @@ public class ConsentService : IConsentService
         var normalizedPatientId = await ResolveUserIdAsync(authClient, request.PatientId, isPatientProfile: true, bearerToken) ?? request.PatientId;
         var normalizedGranteeId = await ResolveUserIdAsync(authClient, request.GranteeId, isPatientProfile: false, bearerToken) ?? request.GranteeId;
 
-        // Check if active consent already exists
+        // Check if active consent already exists FOR THE SAME PERMISSION
+        // (different permissions can coexist: e.g. WRITE + DOWNLOAD for same patient+grantee+EHR)
         var existingConsent = await _context.Consents.FirstOrDefaultAsync(c =>
             c.PatientId == normalizedPatientId &&
             c.GranteeId == normalizedGranteeId &&
             c.EhrId == request.EhrId &&
+            c.Permission == request.Permission &&
             c.Status == ConsentStatus.ACTIVE);
 
         if (existingConsent != null)
@@ -68,7 +77,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "An active consent already exists for this patient-grantee-EHR combination"
+                Message = "Đã tồn tại consent đang hiệu lực với quyền này cho bệnh nhân-người được cấp-EHR này"
             };
         }
 
@@ -220,6 +229,8 @@ public class ConsentService : IConsentService
             "Granted consent {ConsentId} from patient {PatientId} to grantee {GranteeId}",
             consent.ConsentId, consent.PatientId, consent.GranteeId);
 
+        await _cache.RemoveByPatternAsync($"consents:grantee:{consent.GranteeId}:*");
+
         // Notify grantee about new consent
         if (_notificationClient != null)
         {
@@ -234,28 +245,34 @@ public class ConsentService : IConsentService
         return new ApiResponse<ConsentResponse>
         {
             Success = true,
-            Message = "Consent granted successfully",
+            Message = "Cấp consent thành công",
             Data = MapToResponse(consent)
         };
     }
 
     public async Task<ApiResponse<ConsentResponse>> GetConsentByIdAsync(Guid consentId)
     {
+        var cKey = $"consent:{consentId}";
+        var cCached = await _cache.GetAsync<ApiResponse<ConsentResponse>>(cKey);
+        if (cCached != null) return cCached;
+
         var consent = await _context.Consents.FindAsync(consentId);
         if (consent == null)
         {
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "Consent not found"
+                Message = "Không tìm thấy consent"
             };
         }
 
-        return new ApiResponse<ConsentResponse>
+        var cResult = new ApiResponse<ConsentResponse>
         {
             Success = true,
             Data = MapToResponse(consent)
         };
+        await _cache.SetAsync(cKey, cResult, ConsentCacheTtl);
+        return cResult;
     }
 
     public async Task<PagedResponse<ConsentResponse>> GetConsentsByPatientAsync(Guid patientId, int page = 1, int pageSize = 10)
@@ -315,7 +332,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "Consent not found"
+                Message = "Không tìm thấy consent"
             };
         }
 
@@ -324,7 +341,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "Only active consents can be revoked"
+                Message = "Chỉ có thể thu hồi consent đang hiệu lực"
             };
         }
 
@@ -355,7 +372,17 @@ public class ConsentService : IConsentService
         consent.RevokeReason = request.RevokeReason;
         consent.RevokeTxHash = txHash;
 
+        // Also cancel the linked AccessRequest so the Nurse's UI updates
+        var linkedRequest = await _context.AccessRequests
+            .FirstOrDefaultAsync(r => r.ConsentId == consentId && r.Status == AccessRequestStatus.APPROVED);
+        if (linkedRequest != null)
+        {
+            linkedRequest.Status = AccessRequestStatus.CANCELLED;
+        }
+
         await _context.SaveChangesAsync();
+        await _cache.RemoveAsync($"consent:{consentId}");
+        await _cache.RemoveByPatternAsync($"consents:grantee:{consent.GranteeId}:*");
 
         // Tự động tạo Audit Log khi Revoke Consent
         var auditEntry = new AuditEntry
@@ -403,7 +430,7 @@ public class ConsentService : IConsentService
         return new ApiResponse<ConsentResponse>
         {
             Success = true,
-            Message = "Consent revoked successfully",
+            Message = "Thu hồi consent thành công",
             Data = MapToResponse(consent)
         };
     }
@@ -437,6 +464,24 @@ public class ConsentService : IConsentService
             query = query.Where(c => c.EhrId == null || c.EhrId == request.EhrId.Value);
         }
 
+        // Filter by required permission IN the query so that if multiple consents exist
+        // (e.g. READ with null EhrId + WRITE with specific EhrId), we pick the one
+        // that satisfies the required permission rather than returning an arbitrary one.
+        if (request.RequiredPermission.HasValue)
+        {
+            var requiredPerm = request.RequiredPermission.Value;
+            // Permission hierarchy:
+            //   FULL_ACCESS >= WRITE, DOWNLOAD, READ
+            //   WRITE >= READ (write implies read)
+            //   DOWNLOAD >= READ (download implies read)
+            query = query.Where(c =>
+                c.Permission == ConsentPermission.FULL_ACCESS ||
+                c.Permission == requiredPerm ||
+                (requiredPerm == ConsentPermission.READ &&
+                 (c.Permission == ConsentPermission.WRITE ||
+                  c.Permission == ConsentPermission.DOWNLOAD)));
+        }
+
         var consent = await query.FirstOrDefaultAsync();
 
         if (consent == null)
@@ -444,24 +489,8 @@ public class ConsentService : IConsentService
             return new VerifyConsentResponse
             {
                 HasAccess = false,
-                Message = "No active consent found"
+                Message = "Không tìm thấy consent hoặc không đủ quyền"
             };
-        }
-
-        // Check permission level if required
-        if (request.RequiredPermission.HasValue)
-        {
-            var hasPermission = consent.Permission == ConsentPermission.FULL_ACCESS ||
-                consent.Permission == request.RequiredPermission.Value;
-
-            if (!hasPermission)
-            {
-                return new VerifyConsentResponse
-                {
-                    HasAccess = false,
-                    Message = $"Consent exists but insufficient permission. Has: {consent.Permission}, Required: {request.RequiredPermission}"
-                };
-            }
         }
 
         return new VerifyConsentResponse
@@ -470,7 +499,7 @@ public class ConsentService : IConsentService
             ConsentId = consent.ConsentId,
             Permission = consent.Permission,
             ExpiresAt = consent.ExpiresAt,
-            Message = "Access granted"
+            Message = "Được cấp quyền truy cập"
         };
     }
 
@@ -493,7 +522,7 @@ public class ConsentService : IConsentService
                 return new ApiResponse<ConsentResponse>
                 {
                     Success = true,
-                    Message = "Consent synced from blockchain",
+                    Message = "Đồng bộ consent từ blockchain thành công",
                     Data = MapToResponse(consent)
                 };
             }
@@ -504,7 +533,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<ConsentResponse>
             {
                 Success = false,
-                Message = "Consent not found in local cache. Full sync may be required."
+                Message = "Không tìm thấy consent trong cache cục bộ. Có thể cần đồng bộ toàn bộ."
             };
         }
 
@@ -514,7 +543,7 @@ public class ConsentService : IConsentService
         return new ApiResponse<ConsentResponse>
         {
             Success = true,
-            Message = "Consent synced from blockchain",
+            Message = "Đồng bộ consent từ blockchain thành công",
             Data = MapToResponse(consent)
         };
     }
@@ -551,7 +580,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<AccessRequestResponse>
             {
                 Success = false,
-                Message = "A pending access request already exists"
+                Message = "Đã tồn tại yêu cầu truy cập đang chờ xử lý"
             };
         }
 
@@ -614,7 +643,7 @@ public class ConsentService : IConsentService
         return new ApiResponse<AccessRequestResponse>
         {
             Success = true,
-            Message = "Access request created successfully",
+            Message = "Tạo yêu cầu truy cập thành công",
             Data = MapToResponse(accessRequest)
         };
     }
@@ -627,7 +656,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<AccessRequestResponse>
             {
                 Success = false,
-                Message = "Access request not found"
+                Message = "Không tìm thấy yêu cầu truy cập"
             };
         }
 
@@ -687,7 +716,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<AccessRequestResponse>
             {
                 Success = false,
-                Message = "Access request not found"
+                Message = "Không tìm thấy yêu cầu truy cập"
             };
         }
 
@@ -696,7 +725,7 @@ public class ConsentService : IConsentService
             return new ApiResponse<AccessRequestResponse>
             {
                 Success = false,
-                Message = "This request has already been processed"
+                Message = "Yêu cầu này đã được xử lý"
             };
         }
 
@@ -729,7 +758,7 @@ public class ConsentService : IConsentService
                 return new ApiResponse<AccessRequestResponse>
                 {
                     Success = false,
-                    Message = $"Failed to create consent: {consentResult.Message}"
+                    Message = $"Không thể tạo consent: {consentResult.Message}"
                 };
             }
         }
@@ -789,10 +818,19 @@ public class ConsentService : IConsentService
                 request.RequestId.ToString(), "AccessRequest");
         }
 
+        var statusText = request.Status switch
+        {
+            AccessRequestStatus.APPROVED => "đã được chấp thuận",
+            AccessRequestStatus.DENIED => "đã bị từ chối",
+            AccessRequestStatus.CANCELLED => "đã bị hủy",
+            AccessRequestStatus.PENDING => "đang chờ xử lý",
+            _ => request.Status.ToString().ToLowerInvariant()
+        };
+
         return new ApiResponse<AccessRequestResponse>
         {
             Success = true,
-            Message = $"Access request {request.Status.ToString().ToLower()}",
+            Message = $"Yêu cầu truy cập {statusText}",
             Data = MapToResponse(request)
         };
     }
@@ -802,12 +840,12 @@ public class ConsentService : IConsentService
         var request = await _context.AccessRequests.FindAsync(requestId);
         if (request == null)
         {
-            return new ApiResponse<bool> { Success = false, Message = "Access request not found" };
+            return new ApiResponse<bool> { Success = false, Message = "Không tìm thấy yêu cầu truy cập" };
         }
 
         if (request.Status != AccessRequestStatus.PENDING)
         {
-            return new ApiResponse<bool> { Success = false, Message = "Only pending requests can be cancelled" };
+            return new ApiResponse<bool> { Success = false, Message = "Chỉ có thể hủy yêu cầu đang chờ xử lý" };
         }
 
         request.Status = AccessRequestStatus.CANCELLED;
@@ -839,7 +877,7 @@ public class ConsentService : IConsentService
             _ = PostAuditLogToServiceAsync("CANCEL_ACCESS_REQUEST", request.RequestId, cancelOriginalPatientId, request.RequesterId, request.RequesterType.ToString());
         }
 
-        return new ApiResponse<bool> { Success = true, Message = "Access request cancelled", Data = true };
+        return new ApiResponse<bool> { Success = true, Message = "Đã hủy yêu cầu truy cập", Data = true };
     }
 
     // =========================================================================
@@ -964,28 +1002,53 @@ public class ConsentService : IConsentService
 
     private async Task<Guid?> ResolveUserIdAsync(HttpClient authClient, Guid profileOrUserId, bool isPatientProfile, string? bearerToken)
     {
+        // Primary lookup: patientId for patients, doctorId for everyone else (also accepts userId directly)
         var queryKey = isPatientProfile ? "patientId" : "doctorId";
         var response = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?{queryKey}={profileOrUserId}", bearerToken);
-        if (!response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode)
         {
-            return null;
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+
+            if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
+                && camelUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+            {
+                return parsedCamel;
+            }
+
+            if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                && pascalUserId.ValueKind == JsonValueKind.String
+                && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+            {
+                return parsedPascal;
+            }
         }
 
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-
-        if (doc.RootElement.TryGetProperty("userId", out var camelUserId)
-            && camelUserId.ValueKind == JsonValueKind.String
-            && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+        // Fallback for Staff roles (Nurse, LabTech, Pharmacist, Receptionist):
+        // doctorId lookup above fails for staffId, so try the staffId endpoint explicitly.
+        if (!isPatientProfile)
         {
-            return parsedCamel;
-        }
+            var staffResponse = await SendAuthGetAsync(authClient, $"/api/v1/auth/user-id?staffId={profileOrUserId}", bearerToken);
+            if (staffResponse.IsSuccessStatusCode)
+            {
+                var staffBody = await staffResponse.Content.ReadAsStringAsync();
+                using var staffDoc = JsonDocument.Parse(staffBody);
 
-        if (doc.RootElement.TryGetProperty("UserId", out var pascalUserId)
-            && pascalUserId.ValueKind == JsonValueKind.String
-            && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
-        {
-            return parsedPascal;
+                if (staffDoc.RootElement.TryGetProperty("userId", out var camelUserId)
+                    && camelUserId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(camelUserId.GetString(), out var parsedCamel))
+                {
+                    return parsedCamel;
+                }
+
+                if (staffDoc.RootElement.TryGetProperty("UserId", out var pascalUserId)
+                    && pascalUserId.ValueKind == JsonValueKind.String
+                    && Guid.TryParse(pascalUserId.GetString(), out var parsedPascal))
+                {
+                    return parsedPascal;
+                }
+            }
         }
 
         return null;

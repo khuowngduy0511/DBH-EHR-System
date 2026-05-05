@@ -37,7 +37,7 @@ public interface IFabricRuntimeIdentityResolver
 
 public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolver
 {
-    private const string CryptoRoot = "/tmp/fabric-crypto";
+    private const string DefaultCryptoRoot = "/tmp/fabric-crypto";
 
     private readonly FabricOptions _fabricOptions;
     private readonly FabricCaOptions _fabricCaOptions;
@@ -45,6 +45,7 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FabricRuntimeIdentityResolver> _logger;
+    private readonly string _cryptoRoot;
 
     public FabricRuntimeIdentityResolver(
         IOptions<FabricOptions> fabricOptions,
@@ -60,6 +61,9 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
+        _cryptoRoot = ResolveCryptoRoot();
+
+        _logger.LogInformation("Fabric crypto root resolved to {CryptoRoot}", _cryptoRoot);
     }
 
     public async Task<FabricRuntimeIdentity> ResolveForCurrentContextAsync(CancellationToken cancellationToken = default)
@@ -90,10 +94,10 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
             var orgAlias = DeriveOrgAlias(mspId);
             var caName = DeriveCaName(caUrl, mspId);
 
-            var certPath = $"{CryptoRoot}/peerOrganizations/{orgDomain}/users/Admin@{orgDomain}/msp/signcerts/cert.pem";
-            var keyDir = $"{CryptoRoot}/peerOrganizations/{orgDomain}/users/Admin@{orgDomain}/msp/keystore";
-            var tlsCert = $"{CryptoRoot}/peerOrganizations/{orgDomain}/peers/peer0.{orgDomain}/tls/ca.crt";
-            var caTls = $"{CryptoRoot}/fabric-ca/{orgAlias}/ca-cert.pem";
+            var certPath = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "signcerts", "cert.pem");
+            var keyDir = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "keystore");
+            var tlsCert = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "peers", $"peer0.{orgDomain}", "tls", "ca.crt");
+            var caTls = Path.Combine(_cryptoRoot, "fabric-ca", orgAlias, "ca-cert.pem");
 
             return new FabricRuntimeIdentity
             {
@@ -300,5 +304,60 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
             "ClinicMSP" => 11051,
             _ => 7051
         };
+    }
+
+    private string ResolveCryptoRoot()
+    {
+        var configuredRoot = _fabricOptions.CryptoRoot ?? _configuration[$"{FabricOptions.SectionName}:CryptoRoot"];
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            return TrimTrailingSeparators(configuredRoot);
+        }
+
+        var roots = new[]
+        {
+            TryExtractCryptoRoot(_fabricOptions.CertificatePath),
+            TryExtractCryptoRoot(_fabricOptions.PrivateKeyDirectory),
+            TryExtractCryptoRoot(_fabricOptions.TlsCertificatePath),
+            TryExtractCryptoRoot(_fabricCaOptions.AdminCertPath),
+            TryExtractCryptoRoot(_fabricCaOptions.AdminKeyDirectory),
+            TryExtractCryptoRoot(_fabricCaOptions.TlsCertPath)
+        };
+
+        var derived = roots.FirstOrDefault(static r => !string.IsNullOrWhiteSpace(r));
+        return !string.IsNullOrWhiteSpace(derived)
+            ? TrimTrailingSeparators(derived)
+            : DefaultCryptoRoot;
+    }
+
+    private static string? TryExtractCryptoRoot(string? materialPath)
+    {
+        if (string.IsNullOrWhiteSpace(materialPath))
+        {
+            return null;
+        }
+
+        var normalized = materialPath.Replace('\\', '/');
+
+        var peerOrgMarker = "/peerOrganizations/";
+        var peerOrgIndex = normalized.IndexOf(peerOrgMarker, StringComparison.OrdinalIgnoreCase);
+        if (peerOrgIndex > 0)
+        {
+            return normalized[..peerOrgIndex];
+        }
+
+        var fabricCaMarker = "/fabric-ca/";
+        var fabricCaIndex = normalized.IndexOf(fabricCaMarker, StringComparison.OrdinalIgnoreCase);
+        if (fabricCaIndex > 0)
+        {
+            return normalized[..fabricCaIndex];
+        }
+
+        return null;
+    }
+
+    private static string TrimTrailingSeparators(string path)
+    {
+        return path.TrimEnd('/', '\\');
     }
 }

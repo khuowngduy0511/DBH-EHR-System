@@ -17,6 +17,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
@@ -77,7 +79,7 @@ builder.Services.AddInfrastructure(builder.Configuration, options =>
 {
     options.UseRabbitMQ = true;
     options.UseS3Storage = false;
-    options.UseRedisCache = false;
+    options.UseRedisCache = true;
     options.UseHyperledgerFabric = false;
     options.UseNotificationClient = false;
 });

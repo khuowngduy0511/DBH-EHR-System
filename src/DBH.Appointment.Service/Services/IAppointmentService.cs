@@ -8,7 +8,10 @@ public interface IAppointmentService
     // Appointments - CRUD
     Task<ApiResponse<AppointmentResponse>> CreateAppointmentAsync(CreateAppointmentRequest request);
     Task<ApiResponse<AppointmentResponse>> GetAppointmentByIdAsync(Guid appointmentId);
-    Task<PagedResponse<AppointmentResponse>> GetAppointmentsAsync(Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, int page = 1, int pageSize = 10);
+    Task<PagedResponse<AppointmentResponse>> GetAppointmentsAsync(
+        Guid? patientId, Guid? doctorId, Guid? orgId, AppointmentStatus? status, string? statusList = null,
+        DateTime? fromDate = null, DateTime? toDate = null, string? searchTerm = null,
+        int page = 1, int pageSize = 10);
     Task<ApiResponse<AppointmentResponse>> UpdateAppointmentStatusAsync(Guid appointmentId, AppointmentStatus status);
     Task<ApiResponse<AppointmentResponse>> RescheduleAppointmentAsync(Guid appointmentId, DateTime newDate);
     
@@ -32,5 +35,5 @@ public interface IAppointmentService
     Task<ApiResponse<EncounterResponse>> CompleteEncounterAsync(Guid encounterId, CompleteEncounterRequest request);
     
     // Doctor - Patients
-    Task<PagedResponse<DoctorPatientResponse>> GetPatientsByDoctorAsync(Guid doctorId, int page = 1, int pageSize = 10);
+    Task<PagedResponse<DoctorPatientResponse>> GetPatientsByDoctorAsync(Guid doctorId, int page = 1, int pageSize = 10, string? searchTerm = null);
 }

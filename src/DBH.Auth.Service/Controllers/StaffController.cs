@@ -61,7 +61,6 @@ public class StaffController : ControllerBase
     }
 
     [Authorize(Roles = "Admin,Receptionist")]
-    [Authorize(Roles = "Admin,Receptionist")]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStaffRequest request)
     {
@@ -86,7 +85,7 @@ public class StaffController : ControllerBase
         };
 
         await _staffRepository.AddAsync(staff);
-        await EnsureUserRoleAsync(request.UserId, MapToRoleName(request.Role));
+        await _authService.UpdateRoleAsync(new UpdateRoleRequest { UserId = request.UserId, NewRole = MapToRoleName(request.Role).ToString() });
 
         return CreatedAtAction(nameof(GetById), new { staffId = staff.StaffId }, MapToResponse(staff));
     }
@@ -126,7 +125,7 @@ public class StaffController : ControllerBase
         staff.VerifiedStatus = request.VerifiedStatus;
 
         await _staffRepository.UpdateAsync(staff);
-        await EnsureUserRoleAsync(staff.UserId, MapToRoleName(request.Role));
+        await _authService.UpdateRoleAsync(new UpdateRoleRequest { UserId = staff.UserId, NewRole = MapToRoleName(request.Role).ToString() });
 
         return Ok(MapToResponse(staff));
     }
@@ -145,35 +144,7 @@ public class StaffController : ControllerBase
         return Ok("Staff profile deleted successfully.");
     }
 
-    private async Task EnsureUserRoleAsync(Guid userId, RoleName roleName)
-    {
-        var role = await _roleRepository.FindAsync(r => r.RoleName == roleName);
-        if (role == null)
-        {
-            return;
-        }
 
-        var userRole = await _userRoleRepository.FindAsync(ur => ur.UserId == userId);
-        if (userRole == null)
-        {
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = userId,
-                RoleId = role.RoleId
-            });
-            return;
-        }
-
-        if (userRole.RoleId != role.RoleId)
-        {
-            await _userRoleRepository.DeleteAsync(userRole);
-            await _userRoleRepository.AddAsync(new UserRole
-            {
-                UserId = userId,
-                RoleId = role.RoleId
-            });
-        }
-    }
 
     private static RoleName MapToRoleName(StaffRole staffRole)
     {

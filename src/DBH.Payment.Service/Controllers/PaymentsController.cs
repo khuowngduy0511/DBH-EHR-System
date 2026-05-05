@@ -57,4 +57,12 @@ public class PaymentsController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpPost("payments/verify-by-order-code/{orderCode}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyByOrderCode(long orderCode)
+    {
+        var result = await _paymentService.VerifyByOrderCodeAsync(orderCode);
+        return Ok(result);
+    }
 }

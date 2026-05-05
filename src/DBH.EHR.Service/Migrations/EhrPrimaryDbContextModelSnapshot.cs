@@ -90,6 +90,11 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("ehr_id");
 
+                    b.Property<string>("EncryptedAesKey")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("encrypted_aes_key");
+
                     b.Property<string>("EncryptedFallbackData")
                         .HasColumnType("text")
                         .HasColumnName("encrypted_fallback_data");
@@ -228,6 +233,10 @@ namespace DBH.EHR.Service.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("ehr_id");
 
+                    b.Property<string>("EncryptedAesKeyForPatient")
+                        .HasColumnType("text")
+                        .HasColumnName("encrypted_aes_key_for_patient");
+
                     b.Property<string>("EncryptedFallbackData")
                         .HasColumnType("text")
                         .HasColumnName("encrypted_fallback_data");
@@ -247,6 +256,82 @@ namespace DBH.EHR.Service.Migrations
                         .IsUnique();
 
                     b.ToTable("ehr_versions");
+                });
+
+            modelBuilder.Entity("DBH.EHR.Service.Models.Entities.LabOrder", b =>
+                {
+                    b.Property<Guid>("LabOrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("lab_order_id");
+
+                    b.Property<Guid?>("AssignedTo")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_to");
+
+                    b.Property<string>("ClinicalNote")
+                        .HasColumnType("text")
+                        .HasColumnName("clinical_note");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid>("EhrId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ehr_id");
+
+                    b.Property<Guid?>("OrgId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("org_id");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("patient_id");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<string>("ResultNote")
+                        .HasColumnType("text")
+                        .HasColumnName("result_note");
+
+                    b.Property<string>("ResultValuesJson")
+                        .HasColumnType("text")
+                        .HasColumnName("result_values");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TestType")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("test_type");
+
+                    b.HasKey("LabOrderId");
+
+                    b.HasIndex("EhrId");
+
+                    b.HasIndex("RequestedBy");
+
+                    b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("PatientId", "Status");
+
+                    b.ToTable("lab_orders");
                 });
 
             modelBuilder.Entity("DBH.EHR.Service.Models.Entities.EhrAccessLog", b =>
@@ -285,6 +370,17 @@ namespace DBH.EHR.Service.Migrations
                 {
                     b.HasOne("DBH.EHR.Service.Models.Entities.EhrRecord", "EhrRecord")
                         .WithMany("Versions")
+                        .HasForeignKey("EhrId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("EhrRecord");
+                });
+
+            modelBuilder.Entity("DBH.EHR.Service.Models.Entities.LabOrder", b =>
+                {
+                    b.HasOne("DBH.EHR.Service.Models.Entities.EhrRecord", "EhrRecord")
+                        .WithMany()
                         .HasForeignKey("EhrId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

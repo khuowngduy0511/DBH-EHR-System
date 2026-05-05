@@ -18,6 +18,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
@@ -107,6 +109,12 @@ builder.Services.AddHyperledgerFabric(builder.Configuration, "Consent", new[] { 
 // Notification Client
 // ============================================================================
 builder.Services.AddNotificationClient(builder.Configuration);
+
+// ============================================================================
+// RabbitMQ (event publisher) + Redis Cache
+// ============================================================================
+builder.Services.AddRabbitMQ(builder.Configuration);
+builder.Services.AddRedisCache(builder.Configuration);
 
 // ============================================================================
 // JWT Authentication

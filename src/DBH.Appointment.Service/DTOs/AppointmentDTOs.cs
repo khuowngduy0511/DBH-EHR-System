@@ -100,6 +100,9 @@ public class AppointmentResponse
 
     /// <summary>Số lượt khám (encounter) liên kết với lịch hẹn này</summary>
     public int EncounterCount { get; set; }
+
+    /// <summary>Lý do hủy (nếu có)</summary>
+    public string? CancelReason { get; set; }
 }
 
 // =============================================================================

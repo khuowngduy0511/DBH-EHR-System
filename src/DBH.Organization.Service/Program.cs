@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using DBH.Organization.Service.DbContext;
 using DBH.Organization.Service.Services;
 using DBH.Shared.Contracts;
+using DBH.Shared.Infrastructure;
 using DBH.Shared.Infrastructure.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -16,6 +17,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamDateTimeConverter());
+        options.JsonSerializerOptions.Converters.Add(new DBH.Shared.Infrastructure.Time.VietnamNullableDateTimeConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
@@ -78,6 +81,12 @@ builder.Services.AddHttpClient<IAuthUserClient, AuthUserClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
+
+// ============================================================================
+// Redis Cache
+// ============================================================================
+
+builder.Services.AddRedisCache(builder.Configuration);
 
 // ============================================================================
 // JWT Authentication
