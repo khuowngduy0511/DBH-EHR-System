@@ -634,8 +634,9 @@ public class OrganizationService : IOrganizationService
         {
             var searchSpecialty = RemoveDiacritics(request.Specialty.Trim().ToLower());
             filteredResults = filteredResults.Where(r => 
-                !string.IsNullOrWhiteSpace(r.Specialty) && 
-                RemoveDiacritics(r.Specialty.ToLower()).Contains(searchSpecialty)).ToList();
+                (!string.IsNullOrWhiteSpace(r.Specialty) && RemoveDiacritics(r.Specialty.ToLower()).Contains(searchSpecialty)) ||
+                (!string.IsNullOrWhiteSpace(r.DepartmentName) && RemoveDiacritics(r.DepartmentName.ToLower()).Contains(searchSpecialty))
+            ).ToList();
         }
 
         // Filter by DoctorName in memory (accent-insensitive)
