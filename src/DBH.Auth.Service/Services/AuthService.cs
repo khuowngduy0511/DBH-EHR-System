@@ -1199,14 +1199,18 @@ public class AuthService : IAuthService
     {
         if (string.IsNullOrWhiteSpace(keyword)) return new List<Guid>();
 
-        // Normalize Vietnamese characters to NFC to ensure consistent matching
+        // Normalize Vietnamese characters to NFC
         var normalizedKeyword = keyword.Trim().Normalize(System.Text.NormalizationForm.FormC);
         var searchPattern = $"%{normalizedKeyword}%";
         
-        // Use a queryable to build the filter
+        Console.WriteLine($"[AuthService] SEARCH START: keyword='{keyword}', normalized='{normalizedKeyword}'");
+
+        // DEBUG: Check what's actually in the DB for similar names
+        var firstFew = await _dbContext.Users.AsNoTracking().Select(u => u.FullName).Take(5).ToListAsync();
+        Console.WriteLine($"[AuthService] DB Sample FullNames: {string.Join(", ", firstFew)}");
+
         var query = _dbContext.Users.AsNoTracking();
 
-        // Try to parse keyword as Guid for UserId exact match
         if (Guid.TryParse(normalizedKeyword, out var searchGuid))
         {
             query = query.Where(u => 
@@ -1231,14 +1235,12 @@ public class AuthService : IAuthService
             );
         }
 
-        _logger.LogWarning("[AuthService] Searching for users with keyword: '{Keyword}'", normalizedKeyword);
-        
         var userIds = await query
             .Select(u => u.UserId)
             .Take(1000)
             .ToListAsync();
 
-        _logger.LogWarning("[AuthService] Found {Count} matching user IDs", userIds.Count);
+        Console.WriteLine($"[AuthService] SEARCH END: Found {userIds.Count} users");
         return userIds;
     }
 
