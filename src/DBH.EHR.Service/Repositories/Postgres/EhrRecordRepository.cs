@@ -170,17 +170,12 @@ public class EhrRecordRepository : IEhrRecordRepository
             .Include(e => e.Files)
             .AsQueryable();
 
-        // Access Control Filter
-        Console.WriteLine($"[EhrRecordRepository] Access Check: orgId={orgId}, ConsentedEhrCount={consentedEhrIds.Count}, ConsentedPatientCount={consentedPatientIds.Count}");
-        if (consentedPatientIds.Count > 0) 
-        {
-             Console.WriteLine($"[EhrRecordRepository] Consented Patient IDs: {string.Join(", ", consentedPatientIds.Take(10))}");
-        }
-
+        // Access Control Filter: Allow if in same Org, has specific Consent, or matches global Search results
         query = query.Where(r => 
             (orgId.HasValue && r.OrgId == orgId) || 
             consentedEhrIds.Contains(r.EhrId) ||
-            consentedPatientIds.Contains(r.PatientId));
+            consentedPatientIds.Contains(r.PatientId) ||
+            (matchingUserIds != null && matchingUserIds.Contains(r.PatientId)));
 
         // Search Filter (EhrId, PatientId, OrgId, EncounterId, Date, or matchingUserIds/matchingOrgIds)
         if (!string.IsNullOrWhiteSpace(search))
