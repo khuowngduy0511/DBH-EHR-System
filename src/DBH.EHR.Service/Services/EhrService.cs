@@ -776,8 +776,13 @@ public class EhrService : IEhrService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var bearerToken = GetBearerTokenFromContext();
+            _logger.LogWarning("[EhrService] Calling AuthService to search for: '{Search}'", search);
             matchingUserIds = await _authServiceClient.SearchUserIdsAsync(search, bearerToken);
+            _logger.LogWarning("[EhrService] AuthService returned {Count} User IDs", matchingUserIds?.Count ?? 0);
+
+            _logger.LogWarning("[EhrService] Calling OrganizationService to search for: '{Search}'", search);
             matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(search, bearerToken);
+            _logger.LogWarning("[EhrService] OrganizationService returned {Count} Org IDs", matchingOrgIds?.Count ?? 0);
         }
 
         var (items, totalCount) = await _ehrRecordRepo.GetAccessibleRecordsPaginatedAsync(orgId, consentedEhrIds, consentedPatientIds, search, matchingUserIds, matchingOrgIds, page, pageSize);
