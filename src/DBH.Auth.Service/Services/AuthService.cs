@@ -1200,17 +1200,32 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(keyword)) return new List<Guid>();
 
         var searchPattern = $"%{keyword.Trim()}%";
-        var userIds = await _dbContext.Users
-            .AsNoTracking()
-            .Where(u =>
-                (u.FullName != null && EF.Functions.ILike(u.FullName, searchPattern)) ||
+        
+        // Use a queryable to build the filter
+        var query = _dbContext.Users.AsNoTracking();
+
+        // Try to parse keyword as Guid for UserId exact match
+        if (Guid.TryParse(keyword.Trim(), out var searchGuid))
+        {
+            query = query.Where(u => 
+                u.UserId == searchGuid ||
+                (u.FullName != null && EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(searchPattern))) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
-                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern)) ||
-                (u.DateOfBirth.HasValue && EF.Functions.ILike(u.DateOfBirth.Value.ToString("yyyy-MM-dd"), searchPattern)) ||
-                u.UserId.ToString() == keyword.Trim()
-            )
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
+            );
+        }
+        else
+        {
+            query = query.Where(u =>
+                (u.FullName != null && EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(searchPattern))) ||
+                (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
+                (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
+            );
+        }
+
+        var userIds = await query
             .Select(u => u.UserId)
-            .Take(1000) // Increase limit to reduce truncation issues for common names
+            .Take(1000)
             .ToListAsync();
 
         return userIds;

@@ -28,6 +28,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasPostgresExtension("unaccent");
 
         // User
         modelBuilder.Entity<User>(entity =>
