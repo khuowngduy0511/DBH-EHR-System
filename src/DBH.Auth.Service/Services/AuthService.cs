@@ -1203,11 +1203,7 @@ public class AuthService : IAuthService
         var normalizedKeyword = keyword.Trim().Normalize(System.Text.NormalizationForm.FormC);
         var searchPattern = $"%{normalizedKeyword}%";
         
-        _logger.LogError("[AuthService] DEBUG SEARCH: keyword='{Keyword}', normalized='{Normalized}'", keyword, normalizedKeyword);
-
-        // EMERGENCY DEBUG: Dump all users if we find nothing
-        var allUsers = await _dbContext.Users.AsNoTracking().Select(u => u.FullName).ToListAsync();
-        _logger.LogError("[AuthService] ALL USERS IN DB ({Count}): {Names}", allUsers.Count, string.Join(", ", allUsers));
+        _logger.LogInformation("[AuthService] Searching for users with keyword: '{Keyword}'", normalizedKeyword);
 
         var query = _dbContext.Users.AsNoTracking();
 
@@ -1217,7 +1213,7 @@ public class AuthService : IAuthService
                 u.UserId == searchGuid ||
                 (u.FullName != null && (
                     EF.Functions.ILike(u.FullName, searchPattern) || 
-                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(normalizedKeyword))
+                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(searchPattern))
                 )) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
                 (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
@@ -1228,7 +1224,7 @@ public class AuthService : IAuthService
             query = query.Where(u =>
                 (u.FullName != null && (
                     EF.Functions.ILike(u.FullName, searchPattern) || 
-                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(normalizedKeyword))
+                    EF.Functions.ILike(EF.Functions.Unaccent(u.FullName), EF.Functions.Unaccent(searchPattern))
                 )) ||
                 (u.Email != null && EF.Functions.ILike(u.Email, searchPattern)) ||
                 (u.Phone != null && EF.Functions.ILike(u.Phone, searchPattern))
@@ -1240,7 +1236,7 @@ public class AuthService : IAuthService
             .Take(1000)
             .ToListAsync();
 
-        _logger.LogError("[AuthService] SEARCH RESULT: Found {Count} users for keyword '{Keyword}'", userIds.Count, keyword);
+        _logger.LogInformation("[AuthService] SEARCH RESULT: Found {Count} users for keyword '{Keyword}'", userIds.Count, keyword);
         return userIds;
     }
 
