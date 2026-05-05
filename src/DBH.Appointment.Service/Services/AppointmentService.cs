@@ -314,15 +314,14 @@ public class AppointmentService : IAppointmentService
             var bearerToken = GetBearerToken();
             var matchingUserIds = await _authServiceClient.SearchUserIdsAsync(searchTerm);
             var matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(searchTerm, bearerToken ?? "");
+            Guid.TryParse(searchTerm.Trim(), out var searchGuid);
             
-            var lowerSearchTerm = searchTerm.ToLower();
             query = query.Where(a => 
-                a.AppointmentId.ToString().ToLower().Contains(lowerSearchTerm) ||
+                (searchGuid != Guid.Empty && (a.AppointmentId == searchGuid || a.PatientId == searchGuid || a.DoctorId == searchGuid || a.Encounters.Any(e => e.EncounterId == searchGuid))) ||
                 matchingUserIds.Contains(a.PatientId) ||
                 matchingUserIds.Contains(a.DoctorId) ||
-                matchingOrgIds.Contains(a.OrgId) ||
-                a.ScheduledAt.ToString().Contains(searchTerm) ||
-                a.Encounters.Any(e => e.EncounterId.ToString().ToLower().Contains(lowerSearchTerm)));
+                matchingOrgIds.Contains(a.OrgId)
+            );
         }
 
         var totalCount = await query.CountAsync();

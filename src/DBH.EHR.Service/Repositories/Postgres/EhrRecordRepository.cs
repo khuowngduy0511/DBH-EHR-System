@@ -179,14 +179,16 @@ public class EhrRecordRepository : IEhrRecordRepository
         // Search Filter (EhrId, PatientId, OrgId, EncounterId, Date, or matchingUserIds/matchingOrgIds)
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var searchLower = search.ToLower();
+            var searchLower = search.Trim().ToLower();
+            
+            // Handle Guid parsing for ID fields
+            Guid.TryParse(search.Trim(), out var searchGuid);
+
             query = query.Where(r => 
-                r.EhrId.ToString().ToLower().Contains(searchLower) || 
+                (searchGuid != Guid.Empty && (r.EhrId == searchGuid || r.PatientId == searchGuid || (r.EncounterId.HasValue && r.EncounterId.Value == searchGuid))) || 
                 (matchingUserIds != null && matchingUserIds.Contains(r.PatientId)) ||
-                (matchingOrgIds != null && r.OrgId.HasValue && matchingOrgIds.Contains(r.OrgId.Value)) ||
-                (r.EncounterId.HasValue && r.EncounterId.ToString().ToLower().Contains(searchLower)) ||
-                r.CreatedAt.ToString().Contains(search) || // Simple date string match
-                r.PatientId.ToString().ToLower().Contains(searchLower));
+                (matchingOrgIds != null && r.OrgId.HasValue && matchingOrgIds.Contains(r.OrgId.Value))
+            );
         }
 
         var totalCount = await query.CountAsync();
