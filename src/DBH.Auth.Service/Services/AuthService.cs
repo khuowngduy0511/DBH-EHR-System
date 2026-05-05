@@ -1199,13 +1199,15 @@ public class AuthService : IAuthService
     {
         if (string.IsNullOrWhiteSpace(keyword)) return new List<Guid>();
 
-        var searchPattern = $"%{keyword.Trim()}%";
+        // Normalize Vietnamese characters to NFC to ensure consistent matching
+        var normalizedKeyword = keyword.Trim().Normalize(System.Text.NormalizationForm.FormC);
+        var searchPattern = $"%{normalizedKeyword}%";
         
         // Use a queryable to build the filter
         var query = _dbContext.Users.AsNoTracking();
 
         // Try to parse keyword as Guid for UserId exact match
-        if (Guid.TryParse(keyword.Trim(), out var searchGuid))
+        if (Guid.TryParse(normalizedKeyword, out var searchGuid))
         {
             query = query.Where(u => 
                 u.UserId == searchGuid ||
@@ -1223,14 +1225,14 @@ public class AuthService : IAuthService
             );
         }
 
-        Console.WriteLine($"[AuthService] Searching for users with keyword: '{keyword}' (pattern: '{searchPattern}')");
+        _logger.LogWarning("[AuthService] Searching for users with keyword: '{Keyword}' (pattern: '{Pattern}')", normalizedKeyword, searchPattern);
         
         var userIds = await query
             .Select(u => u.UserId)
             .Take(1000)
             .ToListAsync();
 
-        Console.WriteLine($"[AuthService] Found {userIds.Count} matching user IDs");
+        _logger.LogWarning("[AuthService] Found {Count} matching user IDs", userIds.Count);
         return userIds;
     }
 
