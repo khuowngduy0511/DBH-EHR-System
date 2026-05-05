@@ -84,3 +84,17 @@ public class OrganizationResponse
     public int DepartmentCount { get; set; }
     public int MemberCount { get; set; }
 }
+
+public class UpdateOrganizationFabricConfigRequest
+{
+    [MaxLength(100)]
+    public string? FabricMspId { get; set; }
+
+    /// <summary>
+    /// JSON array or object describing channel peers, stored as JSON string
+    /// </summary>
+    public string? FabricChannelPeers { get; set; }
+
+    [MaxLength(500)]
+    public string? FabricCaUrl { get; set; }
+}

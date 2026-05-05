@@ -842,6 +842,36 @@ public class OrganizationService : IOrganizationService
         };
     }
 
+    // Fabric config
+    public async Task<ApiResponse<OrganizationResponse>> UpdateOrganizationFabricConfigAsync(Guid orgId, UpdateOrganizationFabricConfigRequest request)
+    {
+        var org = await _context.Organizations.FindAsync(orgId);
+        if (org == null)
+        {
+            return new ApiResponse<OrganizationResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy tổ chức / bệnh viện."
+            };
+        }
+
+        if (request.FabricMspId != null) org.FabricMspId = request.FabricMspId;
+        if (request.FabricChannelPeers != null) org.FabricChannelPeers = request.FabricChannelPeers;
+        if (request.FabricCaUrl != null) org.FabricCaUrl = request.FabricCaUrl;
+        org.UpdatedAt = VietnamTimeHelper.Now;
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation("Updated fabric config for organization {OrgId}", orgId);
+
+        return new ApiResponse<OrganizationResponse>
+        {
+            Success = true,
+            Message = "Fabric config updated successfully",
+            Data = MapToResponse(org)
+        };
+    }
+
     // =========================================================================
     // MAPPERS
     // =========================================================================

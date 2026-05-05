@@ -12,6 +12,7 @@ using DBH.Shared.Infrastructure.Caching;
 using DBH.Shared.Infrastructure.Time;
 using DBH.Shared.Contracts;
 using DBH.Shared.Contracts.Blockchain;
+using System.Text.RegularExpressions;
 
 namespace DBH.Auth.Service.Services;
 
@@ -72,7 +73,7 @@ public class AuthService : IAuthService
     }
 
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress)
+    public async Task<AuthResponse> LoginAsync(LoginRequest request, string? ipAddress = null)
     {
         _logger.LogInformation("Login attempt for user: {Email}", request.Email);
         var user = await _userRepository.GetByEmailWithRolesAsync(request.Email);
@@ -99,8 +100,16 @@ public class AuthService : IAuthService
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
+    
     {
         var actorUserId = GetCurrentActorId();
+
+        // Validate email format
+        if (!IsValidEmail(request.Email))
+        {
+            _logger.LogWarning("Invalid email format provided: {Email}", request.Email);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
 
         // Check if user with this email already exists
         var existingUser = await _dbContext.Users
@@ -128,6 +137,11 @@ public class AuthService : IAuthService
             }
 
             request.Phone = normalizedPhone;
+        }
+
+        if (request.Password.Length < 8)
+        {
+            return new AuthResponse { Success = false, Message = "Mật khẩu phải có ít nhất 8 ký tự." };
         }
 
         // Generate RSA/ECC Key Pair
@@ -266,6 +280,40 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> RegisterStaffDoctorAsync(RegisterStaffDoctorRequest request)
     {
+                var actorUserId = GetCurrentActorId();
+
+        // Validate email format
+        if (!IsValidEmail(request.Email))
+        {
+            _logger.LogWarning("Invalid email format provided: {Email}", request.Email);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
+
+        // Check if user with this email already exists
+        var existingUser = await _dbContext.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+        if (existingUser != null)
+        {
+            _logger.LogWarning("User with this email already exists: {Email}", request.Email);
+            return new AuthResponse { Success = false, Message = "Email này đã được sử dụng." };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Phone))
+        {
+            var normalizedPhone = request.Phone.Trim();
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.Status != Models.Enums.UserStatus.Inactive))
+            {
+                _logger.LogWarning("User with this phone already exists: {Phone}", normalizedPhone);
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
+
+            request.Phone = normalizedPhone;
+        }
+        if (request.Password.Length < 6)
+            {
+                return new AuthResponse { Success = false, Message = "Mật khẩu phải có ít nhất 8 ký tự." };
+            }
         if (Enum.TryParse<RoleName>(request.Role, true, out var roleName) && roleName == RoleName.Doctor)
         {
             return await RegisterDoctorAsync(new RegisterDoctorRequest
@@ -573,6 +621,13 @@ public class AuthService : IAuthService
         var actorUserId = GetCurrentActorId();
         var normalizedEmail = request.Email.Trim();
 
+        // Validate email format
+        if (!IsValidEmail(normalizedEmail))
+        {
+            _logger.LogWarning("Registration rejected for role {Role}: invalid email format {Email}", roleName, normalizedEmail);
+            return new AuthResponse { Success = false, Message = "Email không hợp lệ." };
+        }
+
         if (await _userRepository.ExistsAsync(u => u.Email == normalizedEmail))
         {
             _logger.LogWarning("Registration rejected for role {Role}: email already exists {Email}", roleName, normalizedEmail);
@@ -580,10 +635,18 @@ public class AuthService : IAuthService
         }
 
         var normalizedPhone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
-        if (!string.IsNullOrWhiteSpace(normalizedPhone) && await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+        if (!string.IsNullOrWhiteSpace(normalizedPhone))
         {
-            _logger.LogWarning("Registration rejected for role {Role}: phone already exists {Phone}", roleName, normalizedPhone);
-            return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            if (!Regex.IsMatch(normalizedPhone, @"^(0|\+84)\d{9,10}$"))
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại không hợp lệ (phải có 10-11 chữ số và bắt đầu bằng 0 hoặc +84)." };
+            }
+
+            if (await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone))
+            {
+                _logger.LogWarning("Registration rejected for role {Role}: phone already exists {Phone}", roleName, normalizedPhone);
+                return new AuthResponse { Success = false, Message = "Số điện thoại này đã được sử dụng." };
+            }
         }
 
         var keyPair = AsymmetricEncryptionService.GenerateKeyPair();
@@ -677,6 +740,11 @@ public class AuthService : IAuthService
         if (!string.IsNullOrWhiteSpace(request.Phone) && user.Phone != request.Phone)
         {
             var normalizedPhone = request.Phone.Trim();
+            if (!Regex.IsMatch(normalizedPhone, @"^(0|\+84)\d{9,10}$"))
+            {
+                return new AuthResponse { Success = false, Message = "Số điện thoại không hợp lệ (phải có 10-11 chữ số và bắt đầu bằng 0 hoặc +84)." };
+            }
+
             var phoneExists = await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.UserId != userId);
             if (phoneExists)
             {
@@ -695,7 +763,12 @@ public class AuthService : IAuthService
 
         if (request.DateOfBirth.HasValue && user.DateOfBirth != request.DateOfBirth.Value)
         {
-            user.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            var dob = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            if (dob > VietnamTime.DatabaseNow)
+            {
+                return new AuthResponse { Success = false, Message = "Ngày sinh không được lớn hơn ngày hiện tại." };
+            }
+            user.DateOfBirth = dob;
             isUpdated = true;
         }
 
@@ -764,6 +837,11 @@ public class AuthService : IAuthService
             var normalizedPhone = request.Phone.Trim();
             if (!string.Equals(user.Phone, normalizedPhone, StringComparison.Ordinal))
             {
+                if (!Regex.IsMatch(normalizedPhone, @"^(0|\+84)\d{9,10}$"))
+                {
+                    return new AuthResponse { Success = false, Message = "Số điện thoại không hợp lệ (phải có 10-11 chữ số và bắt đầu bằng 0 hoặc +84)." };
+                }
+
                 var phoneExists = await _userRepository.ExistsAsync(u => u.Phone == normalizedPhone && u.UserId != userId);
                 if (phoneExists)
                 {
@@ -783,7 +861,12 @@ public class AuthService : IAuthService
 
         if (request.DateOfBirth.HasValue && user.DateOfBirth != request.DateOfBirth.Value)
         {
-            user.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            var dob = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
+            if (dob > VietnamTime.DatabaseNow)
+            {
+                return new AuthResponse { Success = false, Message = "Ngày sinh không được lớn hơn ngày hiện tại." };
+            }
+            user.DateOfBirth = dob;
             hasChanges = true;
         }
 
@@ -1418,6 +1501,13 @@ public class AuthService : IAuthService
             : VerificationStatus.Pending;
     }
 
+    private bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+        return Regex.IsMatch(email, @"^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$");
+    }
+    
     public async Task<AuthResponse> UpdateUserStatusAsync(Guid userId, string status)
     {
         if (!Enum.TryParse<UserStatus>(status, true, out var newStatus))
