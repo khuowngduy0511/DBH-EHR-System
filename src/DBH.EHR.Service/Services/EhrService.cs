@@ -276,7 +276,7 @@ public class EhrService : IEhrService
         }
 
         // Gọi Consent Service để kiểm tra quyền truy cập
-        var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "READ");
+        var consentResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
         if (!consentResult.HasAccess)
         {
             _logger.LogWarning("Consent denied: requester {RequesterId} has no consent for EHR {EhrId} of patient {PatientId}",
@@ -338,7 +338,7 @@ public class EhrService : IEhrService
         (bool HasAccess, string? ConsentId) consentCheckResult = (false, null);
         if (!isPatientOwner)
         {
-            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "READ");
+            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
             if (!consentCheckResult.HasAccess || string.IsNullOrEmpty(consentCheckResult.ConsentId))
             {
                 return (null, true, "Người yêu cầu không có consent để đọc EHR này.");
@@ -681,7 +681,7 @@ public class EhrService : IEhrService
                 var filtered = new List<EhrRecord>();
                 foreach (var record in allRecords)
                 {
-                    var (hasAccess, _) = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, record.EhrId, "READ");
+                    var (hasAccess, _) = await VerifyConsentAsync(normalizedPatientId, requesterId.Value, record.EhrId, "READ");
                     if (hasAccess)
                         filtered.Add(record);
                 }
@@ -1034,7 +1034,7 @@ public class EhrService : IEhrService
         if (normalizedRequesterId == normalizedPatientId)
             return (null, true, "Bệnh nhân không có quyền chỉnh sửa hồ sơ EHR.");
 
-        var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "WRITE");
+        var consentResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "WRITE");
         if (!consentResult.HasAccess)
             return (null, true, $"Người yêu cầu {requesterId} không có consent WRITE để cập nhật EHR {ehrId}.");
 
@@ -1057,7 +1057,7 @@ public class EhrService : IEhrService
 
         if (!isPatientOwner)
         {
-            var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "READ");
+            var consentResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
             if (!consentResult.HasAccess)
                 return (null, true, "Người yêu cầu không có consent READ để xuất EHR này.");
         }
@@ -1108,7 +1108,7 @@ public class EhrService : IEhrService
         (bool HasAccess, string? ConsentId) consentCheckResult = (true, null);
         if (!isPatientOwner)
         {
-            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "READ");
+            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
             if (!consentCheckResult.HasAccess)
                 return (null, true, "Requester does not have consent to read this EHR.");
         }
@@ -1404,7 +1404,7 @@ public class EhrService : IEhrService
 
         if (!isPatientOwner)
         {
-            var consentResult = await VerifyConsentAsync(normalizedPatientId, normalizedRequesterId, ehrId, "DOWNLOAD");
+            var consentResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "DOWNLOAD");
             if (!consentResult.HasAccess)
                 return (null, null, true, "Nguoi yeu cau khong co consent DOWNLOAD de tai file nay.");
         }
