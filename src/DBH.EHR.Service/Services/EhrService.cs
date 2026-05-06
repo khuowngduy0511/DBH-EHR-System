@@ -113,28 +113,6 @@ public class EhrService : IEhrService
             _logger.LogWarning("IPFS upload failed for EHR {EhrId}, using encrypted fallback storage in PostgreSQL", savedRecord.EhrId);
         }
 
-        // Tạo version đầu tiên (ERD: ehr_versions) with IPFS CID or fallback
-        var version = new EhrVersion
-        {
-            EhrId = savedRecord.EhrId,
-            VersionNumber = 1,
-            IpfsCid = ipfsCid,
-            EncryptedFallbackData = encryptedFallbackData,
-            DataHash = dataHash
-        };
-        
-        var savedVersion = await _ehrRecordRepo.CreateVersionAsync(version);
-        
-        // Tạo EHR file (ERD: ehr_files)
-        var file = new EhrFile
-        {
-            EhrId = savedRecord.EhrId,
-            FileHash = dataHash,
-            IpfsCid = ipfsCid
-        };
-        
-        var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
-        
         // Wrap AES blue key with Patient's Public Key
         string encryptedAesKey = string.Empty;
         try 
@@ -173,6 +151,29 @@ public class EhrService : IEhrService
         {
              _logger.LogError(ex, "Error wrapping AES key with patient public key for EHR {EhrId}", savedRecord.EhrId);
         }
+
+        // Tạo version đầu tiên (ERD: ehr_versions) with IPFS CID or fallback
+        var version = new EhrVersion
+        {
+            EhrId = savedRecord.EhrId,
+            VersionNumber = 1,
+            IpfsCid = ipfsCid,
+            EncryptedFallbackData = encryptedFallbackData,
+            DataHash = dataHash,
+            EncryptedAesKeyForPatient = string.IsNullOrEmpty(encryptedAesKey) ? null : encryptedAesKey
+        };
+        
+        var savedVersion = await _ehrRecordRepo.CreateVersionAsync(version);
+        
+        // Tạo EHR file (ERD: ehr_files)
+        var file = new EhrFile
+        {
+            EhrId = savedRecord.EhrId,
+            FileHash = dataHash,
+            IpfsCid = ipfsCid
+        };
+        
+        var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
         // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
         if (_blockchainService != null)
