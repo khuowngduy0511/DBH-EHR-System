@@ -17,19 +17,22 @@ public class PatientsController : ControllerBase
     private readonly IGenericRepository<Role> _roleRepository;
     private readonly IGenericRepository<UserRole> _userRoleRepository;
     private readonly IAuthService _authService;
+    private readonly ICacheService _cacheService;
 
     public PatientsController(
         IGenericRepository<Patient> patientRepository,
         IUserRepository userRepository,
         IGenericRepository<Role> roleRepository,
         IGenericRepository<UserRole> userRoleRepository,
-        IAuthService authService)
+        IAuthService authService,
+        ICacheService cacheService)
     {
         _patientRepository = patientRepository;
         _userRepository = userRepository;
         _roleRepository = roleRepository;
         _userRoleRepository = userRoleRepository;
         _authService = authService;
+        _cacheService = cacheService;
     }
 
     [HttpGet]
@@ -100,6 +103,7 @@ public class PatientsController : ControllerBase
         patient.BloodType = request.BloodType;
 
         await _patientRepository.UpdateAsync(patient);
+        await _cacheService.RemoveAsync($"profile:{patient.UserId}");
         return Ok(MapToResponse(patient));
     }
 
