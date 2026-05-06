@@ -170,7 +170,9 @@ public class EhrService : IEhrService
         {
             EhrId = savedRecord.EhrId,
             FileHash = dataHash,
-            IpfsCid = ipfsCid
+            IpfsCid = ipfsCid,
+            FileUrl = "Tài_liệu_EHR_gốc.json",
+            EncryptedAesKey = string.IsNullOrEmpty(encryptedAesKey) ? null : encryptedAesKey
         };
         
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
@@ -1435,8 +1437,20 @@ public class EhrService : IEhrService
         }
 
         // Unwrap AES key — try patient private key from DB-stored wrapped key
-        if (string.IsNullOrEmpty(file.EncryptedAesKey))
-            return (null, null, false, "File nay khong co AES key (upload cu, chua ho tro tai ve).");
+        var fileEncryptedAesKey = file.EncryptedAesKey;
+        if (string.IsNullOrEmpty(fileEncryptedAesKey))
+        {
+            // Fallback cho file EHR tạo tự động cũ không có AES key
+            var firstVersion = record.Versions?.OrderBy(v => v.VersionNumber).FirstOrDefault();
+            if (firstVersion != null && !string.IsNullOrEmpty(firstVersion.EncryptedAesKeyForPatient))
+            {
+                fileEncryptedAesKey = firstVersion.EncryptedAesKeyForPatient;
+            }
+            else
+            {
+                return (null, null, false, "File nay khong co AES key (upload cu, chua ho tro tai ve).");
+            }
+        }
 
         var requesterKeyRes = await SendAuthGetAsync(authClient,
             $"/api/v1/auth/{(isPatientOwner ? normalizedRequesterId : normalizedPatientId)}/keys", bearerToken);
@@ -1453,7 +1467,7 @@ public class EhrService : IEhrService
         try
         {
             var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
-            aesKey = AsymmetricEncryptionService.UnwrapKey(file.EncryptedAesKey, privateKey);
+            aesKey = AsymmetricEncryptionService.UnwrapKey(fileEncryptedAesKey, privateKey);
         }
         catch (Exception ex)
         {
