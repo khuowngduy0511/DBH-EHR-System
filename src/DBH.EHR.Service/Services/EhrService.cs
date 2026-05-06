@@ -1477,8 +1477,17 @@ public class EhrService : IEhrService
 
         try
         {
-            var decryptedBase64 = SymmetricEncryptionService.DecryptString(encryptedText, aesKey);
-            var fileBytes = Convert.FromBase64String(decryptedBase64);
+            var decryptedText = SymmetricEncryptionService.DecryptString(encryptedText, aesKey);
+            byte[] fileBytes;
+            try
+            {
+                fileBytes = Convert.FromBase64String(decryptedText);
+            }
+            catch (FormatException)
+            {
+                // File tạo từ CreateEhrRecordAsync là chuỗi JSON raw (không phải Base64)
+                fileBytes = System.Text.Encoding.UTF8.GetBytes(decryptedText);
+            }
             EnqueueEhrAuditLog("DOWNLOAD", ehrId, record.PatientId, record.OrgId);
             return (fileBytes, file.FileUrl ?? "ehr_file", false, null);
         }
