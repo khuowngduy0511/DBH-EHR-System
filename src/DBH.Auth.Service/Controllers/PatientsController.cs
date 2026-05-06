@@ -3,6 +3,7 @@ using DBH.Auth.Service.Models.Entities;
 using DBH.Auth.Service.Models.Enums;
 using DBH.Auth.Service.Repositories;
 using DBH.Auth.Service.Services;
+using DBH.Shared.Infrastructure.Caching;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
