@@ -543,12 +543,15 @@ services:
     ports:
       - "9621:9621"
     environment:
-      - OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - SUPABASE_PASSWORD=${SUPABASE_PASSWORD}
+      - WORKSPACE_NAME=${WORKSPACE_NAME}
       - LLM_BINDING=openai
       - OPENAI_BASE_URL=https://openrouter.ai/api/v1
       - LLM_MODEL=openai/gpt-4o-mini
-      - EMBEDDING_BINDING=hf
-      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - EMBEDDING_BINDING=openai
+      - EMBEDDING_MODEL=openai/text-embedding-3-small
     volumes:
       - ../light-rag-DBH-system/knowledge_base:/app/knowledge_base
     networks:
