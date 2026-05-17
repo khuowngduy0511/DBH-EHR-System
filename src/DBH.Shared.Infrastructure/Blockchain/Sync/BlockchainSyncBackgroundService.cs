@@ -37,10 +37,16 @@ public class BlockchainSyncBackgroundService : BackgroundService
 
     /// <summary>
     /// Lắng nghe queue blockchain và xử lý từng job theo thứ tự.
+    /// Waits for blockchain to be ready before starting to process jobs.
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Blockchain sync background service started.");
+        _logger.LogInformation("Blockchain sync background service started. Waiting for blockchain to be ready...");
+
+        // Wait for blockchain to be ready before processing
+        await WaitForBlockchainReadinessAsync(stoppingToken);
+
+        _logger.LogInformation("Blockchain is ready. Starting to process queued jobs.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -66,6 +72,52 @@ public class BlockchainSyncBackgroundService : BackgroundService
         _logger.LogInformation(
             "Blockchain sync background service stopped. Total: {Processed}, Success: {Success}, Failed: {Failed}",
             _totalProcessed, _totalSuccess, _totalFailed);
+    }
+
+    /// <summary>
+    /// Waits for blockchain (Hyperledger Fabric) to be ready and connected.
+    /// Polls the IFabricGateway until it confirms connection is established.
+    /// </summary>
+    private async Task WaitForBlockchainReadinessAsync(CancellationToken stoppingToken)
+    {
+        const int maxWaitMinutes = 10;
+        const int pollIntervalSeconds = 2;
+        var deadline = DateTime.UtcNow.AddMinutes(maxWaitMinutes);
+
+        while (DateTime.UtcNow < deadline && !stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var fabricGateway = scope.ServiceProvider.GetService<IFabricGateway>();
+
+                if (fabricGateway != null && await fabricGateway.IsConnectedAsync())
+                {
+                    _logger.LogInformation("Blockchain (Hyperledger Fabric) is now ready and connected.");
+                    return;
+                }
+
+                _logger.LogInformation("Waiting for blockchain connection... ({ElapsedSeconds}s)", 
+                    (DateTime.UtcNow - (deadline - TimeSpan.FromMinutes(maxWaitMinutes))).TotalSeconds);
+                
+                await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking blockchain readiness. Retrying...");
+                await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), stoppingToken);
+            }
+        }
+
+        if (stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Blockchain readiness check cancelled.");
+            return;
+        }
+
+        _logger.LogWarning(
+            "Blockchain did not connect within {MaxWaitMinutes} minutes. Proceeding with queue processing anyway.",
+            maxWaitMinutes);
     }
 
     /// <summary>
@@ -307,13 +359,26 @@ public class BlockchainSyncBackgroundService : BackgroundService
 
         if (job.Attempts < _options.MaxRetries)
         {
-            var delay = _options.RetryDelayMs * (int)Math.Pow(2, job.Attempts - 1);
-            _logger.LogWarning(
-                "Blockchain sync failed, retrying in {Delay}ms: Type={Type}, EntityId={EntityId}, Error={Error}",
-                delay, job.JobType, job.EntityId, errorMessage);
+            if (job.Attempts <= 6)
+            {
+                var delay = _options.RetryDelayMs * (int)Math.Pow(2, job.Attempts - 1);
+                _logger.LogWarning(
+                    "Blockchain sync failed, retrying in {Delay}ms: Type={Type}, EntityId={EntityId}, Error={Error}",
+                    delay, job.JobType, job.EntityId, errorMessage);
 
-            await Task.Delay(delay, ct);
-            await _syncQueue.RequeueAsync(dequeued, job, ct);
+                await Task.Delay(delay, ct);
+                await _syncQueue.RequeueAsync(dequeued, job, ct);
+            }
+            else
+            {
+                var delay = _options.MaxRetryDelayMs * (int)Math.Pow(3, job.Attempts - 6);
+                _logger.LogWarning(
+                    "Blockchain sync failed, retrying in {Delay}ms: Type={Type}, EntityId={EntityId}, Error={Error}",
+                    delay, job.JobType, job.EntityId, errorMessage);
+
+                await Task.Delay(delay, ct);
+                await _syncQueue.RequeueAsync(dequeued, job, ct);
+            }
         }
         else
         {

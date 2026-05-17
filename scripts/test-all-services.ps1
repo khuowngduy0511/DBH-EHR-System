@@ -3,7 +3,7 @@
 # Full System API Test — All 8 Services via Gateway (port 5000)
 # =============================================================================
 $ErrorActionPreference = "Continue"
-$BASE = "http://localhost:5000"
+$BASE = "http://127.0.0.1:5000"
 $passed = 0; $failed = 0; $total = 0
 
 function Test($name, $method, $url, $body = $null, $token = $null, $expected = 200, $extra = @{}) {
@@ -50,14 +50,14 @@ Write-Host "`n=== SYSTEM HEALTH CHECKS ===" -ForegroundColor Cyan
 # =============================================================================
 $services = @(
     @{ name = "Gateway";       url = "$BASE/health" },
-    @{ name = "Auth";          url = "http://localhost:5101/health" },
-    @{ name = "Organization";  url = "http://localhost:5002/health" },
-    @{ name = "EHR";           url = "http://localhost:5003/health" },
-    @{ name = "Consent";       url = "http://localhost:5004/health" },
-    @{ name = "Audit";         url = "http://localhost:5005/health" },
-    @{ name = "Notification";  url = "http://localhost:5006/health" },
-    @{ name = "Appointment";   url = "http://localhost:5007/health" },
-    @{ name = "Payment";       url = "http://localhost:5008/health" }
+    @{ name = "Auth";          url = "http://127.0.0.1:5101/health" },
+    @{ name = "Organization";  url = "http://127.0.0.1:5002/health" },
+    @{ name = "EHR";           url = "http://127.0.0.1:5003/health" },
+    @{ name = "Consent";       url = "http://127.0.0.1:5004/health" },
+    @{ name = "Audit";         url = "http://127.0.0.1:5005/health" },
+    @{ name = "Notification";  url = "http://127.0.0.1:5006/health" },
+    @{ name = "Appointment";   url = "http://127.0.0.1:5007/health" },
+    @{ name = "Payment";       url = "http://127.0.0.1:5008/health" }
 )
 foreach ($s in $services) { Test "Health: $($s.name)" "GET" $s.url }
 
@@ -66,15 +66,15 @@ Write-Host "`n=== AUTH SERVICE ===" -ForegroundColor Cyan
 # =============================================================================
 
 # Login Admin
-$adminLogin = Test "Auth: Login Admin" "POST" "$BASE/api/v1/auth/login" @{ email="admin@dbh.vn"; password="Admin@123456" }
+$adminLogin = Test "Auth: Login Admin" "POST" "$BASE/api/v1/auth/login" @{ email="admin@dbh.com"; password="admin123" }
 $adminToken = $adminLogin.token
 
 # Login Doctor
-$docLogin = Test "Auth: Login Doctor" "POST" "$BASE/api/v1/auth/login" @{ email="dr.hieu@dbh.vn"; password="Doctor@123" }
+$docLogin = Test "Auth: Login Doctor" "POST" "$BASE/api/v1/auth/login" @{ email="doctor@dbh.com"; password="doctor123" }
 $docToken = $docLogin.token
 
 # Login Patient
-$patLogin = Test "Auth: Login Patient" "POST" "$BASE/api/v1/auth/login" @{ email="patient.an@dbh.vn"; password="Patient@123" }
+$patLogin = Test "Auth: Login Patient" "POST" "$BASE/api/v1/auth/login" @{ email="patient@dbh.com"; password="patient123" }
 $patToken = $patLogin.token
 
 # Get profile

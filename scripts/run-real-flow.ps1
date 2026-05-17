@@ -178,7 +178,7 @@ catch {
 $req = ApiJson -Method 'POST' -Url "$base/api/v1/access-requests" -Token $doctorToken -Body @{
     patientId=$patientId; patientDid="did:fabric:patient:$patientId";
     requesterId=$doctorUserId; requesterDid="did:fabric:doctor:$doctorUserId"; requesterType='DOCTOR';
-    ehrId=$ehrId; permission='READ'; purpose='TREATMENT'; reason='Need EHR access for treatment'
+    ehrId=$ehrId; permission='FULL_ACCESS'; purpose='TREATMENT'; reason='Need EHR access for treatment'
 }
 $requestId = [Guid]$req.data.requestId
 

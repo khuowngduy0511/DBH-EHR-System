@@ -12,11 +12,18 @@ EHR_NETWORK_HOME=${EHR_NETWORK_HOME:-${PWD}}
 WIN_EHR_NETWORK_HOME=${WIN_PWD:-${PWD}}
 . ${EHR_NETWORK_HOME}/scripts/utils.sh
 
+FABRIC_CRYPTO_ROOT=${FABRIC_CRYPTO_ROOT:-${WIN_EHR_NETWORK_HOME}/organizations}
+
+resolveCryptoPath() {
+  local relative_path="$1"
+  echo "${FABRIC_CRYPTO_ROOT%/}/${relative_path}"
+}
+
 export CORE_PEER_TLS_ENABLED=true
-export ORDERER_CA=${WIN_EHR_NETWORK_HOME}/organizations/ordererOrganizations/ehr.com/tlsca/tlsca.ehr.com-cert.pem
-export PEER0_HOSPITAL1_CA=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/hospital1.ehr.com/tlsca/tlsca.hospital1.ehr.com-cert.pem
-export PEER0_HOSPITAL2_CA=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/hospital2.ehr.com/tlsca/tlsca.hospital2.ehr.com-cert.pem
-export PEER0_CLINIC_CA=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/clinic.ehr.com/tlsca/tlsca.clinic.ehr.com-cert.pem
+export ORDERER_CA=$(resolveCryptoPath "ordererOrganizations/ehr.com/tlsca/tlsca.ehr.com-cert.pem")
+export PEER0_HOSPITAL1_CA=$(resolveCryptoPath "peerOrganizations/hospital1.ehr.com/tlsca/tlsca.hospital1.ehr.com-cert.pem")
+export PEER0_HOSPITAL2_CA=$(resolveCryptoPath "peerOrganizations/hospital2.ehr.com/tlsca/tlsca.hospital2.ehr.com-cert.pem")
+export PEER0_CLINIC_CA=$(resolveCryptoPath "peerOrganizations/clinic.ehr.com/tlsca/tlsca.clinic.ehr.com-cert.pem")
 
 # Set environment variables for the peer org
 setGlobals() {
@@ -30,17 +37,17 @@ setGlobals() {
   if [ $USING_ORG -eq 1 ]; then
     export CORE_PEER_LOCALMSPID=Hospital1MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=$PEER0_HOSPITAL1_CA
-    export CORE_PEER_MSPCONFIGPATH=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp
+    export CORE_PEER_MSPCONFIGPATH=$(resolveCryptoPath "peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp")
     export CORE_PEER_ADDRESS=localhost:7051
   elif [ $USING_ORG -eq 2 ]; then
     export CORE_PEER_LOCALMSPID=Hospital2MSP
     export CORE_PEER_TLS_ROOTCERT_FILE=$PEER0_HOSPITAL2_CA
-    export CORE_PEER_MSPCONFIGPATH=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/hospital2.ehr.com/users/Admin@hospital2.ehr.com/msp
+    export CORE_PEER_MSPCONFIGPATH=$(resolveCryptoPath "peerOrganizations/hospital2.ehr.com/users/Admin@hospital2.ehr.com/msp")
     export CORE_PEER_ADDRESS=localhost:9051
   elif [ $USING_ORG -eq 3 ]; then
     export CORE_PEER_LOCALMSPID=ClinicMSP
     export CORE_PEER_TLS_ROOTCERT_FILE=$PEER0_CLINIC_CA
-    export CORE_PEER_MSPCONFIGPATH=${WIN_EHR_NETWORK_HOME}/organizations/peerOrganizations/clinic.ehr.com/users/Admin@clinic.ehr.com/msp
+    export CORE_PEER_MSPCONFIGPATH=$(resolveCryptoPath "peerOrganizations/clinic.ehr.com/users/Admin@clinic.ehr.com/msp")
     export CORE_PEER_ADDRESS=localhost:11051
   else
     errorln "ORG Unknown"

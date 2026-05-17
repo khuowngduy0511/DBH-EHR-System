@@ -5,7 +5,7 @@ namespace DBH.EHR.Service.Services;
 
 public interface IEhrService
 {
-    Task<CreateEhrRecordResponseDto> CreateEhrRecordAsync(CreateEhrRecordDto request);
+    Task<EhrResponse<CreateEhrRecordResponseDto>> CreateEhrRecordAsync(CreateEhrRecordDto request);
 
     Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId);
     

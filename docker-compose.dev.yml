@@ -81,7 +81,7 @@ services:
       - dbh_network
       - fabric_ehr
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
+      - fabric_crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5101/health"]
       interval: 30s
@@ -188,7 +188,7 @@ services:
       - dbh_network
       - fabric_ehr
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
+      - fabric_crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
       interval: 30s
@@ -248,7 +248,7 @@ services:
       - dbh_network
       - fabric_ehr
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
+      - fabric_crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
       interval: 30s
@@ -304,7 +304,7 @@ services:
       - dbh_network
       - fabric_ehr
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
+      - fabric_crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
       interval: 30s
@@ -512,7 +512,7 @@ services:
       - dbh_network
       - fabric_ehr
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations:/tmp/fabric-crypto:ro
+      - fabric_crypto:/tmp/fabric-crypto:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5090/health"]
       interval: 30s
@@ -724,7 +724,9 @@ volumes:
   rabbitmq_data:
   redis_data:
   n8n_data:
-
+  fabric_crypto:
+    name: fabric_crypto
+    external: true
 networks:
   dbh_network:
     driver: bridge

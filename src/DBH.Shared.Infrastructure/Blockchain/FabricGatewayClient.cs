@@ -1,5 +1,6 @@
 using System.Formats.Asn1;
 using System.Numerics;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -166,9 +167,15 @@ public class FabricGatewayClient : IFabricGateway
             await EnsureCryptoLoadedAsync(runtimeIdentity);
             if (!_cryptoLoaded) return false;
 
+            if (!await IsPeerReachableAsync())
+            {
+                ResetChannel();
+                return false;
+            }
+
             var channel = GetOrCreateChannel();
-            return channel.State == ConnectivityState.Ready ||
-                   channel.State == ConnectivityState.Idle;
+            // Treat only Ready as connected so callers can fail fast when peer DNS/network is down.
+            return channel.State == ConnectivityState.Ready;
         }
         catch
         {
@@ -682,6 +689,33 @@ public class FabricGatewayClient : IFabricGateway
     {
         _channel?.Dispose();
         _channel = null;
+    }
+
+    private async Task<bool> IsPeerReachableAsync()
+    {
+        try
+        {
+            var endpoint = _activePeerEndpoint;
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                return false;
+            }
+
+            var parts = endpoint.Split(':', 2);
+            if (parts.Length != 2 || !int.TryParse(parts[1], out var port))
+            {
+                return false;
+            }
+
+            using var tcpClient = new TcpClient();
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(600));
+            await tcpClient.ConnectAsync(parts[0], port, cts.Token);
+            return tcpClient.Connected;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string GenerateSimulatedTxHash(

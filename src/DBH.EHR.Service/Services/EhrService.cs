@@ -27,6 +27,7 @@ public class EhrService : IEhrService
     private readonly IEhrBlockchainService? _blockchainService;
     private readonly IConsentBlockchainService? _consentBlockchainService;
     private readonly IBlockchainSyncService _blockchainSyncService;
+    private readonly IFabricGateway? _fabricGateway;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAuthServiceClient _authServiceClient;
     private readonly IOrganizationServiceClient _organizationServiceClient;
@@ -43,7 +44,8 @@ public class EhrService : IEhrService
         IBlockchainSyncService blockchainSyncService,
         IEhrBlockchainService? blockchainService = null,
         IConsentBlockchainService? consentBlockchainService = null,
-        INotificationServiceClient? notificationClient = null)
+        INotificationServiceClient? notificationClient = null,
+        IFabricGateway? fabricGateway = null)
     {
         _ehrRecordRepo = ehrRecordRepo;
         _logger = logger;
@@ -55,11 +57,12 @@ public class EhrService : IEhrService
         _blockchainService = blockchainService;
         _consentBlockchainService = consentBlockchainService;
         _notificationClient = notificationClient;
+        _fabricGateway = fabricGateway;
     }
 
     // EHR Records 
 
-    public async Task<CreateEhrRecordResponseDto> CreateEhrRecordAsync(CreateEhrRecordDto request)
+    public async Task<EhrResponse<CreateEhrRecordResponseDto>> CreateEhrRecordAsync(CreateEhrRecordDto request)
     {
         _logger.LogInformation(
             "Tạo EHR cho bệnh nhân {PatientId}, org: {OrgId}",
@@ -178,35 +181,45 @@ public class EhrService : IEhrService
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
         // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
-        if (_blockchainService != null)
+        string? blockchainMessage = null;
+        var ehrHashRecord = new EhrHashRecord
+        {
+            EhrId = savedRecord.EhrId.ToString(),
+            PatientDid = $"did:fabric:patient:{request.PatientId}",
+            CreatedByDid = $"did:fabric:org:{request.OrgId}",
+            OrganizationId = request.OrgId?.ToString() ?? string.Empty,
+            Version = 1,
+            ContentHash = $"sha256:{dataHash}",
+            FileHash = $"sha256:{dataHash}",
+            Timestamp = BlockchainTime.NowIsoString,
+            EncryptedAesKey = encryptedAesKey
+        };
+
+        // Check if blockchain connection is actually established
+        bool isBlockchainConnected = _fabricGateway != null && await _fabricGateway.IsConnectedAsync();
+
+        if (_blockchainService != null && isBlockchainConnected)
         {
             try
             {
-                var ehrHashRecord = new EhrHashRecord
-                {
-                    EhrId = savedRecord.EhrId.ToString(),
-                    PatientDid = $"did:fabric:patient:{request.PatientId}",
-                    CreatedByDid = $"did:fabric:org:{request.OrgId}",
-                    OrganizationId = request.OrgId?.ToString() ?? string.Empty,
-                    Version = 1,
-                    ContentHash = $"sha256:{dataHash}",
-                    FileHash = $"sha256:{dataHash}",
-                    Timestamp = BlockchainTime.NowIsoString,
-                    EncryptedAesKey = encryptedAesKey
-                };
-
-                _blockchainSyncService.EnqueueEhrHash(
-                    ehrHashRecord,
-                    onFailure: error =>
-                    {
-                        _logger.LogWarning("Queued blockchain hash commit failed for EHR {EhrId}: {Error}", savedRecord.EhrId, error);
-                        return Task.CompletedTask;
-                    });
+                blockchainMessage = await CommitEhrHashWithFallbackAsync(ehrHashRecord);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId}", savedRecord.EhrId);
+                blockchainMessage = $"Blockchain error: {ex.Message}";
             }
+        }
+        else
+        {
+            // Blockchain not ready (service null or connection not established) - return message to EHR response
+            _logger.LogInformation(
+                "Blockchain not ready for EHR {EhrId} (Service={ServiceReady}, Connected={IsConnected}). Returning blockchain error in response.",
+                savedRecord.EhrId,
+                _blockchainService != null,
+                isBlockchainConnected);
+
+            blockchainMessage = "Blockchain not ready (connection unavailable). EHR was saved, but blockchain commit failed.";
         }
         
         // Tự động Audit Log
@@ -228,19 +241,41 @@ public class EhrService : IEhrService
         }
 
         var (_, patientProfile) = await GetPatientUserProfileAsync(request.PatientId);
-
-        return new CreateEhrRecordResponseDto
+        var responseMessage = "EHR record created successfully";
+        if (!string.IsNullOrWhiteSpace(blockchainMessage))
         {
-            EhrId = savedRecord.EhrId,
-            PatientId = request.PatientId,
-            PatientProfile = patientProfile,
-            VersionId = savedVersion.VersionId,
-            FileId = savedFile.FileId,
-            VersionNumber = 1,
-            IpfsCid = ipfsCid,
-            DataHash = dataHash,
-            CreatedAt = savedRecord.CreatedAt
+            responseMessage += $". {blockchainMessage}";
+        }
+
+        return new EhrResponse<CreateEhrRecordResponseDto>
+        {
+            Success = true,
+            Message = responseMessage,
+            Data = new CreateEhrRecordResponseDto
+            {
+                EhrId = savedRecord.EhrId,
+                PatientId = request.PatientId,
+                PatientProfile = patientProfile,
+                VersionId = savedVersion.VersionId,
+                FileId = savedFile.FileId,
+                VersionNumber = 1,
+                IpfsCid = ipfsCid,
+                DataHash = dataHash,
+                CreatedAt = savedRecord.CreatedAt
+            }
         };
+        // return new CreateEhrRecordResponseDto
+        // {
+        //     EhrId = savedRecord.EhrId,
+        //     PatientId = request.PatientId,
+        //     PatientProfile = patientProfile,
+        //     VersionId = savedVersion.VersionId,
+        //     FileId = savedFile.FileId,
+        //     VersionNumber = 1,
+        //     IpfsCid = ipfsCid,
+        //     DataHash = dataHash,
+        //     CreatedAt = savedRecord.CreatedAt
+        // };
     }
 
     public async Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId)
@@ -252,6 +287,53 @@ public class EhrService : IEhrService
         var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
         response.PatientProfile = patientProfile;
         return response;
+    }
+
+    private async Task<string?> CommitEhrHashWithFallbackAsync(EhrHashRecord ehrHashRecord)
+    {
+        if (_blockchainService == null)
+        {
+            return null;
+        }
+
+        if (_fabricGateway != null)
+        {
+            const int maxWaitSeconds = 5;
+            var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
+
+            while (DateTime.UtcNow < deadline)
+            {
+                if (await _fabricGateway.IsConnectedAsync())
+                {
+                    break;
+                }
+
+                await Task.Delay(1000);
+            }
+
+            if (!await _fabricGateway.IsConnectedAsync())
+            {
+                _logger.LogWarning(
+                    "Blockchain is not ready yet for EHR {EhrId}. Returning error to EHR response.",
+                    ehrHashRecord.EhrId);
+
+                return "Blockchain is offline/unreachable. Commit was not queued and was not written to blockchain.";
+            }
+        }
+
+        var blockchainResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
+        if (blockchainResult.Success)
+        {
+            return null;
+        }
+
+        _logger.LogWarning(
+            "Blockchain hash commit failed for EHR {EhrId}: {Error}",
+            ehrHashRecord.EhrId, blockchainResult.ErrorMessage);
+
+        return string.IsNullOrWhiteSpace(blockchainResult.ErrorMessage)
+            ? "Blockchain sync failed. Commit was not queued."
+            : $"Blockchain sync failed: {blockchainResult.ErrorMessage}. Commit was not queued.";
     }
 
     /// <inheritdoc />
@@ -780,11 +862,11 @@ public class EhrService : IEhrService
         {
             var bearerToken = GetBearerTokenFromContext();
             _logger.LogWarning("[EhrService] Calling AuthService to search for: '{Search}'", search);
-            matchingUserIds = await _authServiceClient.SearchUserIdsAsync(search, bearerToken);
+            matchingUserIds = await _authServiceClient.SearchUserIdsAsync(search, bearerToken ?? string.Empty);
             _logger.LogWarning("[EhrService] AuthService returned {Count} User IDs", matchingUserIds?.Count ?? 0);
 
             _logger.LogWarning("[EhrService] Calling OrganizationService to search for: '{Search}'", search);
-            matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(search, bearerToken);
+            matchingOrgIds = await _organizationServiceClient.SearchOrganizationIdsAsync(search, bearerToken ?? string.Empty);
             _logger.LogWarning("[EhrService] OrganizationService returned {Count} Org IDs", matchingOrgIds?.Count ?? 0);
         }
 

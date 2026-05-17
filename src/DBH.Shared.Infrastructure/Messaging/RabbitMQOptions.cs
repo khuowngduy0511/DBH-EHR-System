@@ -61,4 +61,16 @@ public class RabbitMQOptions
     /// Connection timeout in seconds
     /// </summary>
     public int ConnectionTimeoutSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// Consumer request timeout in minutes - prevents message acknowledgement timeout issues
+    /// Default is 5 minutes; should be less than RabbitMQ's delivery acknowledgement timeout (typically 30 minutes)
+    /// </summary>
+    public int ConsumerRequestTimeoutMinutes { get; set; } = 5;
+
+    /// <summary>
+    /// Heartbeat interval in seconds - keeps connection alive and detects disconnections
+    /// Default is 30 seconds; RabbitMQ client default is 60 seconds
+    /// </summary>
+    public int HeartbeatSeconds { get; set; } = 30;
 }

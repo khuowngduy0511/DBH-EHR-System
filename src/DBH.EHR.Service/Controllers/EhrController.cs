@@ -38,9 +38,9 @@ public class EhrController : ControllerBase
     /// </summary>
     [HttpPost("records")]
     [Authorize(Roles = "Doctor,Admin")]
-    [ProducesResponseType(typeof(CreateEhrRecordResponseDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(EhrResponse<CreateEhrRecordResponseDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<CreateEhrRecordResponseDto>> CreateEhrRecord([FromBody] CreateEhrRecordDto request)
+    public async Task<ActionResult<EhrResponse<CreateEhrRecordResponseDto>>> CreateEhrRecord([FromBody] CreateEhrRecordDto request)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
@@ -51,7 +51,7 @@ public class EhrController : ControllerBase
 
         var result = await _ehrService.CreateEhrRecordAsync(request);
 
-        return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.EhrId }, result);
+        return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.Data.EhrId}, result);
     }
 
     /// <summary>

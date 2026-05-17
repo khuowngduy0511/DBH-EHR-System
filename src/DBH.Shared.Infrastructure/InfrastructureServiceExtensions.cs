@@ -159,6 +159,10 @@ public static class InfrastructureServiceExtensions
                         h.Username(rabbitOptions.Username);
                         h.Password(rabbitOptions.Password);
 
+                        // Configure heartbeat to keep connection alive and detect disconnections early
+                        // This prevents waiting for the 30-minute RabbitMQ channel ack timeout
+                        h.Heartbeat(TimeSpan.FromSeconds(rabbitOptions.HeartbeatSeconds));
+
                         if (rabbitOptions.UseSsl)
                         {
                             h.UseSsl(s => s.Protocol = System.Security.Authentication.SslProtocols.Tls12);
@@ -167,11 +171,18 @@ public static class InfrastructureServiceExtensions
 
                     cfg.PrefetchCount = rabbitOptions.PrefetchCount;
 
-                    // Configure retry policy
-                    cfg.UseMessageRetry(r => r.Intervals(
-                        TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds),
-                        TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds * 2),
-                        TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds * 4)));
+                    // Configure retry policy with timeout exception handling
+                    // Prevents messages from timing out after 30 minutes with proper exponential backoff
+                    cfg.UseMessageRetry(r => 
+                    {
+                        r.Intervals(
+                            TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds),
+                            TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds * 2),
+                            TimeSpan.FromSeconds(rabbitOptions.RetryIntervalSeconds * 4));
+                        // Handle timeout and cancellation exceptions gracefully
+                        r.Handle<OperationCanceledException>();
+                        r.Handle<TimeoutException>();
+                    });
 
                     cfg.ConfigureEndpoints(context);
                 });

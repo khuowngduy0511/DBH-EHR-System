@@ -17,6 +17,7 @@
 **/appsettings.Staging.json
 **/appsettings.Local.json
 **/appsettings.*.local.json
+/knowledge-system/
 
 # User secrets
 secrets.json

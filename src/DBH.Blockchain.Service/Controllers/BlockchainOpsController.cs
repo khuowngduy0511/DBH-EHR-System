@@ -1,7 +1,9 @@
 using DBH.Blockchain.Service.DTOs;
 using DBH.Shared.Contracts.Blockchain;
+using DBH.Shared.Infrastructure.Blockchain.Sync;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace DBH.Blockchain.Service.Controllers;
 
@@ -14,17 +16,20 @@ public class BlockchainOpsController : ControllerBase
     private readonly IEmergencyBlockchainService _emergencyService;
     private readonly IFabricCaService _fabricCaService;
     private readonly IFabricGateway _fabricGateway;
+    private readonly BlockchainSyncQueue _syncQueue;
     private readonly ILogger<BlockchainOpsController> _logger;
 
     public BlockchainOpsController(
         IEmergencyBlockchainService emergencyService,
         IFabricCaService fabricCaService,
         IFabricGateway fabricGateway,
+        BlockchainSyncQueue syncQueue,
         ILogger<BlockchainOpsController> logger)
     {
         _emergencyService = emergencyService;
         _fabricCaService = fabricCaService;
         _fabricGateway = fabricGateway;
+        _syncQueue = syncQueue;
         _logger = logger;
     }
 
@@ -392,6 +397,178 @@ public class BlockchainOpsController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Get list of dead-letter messages (admin only, filtered by organization from JWT)
+    /// </summary>
+    [HttpGet("deadletters")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(DeadLetterListResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public ActionResult<DeadLetterListResponseDto> GetDeadLetters()
+    {
+        try
+        {
+            // Extract organization ID from JWT token
+            var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogWarning("GetDeadLetters called but organization claim is missing in token");
+                return Forbid();
+            }
+
+            // Get all dead-letter messages
+            var deadLetters = _syncQueue.GetDeadLetters();
+            
+            _logger.LogInformation(
+                "Retrieved {Count} dead-letter messages for organization {OrgId}",
+                deadLetters.Count, organizationId);
+
+            // Map to DTOs with organization filtering
+            var deadLetterDtos = deadLetters.Select(dl => new DeadLetterDto
+            {
+                JobId = dl.Job.JobId,
+                JobType = dl.Job.JobType.ToString(),
+                EntityId = dl.Job.EntityId,
+                Attempts = dl.RetryCount,
+                ErrorMessage = dl.ErrorMessage,
+                CreatedAt = dl.Job.CreatedAt,
+                PayloadJson = dl.Job.PayloadJson,
+                OrganizationId = organizationId // Attach the requesting org's ID
+            }).ToList();
+
+            var response = new DeadLetterListResponseDto
+            {
+                DeadLetters = deadLetterDtos,
+                TotalCount = deadLetterDtos.Count
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving dead-letter messages");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve dead-letter messages: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Requeue dead-letter messages back to the main queue (admin only)
+    /// </summary>
+    [HttpPost("deadletters/requeue")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(RequeueDeadLetterResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<RequeueDeadLetterResponseDto>> RequeueDeadLetters(
+        [FromBody] RequeueDeadLetterRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Extract organization ID from JWT token
+            var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogWarning("RequeueDeadLetters called but organization claim is missing in token");
+                return Forbid();
+            }
+
+            // Get current dead-letters before requeuing to track which ones were requeued
+            var beforeRequeue = _syncQueue.GetDeadLetters();
+            var beforeJobIds = beforeRequeue.Select(dl => dl.Job.JobId).ToHashSet();
+
+            // Requeue from dead-letter queue
+            await _syncQueue.RequeueFromDeadLetterAsync(request.JobId, cancellationToken);
+
+            // Get dead-letters after requeuing to determine what was requeued
+            var afterRequeue = _syncQueue.GetDeadLetters();
+            var afterJobIds = afterRequeue.Select(dl => dl.Job.JobId).ToHashSet();
+
+            // Jobs that were requeued are the ones that were in beforeJobIds but not in afterJobIds
+            var requeuedJobIds = beforeJobIds.Where(id => !afterJobIds.Contains(id)).ToList();
+
+            _logger.LogInformation(
+                "Requeued {Count} dead-letter message(s) for organization {OrgId}. JobId filter: {JobIdFilter}",
+                requeuedJobIds.Count, organizationId, request.JobId ?? "all");
+
+            var response = new RequeueDeadLetterResponseDto
+            {
+                Success = true,
+                Message = request.JobId != null
+                    ? $"Thành công requeued (JobId: {request.JobId})"
+                    : $"Thành công requeued {requeuedJobIds.Count} message(s) từ error queue",
+                RequeuedCount = requeuedJobIds.Count,
+                RequeuedJobIds = requeuedJobIds,
+                OperatedAt = DateTime.UtcNow
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error requeuing dead-letter messages");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new RequeueDeadLetterResponseDto
+                {
+                    Success = false,
+                    Message = $"Failed to requeue dead-letter messages: {ex.Message}",
+                    OperatedAt = DateTime.UtcNow
+                });
+        }
+    }
+
+    /// <summary>
+    /// Check if blockchain network is running and ready
+    /// </summary>
+    [HttpGet("status")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(BlockchainStatusResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<BlockchainStatusResponseDto>> CheckBlockchainStatus()
+    {
+        try
+        {
+            // Check if blockchain gateway is connected
+            var isConnected = await _fabricGateway.IsConnectedAsync();
+            
+            // Get queue statistics
+            var queuedJobs = _syncQueue.Count;
+            var deadLetterCount = _syncQueue.DeadLetterCount;
+
+            _logger.LogInformation(
+                "Blockchain status check - Connected: {Connected}, QueuedJobs: {Queued}, DeadLetters: {DLQ}",
+                isConnected, queuedJobs, deadLetterCount);
+
+            var response = new BlockchainStatusResponseDto
+            {
+                IsRunning = isConnected,
+                IsReady = isConnected && deadLetterCount < 100, // Consider "ready" if connected and not too many DLQ messages
+                StatusMessage = isConnected
+                    ? "Blockchain network đang chạy và sẵn sàng nhận yêu cầu."
+                    : "Blockchain network chưa kết nối. Vui lòng kiểm tra cấu hình và trạng thái của Blockchain.",
+                QueuedJobs = queuedJobs,
+                DeadLetterCount = deadLetterCount,
+                CheckedAt = DateTime.UtcNow
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking blockchain status");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new BlockchainStatusResponseDto
+                {
+                    IsRunning = false,
+                    IsReady = false,
+                    StatusMessage = $"Error checking blockchain status: {ex.Message}",
+                    CheckedAt = DateTime.UtcNow
+                });
+        }
+    }
 
     private static DateTime ParseTimestamp(string value)
     {

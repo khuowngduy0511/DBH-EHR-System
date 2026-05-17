@@ -17,6 +17,7 @@ public class FabricCaServiceTests
                 CaUrl = "https://ca_hospital1:7054",
                 CaName = "ca-hospital1"
             }),
+            Options.Create(new FabricOptions()),
             new StubIdentityResolver(new FabricRuntimeIdentity
             {
                 IdentityKey = "fallback|msp:Hospital1MSP",

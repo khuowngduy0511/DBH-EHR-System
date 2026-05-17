@@ -308,6 +308,12 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
 
     private string ResolveCryptoRoot()
     {
+        var envRoot = Environment.GetEnvironmentVariable("FABRIC_CRYPTO_ROOT");
+        if (!string.IsNullOrWhiteSpace(envRoot))
+        {
+            return TrimTrailingSeparators(envRoot);
+        }
+
         var configuredRoot = _fabricOptions.CryptoRoot ?? _configuration[$"{FabricOptions.SectionName}:CryptoRoot"];
         if (!string.IsNullOrWhiteSpace(configuredRoot))
         {

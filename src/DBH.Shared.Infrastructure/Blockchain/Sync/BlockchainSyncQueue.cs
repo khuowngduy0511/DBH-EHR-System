@@ -254,6 +254,93 @@ public class BlockchainSyncQueue
     }
 
     /// <summary>
+    /// Requeues messages from the dead-letter queue back to the main queue.
+    /// If <paramref name="jobId"/> is provided only the matching job will be requeued;
+    /// otherwise all messages from the DLQ will be republished to the main exchange.
+    /// </summary>
+    public Task RequeueFromDeadLetterAsync(string? jobId, CancellationToken ct)
+    {
+        if (_channel == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            var result = _channel.BasicGet(DlqQueue, autoAck: false);
+            if (result == null)
+            {
+                break; // no more messages
+            }
+
+            var bodyJson = Encoding.UTF8.GetString(result.Body.ToArray());
+            BlockchainSyncJob? job = null;
+            try
+            {
+                job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize DLQ message, acking and skipping");
+                _channel.BasicAck(result.DeliveryTag, multiple: false);
+                continue;
+            }
+
+            // If a specific jobId is requested and this isn't it, put it back to the DLQ
+            if (!string.IsNullOrEmpty(jobId) && (job == null || job.JobId != jobId))
+            {
+                // requeue into DLQ
+                _channel.BasicNack(result.DeliveryTag, multiple: false, requeue: true);
+                continue;
+            }
+
+            if (job == null)
+            {
+                _channel.BasicAck(result.DeliveryTag, multiple: false);
+                continue;
+            }
+
+            // Republish to main exchange with retry header reset (or preserved if present)
+            try
+            {
+                var props = _channel.CreateBasicProperties();
+                props.Persistent = true;
+                props.Headers = new Dictionary<string, object>
+                {
+                    [RetryHeader] = 0
+                };
+
+                var routingKey = GetRoutingKey(job.JobType);
+                var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
+                _channel.BasicPublish(MainExchange, routingKey, props, body);
+
+                // Ack the DLQ message after successful publish
+                _channel.BasicAck(result.DeliveryTag, multiple: false);
+                _logger.LogInformation("Requeued DLQ job {JobId} to main queue", job.JobId);
+
+                // If a single job was requested, stop after requeuing it
+                if (!string.IsNullOrEmpty(jobId))
+                {
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to republish DLQ message for JobId={JobId}; requeuing into DLQ", job.JobId);
+                try
+                {
+                    _channel.BasicNack(result.DeliveryTag, multiple: false, requeue: true);
+                }
+                catch { }
+                // Avoid tight loop on repeated failures
+                break;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Returns the number of queued blockchain jobs.
     /// </summary>
     public int Count
@@ -266,6 +353,93 @@ public class BlockchainSyncQueue
             }
 
             return (int)_channel.MessageCount(_queueName);
+        }
+    }
+
+    /// <summary>
+    /// Retrieves all messages from the dead-letter queue without consuming them.
+    /// Returns a list of tuples containing (job, retryCount, errorMessage).
+    /// </summary>
+    public List<(BlockchainSyncJob Job, int RetryCount, string? ErrorMessage)> GetDeadLetters()
+    {
+        var result = new List<(BlockchainSyncJob, int, string?)>();
+
+        if (_channel == null)
+        {
+            return result;
+        }
+
+        // Use a temporary loop to peek at all DLQ messages without removing them
+        var tempMessages = new List<(ulong deliveryTag, BlockchainSyncJob job, int retryCount, string? errorMessage)>();
+
+        try
+        {
+            while (true)
+            {
+                var message = _channel.BasicGet(DlqQueue, autoAck: false);
+                if (message == null)
+                {
+                    break;
+                }
+
+                var bodyJson = Encoding.UTF8.GetString(message.Body.ToArray());
+                BlockchainSyncJob? job = null;
+                try
+                {
+                    job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to deserialize DLQ message");
+                    _channel.BasicNack(message.DeliveryTag, multiple: false, requeue: true);
+                    continue;
+                }
+
+                if (job != null)
+                {
+                    var retryCount = ReadRetryCount(message.BasicProperties.Headers);
+                    var errorMessage = ReadErrorMessage(message.BasicProperties.Headers);
+                    tempMessages.Add((message.DeliveryTag, job, retryCount, errorMessage));
+                    result.Add((job, retryCount, errorMessage));
+                }
+                else
+                {
+                    _channel.BasicNack(message.DeliveryTag, multiple: false, requeue: true);
+                }
+            }
+        }
+        finally
+        {
+            // Put all messages back to the DLQ in the order we found them
+            foreach (var (deliveryTag, _, _, _) in tempMessages)
+            {
+                try
+                {
+                    _channel.BasicNack(deliveryTag, multiple: false, requeue: true);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to requeue message during dead-letter peek");
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the count of messages in the dead-letter queue.
+    /// </summary>
+    public int DeadLetterCount
+    {
+        get
+        {
+            if (_channel == null)
+            {
+                return 0;
+            }
+
+            return (int)_channel.MessageCount(DlqQueue);
         }
     }
 
@@ -286,6 +460,21 @@ public class BlockchainSyncQueue
             long l => (int)l,
             byte[] bytes when int.TryParse(Encoding.UTF8.GetString(bytes), out var parsed) => parsed,
             _ => 0
+        };
+    }
+
+    private static string? ReadErrorMessage(IDictionary<string, object>? headers)
+    {
+        if (headers == null || !headers.TryGetValue(ErrorHeader, out var value) || value == null)
+        {
+            return null;
+        }
+
+        return value switch
+        {
+            string s => s,
+            byte[] bytes => Encoding.UTF8.GetString(bytes),
+            _ => value.ToString()
         };
     }
 }

@@ -131,26 +131,61 @@ function waitForAndStageCaCerts() {
   fi
 }
 
-function restoreOrganizationsFromCryptoVolume() {
+function copyOrganizationsToCryptoVolume() {
   : ${CONTAINER_CLI:="docker"}
-  local crypto_volume="${FABRIC_CRYPTO_VOLUME:-fabric-crypto}"
-
+  local crypto_volume="${FABRIC_CRYPTO_VOLUME:-fabric_crypto}"
+  # Ensure the volume exists; create if missing so callers can proceed
   if ! ${CONTAINER_CLI} volume inspect "${crypto_volume}" >/dev/null 2>&1; then
-    fatalln "Crypto volume '${crypto_volume}' does not exist"
+    infoln "Crypto volume '${crypto_volume}' does not exist; creating it"
+    ${CONTAINER_CLI} volume create "${crypto_volume}" >/dev/null 2>&1 || fatalln "Failed to create crypto volume '${crypto_volume}'"
   fi
 
-  mkdir -p "${PWD}/organizations"
+  if [ ! -d "${PWD}/organizations/peerOrganizations" ] && [ ! -d "${PWD}/organizations/ordererOrganizations" ]; then
+    infoln "No organizations on host to copy to volume"
+    return 0
+  fi
+
+  infoln "Copying organizations from host to crypto volume '${crypto_volume}'"
 
   set -x
   ${CONTAINER_CLI} run --rm \
-    -v "${crypto_volume}:/crypto:ro" \
-    -v "${PWD}:/workspace" \
-    busybox sh -c 'test -d /crypto/peerOrganizations && test -d /crypto/ordererOrganizations && rm -rf /workspace/organizations/peerOrganizations /workspace/organizations/ordererOrganizations && cp -r /crypto/peerOrganizations /workspace/organizations/ && cp -r /crypto/ordererOrganizations /workspace/organizations/'
+    -v "${crypto_volume}:/crypto" \
+    -v "${PWD}/organizations:/organizations:ro" \
+    busybox sh -c 'if [ -d /organizations/peerOrganizations ]; then cp -r /organizations/peerOrganizations /crypto/; fi && if [ -d /organizations/ordererOrganizations ]; then cp -r /organizations/ordererOrganizations /crypto/; fi'
   res=$?
   { set +x; } 2>/dev/null
 
   if [ $res -ne 0 ]; then
-    fatalln "Failed to restore organizations from docker volume '${crypto_volume}'"
+    fatalln "Failed to copy organizations to docker volume '${crypto_volume}'"
+  fi
+
+  infoln "Successfully copied organizations to volume '${crypto_volume}'"
+}
+
+function restoreOrganizationsFromCryptoVolume() {
+  : ${CONTAINER_CLI:="docker"}
+  local crypto_volume="${FABRIC_CRYPTO_VOLUME:-fabric_crypto}"
+  # If the volume doesn't exist, create it and continue — CA containers can populate it.
+  if ! ${CONTAINER_CLI} volume inspect "${crypto_volume}" >/dev/null 2>&1; then
+    infoln "Crypto volume '${crypto_volume}' does not exist; creating it"
+    ${CONTAINER_CLI} volume create "${crypto_volume}" >/dev/null 2>&1 || fatalln "Failed to create crypto volume '${crypto_volume}'"
+  fi
+
+  mkdir -p "${PWD}/organizations"
+
+  # Attempt to copy data from the volume into the host. If the volume is empty, don't fail;
+  # callers will generate or the CAs will populate it later.
+  set -x
+  ${CONTAINER_CLI} run --rm \
+    -v "${crypto_volume}:/crypto:ro" \
+    -v "${PWD}:/workspace" \
+    busybox sh -c 'if [ -d /crypto/peerOrganizations ] && [ -d /crypto/ordererOrganizations ]; then rm -rf /workspace/organizations/peerOrganizations /workspace/organizations/ordererOrganizations && cp -r /crypto/peerOrganizations /workspace/organizations/ && cp -r /crypto/ordererOrganizations /workspace/organizations/; else echo "Volume appears empty"; fi'
+  res=$?
+  { set +x; } 2>/dev/null
+
+  if [ $res -ne 0 ]; then
+    warnln "Failed to restore organizations from docker volume '${crypto_volume}' — continuing; volume may be empty"
+    return 0
   fi
 
   infoln "Restored organizations crypto from volume '${crypto_volume}'"
@@ -225,19 +260,13 @@ function createOrgs() {
 
     . organizations/fabric-ca/registerEnroll.sh
 
-    # Wait for CA servers to start
+    # Wait for CA servers to start and stage certs from volumes to host
     infoln "Waiting for Fabric CA servers to start..."
     sleep 5
 
     # --- Hospital1 CA readiness ---
-    while :
-    do
-      if [ ! -f "organizations/fabric-ca/hospital1/tls-cert.pem" ]; then
-        sleep 1
-      else
-        break
-      fi
-    done
+    infoln "Staging Hospital1 CA certificates from volume..."
+    waitForAndStageCaCerts "ca_hospital1" "organizations/fabric-ca/hospital1"
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital1.ehr.com/
     COUNTER=0
@@ -256,14 +285,8 @@ function createOrgs() {
     createHospital1
 
     # --- Hospital2 CA readiness ---
-    while :
-    do
-      if [ ! -f "organizations/fabric-ca/hospital2/tls-cert.pem" ]; then
-        sleep 1
-      else
-        break
-      fi
-    done
+    infoln "Staging Hospital2 CA certificates from volume..."
+    waitForAndStageCaCerts "ca_hospital2" "organizations/fabric-ca/hospital2"
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/hospital2.ehr.com/
     COUNTER=0
@@ -282,14 +305,8 @@ function createOrgs() {
     createHospital2
 
     # --- Clinic CA readiness ---
-    while :
-    do
-      if [ ! -f "organizations/fabric-ca/clinic/tls-cert.pem" ]; then
-        sleep 1
-      else
-        break
-      fi
-    done
+    infoln "Staging Clinic CA certificates from volume..."
+    waitForAndStageCaCerts "ca_clinic" "organizations/fabric-ca/clinic"
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/peerOrganizations/clinic.ehr.com/
     COUNTER=0
@@ -308,14 +325,8 @@ function createOrgs() {
     createClinic
 
     # --- Orderer CA readiness ---
-    while :
-    do
-      if [ ! -f "organizations/fabric-ca/ordererOrg/tls-cert.pem" ]; then
-        sleep 1
-      else
-        break
-      fi
-    done
+    infoln "Staging Orderer CA certificates from volume..."
+    waitForAndStageCaCerts "ca_orderer" "organizations/fabric-ca/ordererOrg"
 
     export FABRIC_CA_CLIENT_HOME=${WIN_PWD}/organizations/ordererOrganizations/ehr.com/
     COUNTER=0
@@ -333,9 +344,15 @@ function createOrgs() {
     infoln "Creating Orderer Org Identities"
     createOrderer
 
+    # Copy organizations from host to crypto volume and clean up host
+    copyOrganizationsToCryptoVolume
+
   else
     fatalln "Unknown crypto mode: $CRYPTO. Use 'cryptogen' or 'CA'"
   fi
+
+  # Restore organizations to host for CCP generation (they're always on volume now)
+  ensureOrganizationsOnHost
 
   infoln "Generating CCP files for Hospital1, Hospital2, and Clinic"
   ./organizations/ccp-generate.sh
@@ -345,9 +362,16 @@ function createOrgs() {
 function networkUp() {
   checkPrereqs
 
-  # generate artifacts if they don't exist
+  # Ensure organizations are available (restore from volume if needed)
   if [ ! -d "organizations/peerOrganizations" ]; then
-    createOrgs
+    if [ "$CRYPTO" == "CA" ]; then
+      ensureOrganizationsOnHost
+    fi
+    
+    # If still missing after restore, create them
+    if [ ! -d "organizations/peerOrganizations" ]; then
+      createOrgs
+    fi
   fi
   infoln "Finish Generating CCP files"
 
@@ -520,7 +544,7 @@ function networkDown() {
   # Don't remove the generated artifacts -- note, the ledgers are always removed
   if [ "$MODE" != "restart" ]; then
     # Bring down the network, deleting the volumes
-    ${CONTAINER_CLI} volume rm docker_orderer.ehr.com docker_peer0.hospital1.ehr.com docker_peer0.hospital2.ehr.com docker_peer0.clinic.ehr.com 2>/dev/null
+    ${CONTAINER_CLI} volume rm docker_orderer.ehr.com docker_peer0.hospital1.ehr.com docker_peer0.hospital2.ehr.com docker_peer0.clinic.ehr.com fabric_crypto 2>/dev/null
     #Cleanup the chaincode containers
     clearContainers
     #Cleanup images

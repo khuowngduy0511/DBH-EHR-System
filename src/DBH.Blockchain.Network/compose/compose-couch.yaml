@@ -17,6 +17,7 @@ services:
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=adminpw
+      - TZ=Asia/Ho_Chi_Minh
     ports:
       - "5984:5984"
     networks:
@@ -39,6 +40,7 @@ services:
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=adminpw
+      - TZ=Asia/Ho_Chi_Minh
     ports:
       - "7984:5984"
     networks:
@@ -61,6 +63,7 @@ services:
     environment:
       - COUCHDB_USER=admin
       - COUCHDB_PASSWORD=adminpw
+      - TZ=Asia/Ho_Chi_Minh
     ports:
       - "9984:5984"
     networks:

@@ -40,7 +40,7 @@ services:
       - "17054:17054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations/fabric-ca/hospital1:/etc/hyperledger/fabric-ca-server
+      - fabric_ca_hospital1:/etc/hyperledger/fabric-ca-server
     networks:
       - fabric_ehr
 
@@ -58,7 +58,7 @@ services:
       - "18054:18054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations/fabric-ca/hospital2:/etc/hyperledger/fabric-ca-server
+      - fabric_ca_hospital2:/etc/hyperledger/fabric-ca-server
     networks:
       - fabric_ehr
 
@@ -76,7 +76,7 @@ services:
       - "20054:20054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations/fabric-ca/clinic:/etc/hyperledger/fabric-ca-server
+      - fabric_ca_clinic:/etc/hyperledger/fabric-ca-server
     networks:
       - fabric_ehr
 
@@ -94,7 +94,7 @@ services:
       - "19054:19054"
     command: sh -c 'fabric-ca-server start -b admin:adminpw -d'
     volumes:
-      - ./src/DBH.Blockchain.Network/organizations/fabric-ca/ordererOrg:/etc/hyperledger/fabric-ca-server
+      - fabric_ca_orderer:/etc/hyperledger/fabric-ca-server
     networks:
       - fabric_ehr
 
@@ -423,3 +423,8 @@ volumes:
     external: true
   explorer_pgdata:
   explorer_walletstore:
+  fabric_ca_hospital1:
+  fabric_ca_hospital2:
+  fabric_ca_clinic:
+  fabric_ca_orderer:
+  fabric_crypto:

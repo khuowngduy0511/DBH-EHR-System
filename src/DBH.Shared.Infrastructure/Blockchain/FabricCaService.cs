@@ -23,6 +23,7 @@ namespace DBH.Shared.Infrastructure.Blockchain;
 public sealed class FabricCaService : IFabricCaService
 {
     private readonly FabricCaOptions _options;
+    private readonly FabricOptions _fabricOptions;
     private readonly IFabricRuntimeIdentityResolver _identityResolver;
     private readonly ILogger<FabricCaService> _logger;
 
@@ -34,10 +35,12 @@ public sealed class FabricCaService : IFabricCaService
 
     public FabricCaService(
         IOptions<FabricCaOptions> options,
+        IOptions<FabricOptions> fabricOptions,
         IFabricRuntimeIdentityResolver identityResolver,
         ILogger<FabricCaService> logger)
     {
         _options = options.Value;
+        _fabricOptions = fabricOptions.Value;
         _identityResolver = identityResolver;
         _logger = logger;
     }
@@ -359,6 +362,10 @@ public sealed class FabricCaService : IFabricCaService
 
     private string BuildAccountStoragePath(string enrollmentId)
     {
+        var cryptoRoot = !string.IsNullOrWhiteSpace(_fabricOptions.CryptoRoot)
+            ? _fabricOptions.CryptoRoot
+            : Environment.GetEnvironmentVariable("FABRIC_CRYPTO_ROOT") ?? "/tmp/fabric-crypto";
+
         var domain = _options.CaName switch
         {
             "ca-hospital1" => "hospital1.ehr.com",
@@ -367,7 +374,7 @@ public sealed class FabricCaService : IFabricCaService
             _ => "hospital1.ehr.com"
         };
 
-        return $"/tmp/fabric-crypto/peerOrganizations/{domain}/users/{enrollmentId}@{domain}/msp";
+        return $"{cryptoRoot.TrimEnd('/', '\\')}/peerOrganizations/{domain}/users/{enrollmentId}@{domain}/msp";
     }
 
     private static byte[] ExtractDerFromPem(string pem, string label)

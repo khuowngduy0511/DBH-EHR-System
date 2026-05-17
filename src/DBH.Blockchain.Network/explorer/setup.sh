@@ -3,22 +3,41 @@
 
 echo "Starting Explorer setup..."
 
-# Directories
+FABRIC_CRYPTO_VOLUME=${FABRIC_CRYPTO_VOLUME:-fabric_crypto}
+FABRIC_CRYPTO_ROOT=${FABRIC_CRYPTO_ROOT:-}
+
+resolve_crypto_source() {
+    if [ -n "$FABRIC_CRYPTO_ROOT" ] && [ -d "$FABRIC_CRYPTO_ROOT" ]; then
+        echo "$FABRIC_CRYPTO_ROOT"
+        return 0
+    fi
+
+    if docker volume inspect "$FABRIC_CRYPTO_VOLUME" >/dev/null 2>&1; then
+        local temp_root
+        temp_root=$(mktemp -d 2>/dev/null || mktemp -d -t fabric-crypto)
+        docker run --rm \
+            -v "${FABRIC_CRYPTO_VOLUME}:/crypto:ro" \
+            -v "${temp_root}:/workspace" \
+            busybox sh -c 'cp -r /crypto/peerOrganizations /workspace/peerOrganizations 2>/dev/null || true; cp -r /crypto/ordererOrganizations /workspace/ordererOrganizations 2>/dev/null || true; cp -r /crypto/fabric-ca /workspace/fabric-ca 2>/dev/null || true'
+        echo "$temp_root"
+        return 0
+    fi
+
+    return 1
+}
+
 EXPLORER_DIR=$(dirname "$0")
 cd $EXPLORER_DIR
 
-# Using absolute paths to avoid confusion
 EXPLORER_ABS_PATH=$(pwd)
-# Assuming organizations is at ../organizations relative to this script
-ORG_SOURCE_PATH=$(cd ../organizations && pwd)
+ORG_SOURCE_PATH=$(resolve_crypto_source)
 ORG_DEST_PATH="${EXPLORER_ABS_PATH}/organizations"
 PROFILE_PATH="${EXPLORER_ABS_PATH}/connection-profile/ehr-network.json"
 
 mkdir -p "${EXPLORER_ABS_PATH}/connection-profile"
 
-if [ ! -d "$ORG_SOURCE_PATH" ]; then
-  echo "Error: Source organizations directory not found at ../organizations"
-  echo "Measured path: $ORG_SOURCE_PATH"
+if [ -z "$ORG_SOURCE_PATH" ] || [ ! -d "$ORG_SOURCE_PATH" ]; then
+    echo "Error: Crypto source directory not found in FABRIC_CRYPTO_ROOT or Docker volume ${FABRIC_CRYPTO_VOLUME}"
   exit 1
 fi
 
@@ -33,6 +52,10 @@ echo "Copying crypto material from ${ORG_SOURCE_PATH}..."
 cp -r "${ORG_SOURCE_PATH}/peerOrganizations" "${ORG_DEST_PATH}/"
 cp -r "${ORG_SOURCE_PATH}/ordererOrganizations" "${ORG_DEST_PATH}/"
 cp -r "${ORG_SOURCE_PATH}/fabric-ca" "${ORG_DEST_PATH}/"
+
+if [ -d "$ORG_SOURCE_PATH" ] && [[ "$ORG_SOURCE_PATH" == /tmp/* ]]; then
+    rm -rf "$ORG_SOURCE_PATH"
+fi
 
 # Update connection profile with new private key
 echo "Updating connection profile..."

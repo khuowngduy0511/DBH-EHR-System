@@ -15,6 +15,13 @@ ROOTDIR=$(cd "$(dirname "$0")"/.. && pwd)
 WIN_ROOTDIR=$(cd "$(dirname "$0")"/.. && pwd -W 2>/dev/null || pwd)
 . ${ROOTDIR}/scripts/utils.sh
 
+FABRIC_CRYPTO_ROOT=${FABRIC_CRYPTO_ROOT:-${WIN_ROOTDIR}/organizations}
+
+cryptoPath() {
+  local relative_path="$1"
+  echo "${FABRIC_CRYPTO_ROOT%/}/${relative_path}"
+}
+
 # Parse arguments
 ORG=""
 USER_TYPE=""
@@ -67,23 +74,23 @@ case $ORG in
   hospital1 )
     CA_NAME="ca-hospital1"
     CA_PORT=7054
-    CA_DIR="${WIN_ROOTDIR}/organizations/fabric-ca/hospital1"
+    CA_DIR="$(cryptoPath fabric-ca/hospital1)"
     ORG_DOMAIN="hospital1.ehr.com"
-    ORG_DIR="${WIN_ROOTDIR}/organizations/peerOrganizations/hospital1.ehr.com"
+    ORG_DIR="$(cryptoPath peerOrganizations/hospital1.ehr.com)"
     ;;
   hospital2 )
     CA_NAME="ca-hospital2"
     CA_PORT=8054
-    CA_DIR="${WIN_ROOTDIR}/organizations/fabric-ca/hospital2"
+    CA_DIR="$(cryptoPath fabric-ca/hospital2)"
     ORG_DOMAIN="hospital2.ehr.com"
-    ORG_DIR="${WIN_ROOTDIR}/organizations/peerOrganizations/hospital2.ehr.com"
+    ORG_DIR="$(cryptoPath peerOrganizations/hospital2.ehr.com)"
     ;;
   clinic )
     CA_NAME="ca-clinic"
     CA_PORT=10054
-    CA_DIR="${WIN_ROOTDIR}/organizations/fabric-ca/clinic"
+    CA_DIR="$(cryptoPath fabric-ca/clinic)"
     ORG_DOMAIN="clinic.ehr.com"
-    ORG_DIR="${WIN_ROOTDIR}/organizations/peerOrganizations/clinic.ehr.com"
+    ORG_DIR="$(cryptoPath peerOrganizations/clinic.ehr.com)"
     ;;
   * )
     fatalln "Unknown organization: $ORG. Must be hospital1, hospital2, or clinic"

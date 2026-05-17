@@ -168,3 +168,10 @@ public class IpfsRawDownloadResponseDto
     public string IpfsCid { get; set; } = string.Empty;
     public string EncryptedData { get; set; } = string.Empty;
 }
+
+public class EhrResponse<T> where T : class
+{
+    public bool Success { get; set; } = true;
+    public string Message { get; set; } = string.Empty;
+    public T? Data { get; set; }
+}
