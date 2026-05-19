@@ -80,7 +80,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
     /// </summary>
     private async Task WaitForBlockchainReadinessAsync(CancellationToken stoppingToken)
     {
-        const int maxWaitMinutes = 10;
+        const int maxWaitMinutes = 1/6;
         const int pollIntervalSeconds = 2;
         var deadline = DateTime.UtcNow.AddMinutes(maxWaitMinutes);
 
@@ -118,10 +118,83 @@ public class BlockchainSyncBackgroundService : BackgroundService
         _logger.LogWarning(
             "Blockchain did not connect within {MaxWaitMinutes} minutes. Proceeding with queue processing anyway.",
             maxWaitMinutes);
+        
+        try
+        {
+            _logger.LogWarning("Moving all queued blockchain jobs to dead-letter queue because blockchain is unavailable.");
+            await _syncQueue.MoveAllToDeadLetterAsync(stoppingToken);
+            _logger.LogInformation("Moved queued blockchain jobs to DLQ successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to move queued blockchain jobs to DLQ after readiness timeout.");
+        }
+        
+        try
+        {
+            // Notify the sync service so other components (e.g. EHR service) can surface this in responses
+            await using var scope2 = _scopeFactory.CreateAsyncScope();
+            var syncService = scope2.ServiceProvider.GetService<IBlockchainSyncService>();
+            if (syncService != null)
+            {
+                syncService.NotifyEmergencyDlqMove(DateTimeOffset.UtcNow);
+                _logger.LogInformation("Notified IBlockchainSyncService of emergency DLQ move.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to notify IBlockchainSyncService about emergency DLQ move.");
+        }
+        
+        // Start a background monitor that will clear the emergency flag when blockchain becomes reachable again
+        _ = Task.Run(async () => await MonitorForFabricRecoveryAsync(stoppingToken));
+    }
+
+    private async Task MonitorForFabricRecoveryAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+                try
+                {
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var fabricGateway = scope.ServiceProvider.GetService<IFabricGateway>();
+                    if (fabricGateway != null && await fabricGateway.IsConnectedAsync())
+                    {
+                        // Clear the emergency DLQ move timestamp
+                        var syncService = scope.ServiceProvider.GetService<IBlockchainSyncService>();
+                        if (syncService != null)
+                        {
+                            syncService.ClearEmergencyDlqMove();
+                            _logger.LogInformation("Blockchain recovered; cleared emergency DLQ move timestamp.");
+                        }
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Error while monitoring Fabric recovery");
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // ignore
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MonitorForFabricRecoveryAsync terminated unexpectedly");
+        }
     }
 
     /// <summary>
     /// Thực thi một blockchain job đã lấy từ queue.
+    /// Step 1: Check connection → DLQ if not connected.
+    /// Step 2: Execute job (retry handled by HandleFailureAsync).
+    /// Step 3: After successful EHR hash commit → auto-enqueue audit entry.
     /// </summary>
     private async Task ProcessJobAsync(BlockchainSyncDequeuedItem dequeued, CancellationToken ct)
     {
@@ -136,6 +209,38 @@ public class BlockchainSyncBackgroundService : BackgroundService
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
 
+            // ── Step 1: Check blockchain connection before processing ──
+            // Skip connection check for FabricCaEnrollment (uses HTTP, not gRPC peer)
+            if (job.JobType != BlockchainSyncJobType.FabricCaEnrollment)
+            {
+                var fabricGateway = scope.ServiceProvider.GetService<IFabricGateway>();
+                if (fabricGateway != null && !await fabricGateway.IsConnectedAsync())
+                {
+                    _logger.LogWarning(
+                        "Blockchain is not connected. Moving job to dead-letter queue: Type={Type}, EntityId={EntityId}",
+                        job.JobType, job.EntityId);
+
+                    Interlocked.Increment(ref _totalFailed);
+
+                    if (job.OnFailureCallback != null)
+                    {
+                        await job.OnFailureCallback("Blockchain is not connected. Job moved to dead-letter queue for later replay.");
+                    }
+
+                    await _syncQueue.MoveToDeadLetterAsync(
+                        dequeued, job,
+                        "Blockchain not connected — moved to DLQ immediately",
+                        ct);
+
+                    // Notify sync service so API responses can surface status
+                    var syncService = scope.ServiceProvider.GetService<IBlockchainSyncService>();
+                    syncService?.NotifyEmergencyDlqMove(DateTimeOffset.UtcNow);
+
+                    return;
+                }
+            }
+
+            // ── Step 2: Execute the blockchain job ──
             BlockchainTransactionResult? result;
 
             switch (job.JobType)
@@ -185,6 +290,16 @@ public class BlockchainSyncBackgroundService : BackgroundService
                 }
 
                 await _syncQueue.AckAsync(dequeued, ct);
+
+                // ── Step 3: After successful EHR hash → auto-enqueue audit entry ──
+                if (job.JobType == BlockchainSyncJobType.EhrHash)
+                {
+                    await EnqueueAuditAfterEhrSuccessAsync(scope.ServiceProvider, job.PayloadJson);
+                }
+
+                // Clear emergency DLQ flag since blockchain is clearly working
+                var syncSvc = scope.ServiceProvider.GetService<IBlockchainSyncService>();
+                syncSvc?.ClearEmergencyDlqMove();
             }
             else
             {
@@ -224,6 +339,64 @@ public class BlockchainSyncBackgroundService : BackgroundService
         return ehrRecord != null
             ? await ehrService.CommitEhrHashAsync(ehrRecord)
             : new BlockchainTransactionResult { Success = false, ErrorMessage = "Invalid payload" };
+    }
+
+    /// <summary>
+    /// After a successful EHR hash commit, automatically enqueue an audit entry
+    /// so callers don't need to handle audit-after-blockchain separately.
+    /// If the audit enqueue itself fails, it is moved to the DLQ by the normal retry path.
+    /// </summary>
+    private async Task EnqueueAuditAfterEhrSuccessAsync(IServiceProvider serviceProvider, string ehrPayloadJson)
+    {
+        try
+        {
+            var ehrRecord = JsonSerializer.Deserialize<EhrHashRecord>(ehrPayloadJson);
+            if (ehrRecord == null)
+            {
+                _logger.LogWarning("Cannot enqueue audit after EHR success: failed to deserialize EHR payload.");
+                return;
+            }
+
+            var auditEntry = new AuditEntry
+            {
+                AuditId = Guid.NewGuid().ToString(),
+                ActorDid = ehrRecord.CreatedByDid ?? "SYSTEM",
+                ActorType = "USER",
+                Action = "CREATE",
+                TargetType = "EHR",
+                TargetId = ehrRecord.EhrId,
+                PatientDid = ehrRecord.PatientDid,
+                OrganizationId = ehrRecord.OrganizationId,
+                Result = "SUCCESS",
+                Timestamp = BlockchainTime.NowIsoString
+            };
+
+            var syncService = serviceProvider.GetService<IBlockchainSyncService>();
+            if (syncService != null)
+            {
+                syncService.EnqueueAuditEntry(
+                    auditEntry,
+                    onFailure: error =>
+                    {
+                        _logger.LogWarning(
+                            "Audit blockchain failed after EHR hash success for EHR {EhrId}: {Error}",
+                            ehrRecord.EhrId, error);
+                        return Task.CompletedTask;
+                    });
+
+                _logger.LogInformation(
+                    "Auto-enqueued audit entry after successful EHR hash commit: EhrId={EhrId}, AuditId={AuditId}",
+                    ehrRecord.EhrId, auditEntry.AuditId);
+            }
+            else
+            {
+                _logger.LogWarning("IBlockchainSyncService not available, cannot enqueue audit after EHR success.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enqueue audit entry after successful EHR hash commit.");
+        }
     }
 
     /// <summary>

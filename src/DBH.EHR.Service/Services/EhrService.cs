@@ -180,8 +180,8 @@ public class EhrService : IEhrService
         
         var savedFile = await _ehrRecordRepo.CreateFileAsync(file);
 
-        // === Blockchain: Commit EHR hash lên Hyperledger Fabric ===
-        string? blockchainMessage = null;
+        // === Blockchain: commit EHR hash with connection check + retry + DLQ ===
+        // All logic is centralized in BlockchainSyncService.TryCommitEhrHashAsync
         var ehrHashRecord = new EhrHashRecord
         {
             EhrId = savedRecord.EhrId.ToString(),
@@ -195,35 +195,13 @@ public class EhrService : IEhrService
             EncryptedAesKey = encryptedAesKey
         };
 
-        // Check if blockchain connection is actually established
-        bool isBlockchainConnected = _fabricGateway != null && await _fabricGateway.IsConnectedAsync();
+        var (blockchainSuccess, blockchainMessage) = await _blockchainSyncService.TryCommitEhrHashAsync(ehrHashRecord);
 
-        if (_blockchainService != null && isBlockchainConnected)
+        // Audit blockchain — only after successful EHR hash commit
+        if (blockchainSuccess)
         {
-            try
-            {
-                blockchainMessage = await CommitEhrHashWithFallbackAsync(ehrHashRecord);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId}", savedRecord.EhrId);
-                blockchainMessage = $"Blockchain error: {ex.Message}";
-            }
+            EnqueueEhrAuditLog("CREATE", savedRecord.EhrId, request.PatientId, request.OrgId);
         }
-        else
-        {
-            // Blockchain not ready (service null or connection not established) - return message to EHR response
-            _logger.LogInformation(
-                "Blockchain not ready for EHR {EhrId} (Service={ServiceReady}, Connected={IsConnected}). Returning blockchain error in response.",
-                savedRecord.EhrId,
-                _blockchainService != null,
-                isBlockchainConnected);
-
-            blockchainMessage = "Blockchain not ready (connection unavailable). EHR was saved, but blockchain commit failed.";
-        }
-        
-        // Tự động Audit Log
-        EnqueueEhrAuditLog("CREATE", savedRecord.EhrId, request.PatientId, request.OrgId);
 
         _logger.LogInformation(
             "Tạo EHR {EhrId} version {VersionId} file {FileId}, IPFS CID: {IpfsCid}",
@@ -241,7 +219,7 @@ public class EhrService : IEhrService
         }
 
         var (_, patientProfile) = await GetPatientUserProfileAsync(request.PatientId);
-        var responseMessage = "EHR record created successfully";
+        var responseMessage = "EHR tạo thành công.";
         if (!string.IsNullOrWhiteSpace(blockchainMessage))
         {
             responseMessage += $". {blockchainMessage}";
@@ -317,7 +295,7 @@ public class EhrService : IEhrService
                     "Blockchain is not ready yet for EHR {EhrId}. Returning error to EHR response.",
                     ehrHashRecord.EhrId);
 
-                return "Blockchain is offline/unreachable. Commit was not queued and was not written to blockchain.";
+                return "Blockchain chưa chạy, vui lòng thử lại sau. EHR đã được lưu nhưng đồng bộ blockchain thất bại.";
             }
         }
 

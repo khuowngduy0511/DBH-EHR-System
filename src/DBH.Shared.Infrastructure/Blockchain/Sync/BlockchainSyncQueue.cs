@@ -29,8 +29,9 @@ public class BlockchainSyncQueue
     private readonly ConcurrentQueue<BlockchainSyncJob> _fallbackQueue = new();
     private readonly SemaphoreSlim _fallbackSignal = new(0);
 
-    private readonly IConnection? _connection;
-    private readonly IModel? _channel;
+    private IConnection? _connection;
+    private IModel? _channel;
+    private readonly object _channelLock = new();
 
     private readonly string _queueName;
     private readonly IEnumerable<BlockchainSyncJobType>? _allowedJobTypes;
@@ -117,6 +118,7 @@ public class BlockchainSyncQueue
 
     /// <summary>
     /// Publishes a blockchain job to the main queue.
+    /// Falls back to in-memory queue if RabbitMQ channel is unavailable.
     /// </summary>
     public void Enqueue(BlockchainSyncJob job)
     {
@@ -127,16 +129,101 @@ public class BlockchainSyncQueue
             return;
         }
 
-        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
-        var props = _channel.CreateBasicProperties();
-        props.Persistent = true;
-        props.Headers = new Dictionary<string, object>
+        try
         {
-            [RetryHeader] = 0
-        };
+            EnsureChannelOpen();
 
-        var routingKey = GetRoutingKey(job.JobType);
-        _channel.BasicPublish(MainExchange, routingKey, props, body);
+            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
+            var props = _channel!.CreateBasicProperties();
+            props.Persistent = true;
+            props.Headers = new Dictionary<string, object>
+            {
+                [RetryHeader] = 0
+            };
+
+            var routingKey = GetRoutingKey(job.JobType);
+            _channel.BasicPublish(MainExchange, routingKey, props, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "RabbitMQ publish failed for job {JobType}/{EntityId}. Falling back to in-memory queue.",
+                job.JobType, job.EntityId);
+            _fallbackQueue.Enqueue(job);
+            _fallbackSignal.Release();
+        }
+    }
+
+    /// <summary>
+    /// Checks if the RabbitMQ channel is still open. If not, attempts to recreate it.
+    /// </summary>
+    private void EnsureChannelOpen()
+    {
+        if (_channel != null && _channel.IsOpen)
+            return;
+
+        lock (_channelLock)
+        {
+            // Double-check after acquiring lock
+            if (_channel != null && _channel.IsOpen)
+                return;
+
+            _logger.LogWarning("RabbitMQ channel is closed. Attempting to recreate...");
+
+            try
+            {
+                // If connection is also dead, recreate it
+                if (_connection == null || !_connection.IsOpen)
+                {
+                    _logger.LogWarning("RabbitMQ connection is also closed. Reconnecting...");
+                    var factory = new ConnectionFactory
+                    {
+                        HostName = _rabbitOptions.Host,
+                        Port = _rabbitOptions.Port,
+                        VirtualHost = _rabbitOptions.VirtualHost,
+                        UserName = _rabbitOptions.Username,
+                        Password = _rabbitOptions.Password,
+                        DispatchConsumersAsync = true,
+                        RequestedConnectionTimeout = TimeSpan.FromSeconds(_rabbitOptions.ConnectionTimeoutSeconds)
+                    };
+                    _connection = factory.CreateConnection();
+                }
+
+                _channel = _connection!.CreateModel();
+
+                // Re-declare exchanges and queues (idempotent)
+                _channel.ExchangeDeclare(MainExchange, ExchangeType.Direct, durable: true);
+                _channel.ExchangeDeclare(DlqExchange, ExchangeType.Direct, durable: true);
+                _channel.QueueDeclare(_queueName, durable: true, exclusive: false, autoDelete: false,
+                    arguments: new Dictionary<string, object>
+                    {
+                        ["x-dead-letter-exchange"] = DlqExchange,
+                        ["x-dead-letter-routing-key"] = DlqRoutingKey
+                    });
+                _channel.QueueDeclare(DlqQueue, durable: true, exclusive: false, autoDelete: false, arguments: null);
+
+                if (_allowedJobTypes != null && _allowedJobTypes.Any())
+                {
+                    foreach (var jobType in _allowedJobTypes)
+                    {
+                        _channel.QueueBind(_queueName, MainExchange, GetRoutingKey(jobType));
+                    }
+                }
+                else
+                {
+                    _channel.QueueBind(_queueName, MainExchange, MainRoutingKey);
+                }
+                _channel.QueueBind(DlqQueue, DlqExchange, DlqRoutingKey);
+                _channel.BasicQos(0, 1, false);
+
+                _logger.LogInformation("RabbitMQ channel recreated successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to recreate RabbitMQ channel. Will use in-memory fallback.");
+                _channel = null;
+            }
+        }
     }
 
     /// <summary>
@@ -159,23 +246,40 @@ public class BlockchainSyncQueue
 
         while (!ct.IsCancellationRequested)
         {
-            var result = _channel.BasicGet(_queueName, autoAck: false);
-            if (result != null)
+            try
             {
-                var bodyJson = Encoding.UTF8.GetString(result.Body.ToArray());
-                var job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
-                if (job == null)
+                EnsureChannelOpen();
+                if (_channel == null)
                 {
-                    _channel.BasicAck(result.DeliveryTag, multiple: false);
-                    return null;
+                    // Channel recreation failed, wait and retry
+                    await Task.Delay(3000, ct);
+                    continue;
                 }
 
-                return new BlockchainSyncDequeuedItem
+                var result = _channel.BasicGet(_queueName, autoAck: false);
+                if (result != null)
                 {
-                    Job = job,
-                    DeliveryTag = result.DeliveryTag,
-                    RetryCount = ReadRetryCount(result.BasicProperties.Headers)
-                };
+                    var bodyJson = Encoding.UTF8.GetString(result.Body.ToArray());
+                    var job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
+                    if (job == null)
+                    {
+                        _channel.BasicAck(result.DeliveryTag, multiple: false);
+                        return null;
+                    }
+
+                    return new BlockchainSyncDequeuedItem
+                    {
+                        Job = job,
+                        DeliveryTag = result.DeliveryTag,
+                        RetryCount = ReadRetryCount(result.BasicProperties.Headers)
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error during RabbitMQ dequeue. Will retry after delay.");
+                await Task.Delay(3000, ct);
+                continue;
             }
 
             await Task.Delay(300, ct);
@@ -191,7 +295,14 @@ public class BlockchainSyncQueue
     {
         if (_channel != null && dequeued.DeliveryTag > 0)
         {
-            _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+            try
+            {
+                _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to ack delivery tag {Tag}. Message may be redelivered.", dequeued.DeliveryTag);
+            }
         }
 
         return Task.CompletedTask;
@@ -209,17 +320,29 @@ public class BlockchainSyncQueue
             return Task.CompletedTask;
         }
 
-        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
-        var props = _channel.CreateBasicProperties();
-        props.Persistent = true;
-        props.Headers = new Dictionary<string, object>
+        try
         {
-            [RetryHeader] = dequeued.RetryCount + 1
-        };
+            EnsureChannelOpen();
 
-        var routingKey = GetRoutingKey(job.JobType);
-        _channel.BasicPublish(MainExchange, routingKey, props, body);
-        _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
+            var props = _channel!.CreateBasicProperties();
+            props.Persistent = true;
+            props.Headers = new Dictionary<string, object>
+            {
+                [RetryHeader] = dequeued.RetryCount + 1
+            };
+
+            var routingKey = GetRoutingKey(job.JobType);
+            _channel.BasicPublish(MainExchange, routingKey, props, body);
+            _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RabbitMQ requeue failed for {JobType}/{EntityId}. Falling back to in-memory queue.",
+                job.JobType, job.EntityId);
+            _fallbackQueue.Enqueue(job);
+            _fallbackSignal.Release();
+        }
 
         return Task.CompletedTask;
     }
@@ -238,17 +361,90 @@ public class BlockchainSyncQueue
             return Task.CompletedTask;
         }
 
-        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
-        var props = _channel.CreateBasicProperties();
-        props.Persistent = true;
-        props.Headers = new Dictionary<string, object>
+        try
         {
-            [RetryHeader] = dequeued.RetryCount,
-            [ErrorHeader] = errorMessage ?? "Unknown error"
-        };
+            EnsureChannelOpen();
 
-        _channel.BasicPublish(DlqExchange, DlqRoutingKey, props, body);
-        _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
+            var props = _channel!.CreateBasicProperties();
+            props.Persistent = true;
+            props.Headers = new Dictionary<string, object>
+            {
+                [RetryHeader] = dequeued.RetryCount,
+                [ErrorHeader] = errorMessage ?? "Unknown error"
+            };
+
+            _channel.BasicPublish(DlqExchange, DlqRoutingKey, props, body);
+            _channel.BasicAck(dequeued.DeliveryTag, multiple: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to move job {JobType}/{EntityId} to DLQ.",
+                job.JobType, job.EntityId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Moves all messages currently in the main queue to the dead-letter queue.
+    /// This is intended for emergency scenarios (for example when blockchain is unreachable)
+    /// so that messages are preserved in the DLQ for later replay instead of being processed.
+    /// </summary>
+    public Task MoveAllToDeadLetterAsync(CancellationToken ct)
+    {
+        if (_channel == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        while (!ct.IsCancellationRequested)
+        {
+            var result = _channel.BasicGet(_queueName, autoAck: false);
+            if (result == null)
+            {
+                break; // no more messages
+            }
+
+            var bodyJson = Encoding.UTF8.GetString(result.Body.ToArray());
+            BlockchainSyncJob? job = null;
+            try
+            {
+                job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize queued message while moving to DLQ; acking and skipping");
+                try { _channel.BasicAck(result.DeliveryTag, multiple: false); } catch { }
+                continue;
+            }
+
+            try
+            {
+                var props = _channel.CreateBasicProperties();
+                props.Persistent = true;
+                props.Headers = new Dictionary<string, object>
+                {
+                    [RetryHeader] = ReadRetryCount(result.BasicProperties.Headers),
+                    [ErrorHeader] = "Moved to DLQ due to blockchain unreachable at startup"
+                };
+
+                var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(job));
+                _channel.BasicPublish(DlqExchange, DlqRoutingKey, props, body);
+
+                // Ack original message after publishing to DLQ
+                _channel.BasicAck(result.DeliveryTag, multiple: false);
+
+                _logger.LogInformation("Moved queued job {JobId} Type={JobType} to DLQ", job.JobId, job.JobType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to move queued job {JobId} to DLQ; requeuing into main queue", job.JobId);
+                try { _channel.BasicNack(result.DeliveryTag, multiple: false, requeue: true); } catch { }
+                // break to avoid tight loop if publishing fails repeatedly
+                break;
+            }
+        }
 
         return Task.CompletedTask;
     }

@@ -166,7 +166,9 @@ public class FabricGatewayClient : IFabricGateway
             var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
             await EnsureCryptoLoadedAsync(runtimeIdentity);
             if (!_cryptoLoaded) return false;
-
+            _logger.LogInformation(
+                "Crypto material loaded: IdentityKey={IdentityKey}, MspId={MspId}, PeerEndpoint={PeerEndpoint}, UseTls={UseTls}",
+                runtimeIdentity.IdentityKey, runtimeIdentity.MspId, runtimeIdentity.PeerEndpoint, runtimeIdentity.UseTls);  
             if (!await IsPeerReachableAsync())
             {
                 ResetChannel();
@@ -174,7 +176,19 @@ public class FabricGatewayClient : IFabricGateway
             }
 
             var channel = GetOrCreateChannel();
-            // Treat only Ready as connected so callers can fail fast when peer DNS/network is down.
+            if (channel.State != ConnectivityState.Ready)
+            {
+                // Trigger connection to change state from Idle
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try 
+                {
+                    await channel.ConnectAsync(cts.Token);
+                }
+                catch 
+                {
+                    // Ignore exception, state will not be Ready
+                }
+            }
             return channel.State == ConnectivityState.Ready;
         }
         catch

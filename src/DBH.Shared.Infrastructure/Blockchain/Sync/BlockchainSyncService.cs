@@ -1,4 +1,5 @@
 using DBH.Shared.Contracts.Blockchain;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
@@ -42,8 +43,49 @@ public interface IBlockchainSyncService
         string role,
         Func<string, Task>? onFailure = null);
 
+    // ─── Direct commit methods (connection check + retry + DLQ) ───
+    // These are called during an HTTP request so the result is returned in the API response.
+
+    /// <summary>
+    /// Directly commits an EHR hash to blockchain with connection check and retry (3 attempts).
+    /// On failure, the job is automatically moved to the dead-letter queue for later replay.
+    /// Returns (Success, Message) so callers can surface blockchain status in API responses.
+    /// </summary>
+    Task<(bool Success, string? Message)> TryCommitEhrHashAsync(EhrHashRecord record);
+
+    /// <summary>
+    /// Directly commits a consent grant to blockchain with connection check and retry.
+    /// </summary>
+    Task<(bool Success, string? Message)> TryCommitConsentGrantAsync(ConsentRecord record);
+
+    /// <summary>
+    /// Directly commits a consent revoke to blockchain with connection check and retry.
+    /// </summary>
+    Task<(bool Success, string? Message)> TryCommitConsentRevokeAsync(string consentId, string revokedAt, string? reason);
+
+    /// <summary>
+    /// Directly commits an audit entry to blockchain with connection check and retry.
+    /// </summary>
+    Task<(bool Success, string? Message)> TryCommitAuditEntryAsync(AuditEntry entry);
+
     /// <summary>Kiểm tra queue size</summary>
     int PendingCount { get; }
+    
+    /// <summary>
+    /// Timestamp when an emergency move of queued messages to DLQ was performed (or null).
+    /// Services can read this to surface status to callers.
+    /// </summary>
+    DateTimeOffset? LastEmergencyDlqMove { get; }
+
+    /// <summary>
+    /// Notify the sync service that an emergency DLQ move occurred at the specified time.
+    /// </summary>
+    void NotifyEmergencyDlqMove(DateTimeOffset when);
+    
+    /// <summary>
+    /// Clear the emergency DLQ move timestamp (called when blockchain is back online).
+    /// </summary>
+    void ClearEmergencyDlqMove();
 }
 
 /// <summary>
@@ -51,21 +93,39 @@ public interface IBlockchainSyncService
 /// </summary>
 public class BlockchainSyncService : IBlockchainSyncService
 {
+    private DateTimeOffset? _lastEmergencyDlqMove;
     private readonly BlockchainSyncQueue _queue;
     private readonly FabricOptions _options;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BlockchainSyncService> _logger;
 
     public BlockchainSyncService(
         BlockchainSyncQueue queue,
         IOptions<FabricOptions> options,
+        IServiceScopeFactory scopeFactory,
         ILogger<BlockchainSyncService> logger)
     {
         _queue = queue;
         _options = options.Value;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
     public int PendingCount => _queue.Count;
+
+    public DateTimeOffset? LastEmergencyDlqMove => _lastEmergencyDlqMove;
+
+    public void NotifyEmergencyDlqMove(DateTimeOffset when)
+    {
+        _lastEmergencyDlqMove = when;
+    }
+
+    public void ClearEmergencyDlqMove()
+    {
+        _lastEmergencyDlqMove = null;
+    }
+
+    // ─── Fire-and-forget Enqueue methods ───
 
     public void EnqueueEhrHash(
         EhrHashRecord record,
@@ -192,5 +252,188 @@ public class BlockchainSyncService : IBlockchainSyncService
         _logger.LogInformation(
             "Enqueued Fabric CA enrollment: EnrollmentId={EnrollmentId}, Role={Role}",
             enrollmentId, role);
+    }
+
+    // ─── Direct commit methods: connection check + retry + DLQ ───
+    // All share the same core logic via TryCommitDirectAsync.
+
+    /// <inheritdoc />
+    public Task<(bool Success, string? Message)> TryCommitEhrHashAsync(EhrHashRecord record)
+    {
+        return TryCommitDirectAsync(
+            entityId: record.EhrId,
+            commitFunc: async sp =>
+            {
+                var svc = sp.GetRequiredService<IEhrBlockchainService>();
+                return await svc.CommitEhrHashAsync(record);
+            },
+            enqueueFallback: () => EnqueueEhrHash(record,
+                onFailure: err =>
+                {
+                    _logger.LogWarning("DLQ EHR hash for {EhrId}: {Error}", record.EhrId, err);
+                    return Task.CompletedTask;
+                })
+        );
+    }
+
+    /// <inheritdoc />
+    public Task<(bool Success, string? Message)> TryCommitConsentGrantAsync(ConsentRecord record)
+    {
+        return TryCommitDirectAsync(
+            entityId: record.ConsentId,
+            commitFunc: async sp =>
+            {
+                var svc = sp.GetRequiredService<IConsentBlockchainService>();
+                return await svc.GrantConsentAsync(record);
+            },
+            enqueueFallback: () => EnqueueConsentGrant(record,
+                onFailure: err =>
+                {
+                    _logger.LogWarning("DLQ consent grant for {ConsentId}: {Error}", record.ConsentId, err);
+                    return Task.CompletedTask;
+                })
+        );
+    }
+
+    /// <inheritdoc />
+    public Task<(bool Success, string? Message)> TryCommitConsentRevokeAsync(string consentId, string revokedAt, string? reason)
+    {
+        return TryCommitDirectAsync(
+            entityId: consentId,
+            commitFunc: async sp =>
+            {
+                var svc = sp.GetRequiredService<IConsentBlockchainService>();
+                return await svc.RevokeConsentAsync(consentId, revokedAt, reason);
+            },
+            enqueueFallback: () => EnqueueConsentRevoke(consentId, revokedAt, reason,
+                onFailure: err =>
+                {
+                    _logger.LogWarning("DLQ consent revoke for {ConsentId}: {Error}", consentId, err);
+                    return Task.CompletedTask;
+                })
+        );
+    }
+
+    /// <inheritdoc />
+    public Task<(bool Success, string? Message)> TryCommitAuditEntryAsync(AuditEntry entry)
+    {
+        return TryCommitDirectAsync(
+            entityId: entry.AuditId,
+            commitFunc: async sp =>
+            {
+                var svc = sp.GetRequiredService<IAuditBlockchainService>();
+                return await svc.CommitAuditEntryAsync(entry);
+            },
+            enqueueFallback: () => EnqueueAuditEntry(entry,
+                onFailure: err =>
+                {
+                    _logger.LogWarning("DLQ audit entry for {AuditId}: {Error}", entry.AuditId, err);
+                    return Task.CompletedTask;
+                })
+        );
+    }
+
+    // ─── Generic core logic: shared by all TryCommit* methods ───
+
+    /// <summary>
+    /// Core logic: check blockchain connection → commit with 3 retries → DLQ on failure.
+    /// Every TryCommit* method delegates here so the logic is written ONCE.
+    /// </summary>
+    private async Task<(bool Success, string? Message)> TryCommitDirectAsync(
+        string entityId,
+        Func<IServiceProvider, Task<BlockchainTransactionResult>> commitFunc,
+        Action enqueueFallback)
+    {
+        if (!_options.Enabled)
+        {
+            _logger.LogDebug("Blockchain disabled — skipping commit for {EntityId}", entityId);
+            return (true, null);
+        }
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var fabricGateway = scope.ServiceProvider.GetService<IFabricGateway>();
+
+        if (fabricGateway == null)
+        {
+            _logger.LogDebug("IFabricGateway not registered. Skipping commit for {EntityId}", entityId);
+            return (true, null);
+        }
+
+        // Step 1: Check blockchain connection (wait up to 5 seconds)
+        bool connected = false;
+        try
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (await fabricGateway.IsConnectedAsync())
+                {
+                    connected = true;
+                    break;
+                }
+                await Task.Delay(1000);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking blockchain connection for {EntityId}", entityId);
+        }
+
+        if (!connected)
+        {
+            _logger.LogWarning("FALLBACK TRIGGERED: Blockchain not connected for {EntityId}. Moving to dead-letter queue.", entityId);
+            enqueueFallback();
+            return (false, "Blockchain chưa kết nối được. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ sau khi service khởi động lại.");
+        }
+
+        // Step 2: Commit with up to 3 attempts
+        const int maxAttempts = 3;
+        string? lastError = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Committing to blockchain: EntityId={EntityId}, attempt {Attempt}/{MaxAttempts}",
+                    entityId, attempt, maxAttempts);
+
+                var result = await commitFunc(scope.ServiceProvider);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation(
+                        "Blockchain commit succeeded: EntityId={EntityId}, TxHash={TxHash}, Block={Block}",
+                        entityId, result.TxHash, result.BlockNumber);
+                    return (true, null);
+                }
+
+                lastError = result.ErrorMessage ?? "Unknown blockchain commit error";
+                _logger.LogWarning(
+                    "Blockchain commit failed for {EntityId} (attempt {Attempt}/{MaxAttempts}): {Error}",
+                    entityId, attempt, maxAttempts, lastError);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex.Message;
+                _logger.LogWarning(ex,
+                    "Blockchain commit exception for {EntityId} (attempt {Attempt}/{MaxAttempts})",
+                    entityId, attempt, maxAttempts);
+            }
+
+            if (attempt < maxAttempts)
+            {
+                await Task.Delay(1000 * attempt);
+            }
+        }
+
+        // All attempts failed → enqueue to DLQ
+        _logger.LogError(
+            "FALLBACK TRIGGERED: Blockchain commit PERMANENTLY FAILED after {MaxAttempts} attempts for {EntityId}: {Error}. Moving to dead-letter queue.",
+            maxAttempts, entityId, lastError);
+
+        enqueueFallback();
+
+        return (false, $"Blockchain commit thất bại sau {maxAttempts} lần thử: {lastError}. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ lại sau.");
     }
 }

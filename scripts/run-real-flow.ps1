@@ -152,10 +152,21 @@ $ehrPayload = @{
         )
     }
 }
+Write-FlowLog "=============================================================================="
 
+Write-FlowLog "=============================================================================="
+Write-FlowLog "=============================================================================="
+Write-FlowLog "=============================================================================="
 $ehr = ApiJson -Method 'POST' -Url "$base/api/v1/ehr/records" -Token $doctorToken -Headers @{'X-Doctor-Id'=$doctorId.ToString()} -Body $ehrPayload
-$ehrId = [Guid]$ehr.ehrId
-Write-FlowLog ("EHR result summary: ehrId={0}; ipfsCid={1}; dataHash={2}; fileId={3}; versionId={4}" -f $ehr.ehrId, $ehr.ipfsCid, $ehr.dataHash, $ehr.fileId, $ehr.versionId)
+if ($null -ne $ehr -and $null -ne $ehr.data) {
+    Write-FlowLog ("Created EHR record with ehrId={0}" -f $ehr.data.ehrId)
+    $ehrId = [Guid]$ehr.data.ehrId
+    Write-FlowLog ("EHR result summary: ehrId={0}; ipfsCid={1}; dataHash={2}; fileId={3}; versionId={4}" -f $ehr.data.ehrId, $ehr.data.ipfsCid, $ehr.data.dataHash, $ehr.data.fileId, $ehr.data.versionId)
+} else {
+    Write-FlowLog "Created EHR record: unexpected response shape"
+    Write-FlowLog (($ehr | ConvertTo-Json -Depth 5) )
+    throw "Unexpected API response when creating EHR record"
+}
 
 $beforeStatus = ''
 try {

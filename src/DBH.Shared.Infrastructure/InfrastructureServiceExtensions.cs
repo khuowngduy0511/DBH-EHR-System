@@ -236,7 +236,7 @@ public static class InfrastructureServiceExtensions
             queueName,
             allowedJobTypes));
             
-        services.AddScoped<IBlockchainSyncService, BlockchainSyncService>();
+        services.AddSingleton<IBlockchainSyncService, BlockchainSyncService>();
         services.AddHostedService<BlockchainSyncBackgroundService>();
 
         if (fabricOptions.Enabled)
