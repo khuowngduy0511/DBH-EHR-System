@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace DBH.Shared.Infrastructure.Blockchain.Sync;
 
@@ -383,12 +384,13 @@ public class BlockchainSyncService : IBlockchainSyncService
         {
             _logger.LogWarning("FALLBACK TRIGGERED: Blockchain not connected for {EntityId}. Moving to dead-letter queue.", entityId);
             enqueueFallback();
-            return (false, "Blockchain chưa kết nối được. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ sau khi service khởi động lại.");
+            return (false, "Blockcha kếin chưat nối được. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ sau khi service khởi động lại.");
         }
 
         // Step 2: Commit with up to 3 attempts
         const int maxAttempts = 3;
-        string? lastError = null;
+        string? lastErrorFull = null;
+        string? lastErrorShort = null;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -408,14 +410,18 @@ public class BlockchainSyncService : IBlockchainSyncService
                     return (true, null);
                 }
 
-                lastError = result.ErrorMessage ?? "Unknown blockchain commit error";
+                var fullError = result.ErrorMessage ?? "Unknown blockchain commit error";
+                lastErrorFull = fullError;
+                lastErrorShort = ExtractStatusDetail(fullError) ?? fullError;
+
                 _logger.LogWarning(
                     "Blockchain commit failed for {EntityId} (attempt {Attempt}/{MaxAttempts}): {Error}",
-                    entityId, attempt, maxAttempts, lastError);
+                    entityId, attempt, maxAttempts, lastErrorFull);
             }
             catch (Exception ex)
             {
-                lastError = ex.Message;
+                lastErrorFull = ex.Message;
+                lastErrorShort = ex.Message;
                 _logger.LogWarning(ex,
                     "Blockchain commit exception for {EntityId} (attempt {Attempt}/{MaxAttempts})",
                     entityId, attempt, maxAttempts);
@@ -430,10 +436,27 @@ public class BlockchainSyncService : IBlockchainSyncService
         // All attempts failed → enqueue to DLQ
         _logger.LogError(
             "FALLBACK TRIGGERED: Blockchain commit PERMANENTLY FAILED after {MaxAttempts} attempts for {EntityId}: {Error}. Moving to dead-letter queue.",
-            maxAttempts, entityId, lastError);
+            maxAttempts, entityId, lastErrorFull);
 
         enqueueFallback();
 
-        return (false, $"Blockchain commit thất bại sau {maxAttempts} lần thử: {lastError}. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ lại sau.");
+        return (false, $"Blockchain commit thất bại sau {maxAttempts} lần thử: {lastErrorShort}. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ lại sau.");
+    }
+
+    private static string? ExtractStatusDetail(string? statusString)
+    {
+        if (string.IsNullOrEmpty(statusString)) return null;
+
+        // Try common patterns: Detail="..." or "detail": "..."
+        var m = Regex.Match(statusString, "Detail\\s*=\\s*\"(?<d>.*?)\"");
+        if (m.Success) return m.Groups["d"].Value;
+
+        m = Regex.Match(statusString, "\"detail\"\\s*[:=]\\s*\"(?<d>.*?)\"", RegexOptions.IgnoreCase);
+        if (m.Success) return m.Groups["d"].Value;
+
+        m = Regex.Match(statusString, "Detail\\s*[:=]\\s*(?<d>[^,\\)]+)");
+        if (m.Success) return m.Groups["d"].Value.Trim().Trim('"');
+
+        return null;
     }
 }

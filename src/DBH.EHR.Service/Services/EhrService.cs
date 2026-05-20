@@ -242,18 +242,6 @@ public class EhrService : IEhrService
                 CreatedAt = savedRecord.CreatedAt
             }
         };
-        // return new CreateEhrRecordResponseDto
-        // {
-        //     EhrId = savedRecord.EhrId,
-        //     PatientId = request.PatientId,
-        //     PatientProfile = patientProfile,
-        //     VersionId = savedVersion.VersionId,
-        //     FileId = savedFile.FileId,
-        //     VersionNumber = 1,
-        //     IpfsCid = ipfsCid,
-        //     DataHash = dataHash,
-        //     CreatedAt = savedRecord.CreatedAt
-        // };
     }
 
     public async Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId)
@@ -265,53 +253,6 @@ public class EhrService : IEhrService
         var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
         response.PatientProfile = patientProfile;
         return response;
-    }
-
-    private async Task<string?> CommitEhrHashWithFallbackAsync(EhrHashRecord ehrHashRecord)
-    {
-        if (_blockchainService == null)
-        {
-            return null;
-        }
-
-        if (_fabricGateway != null)
-        {
-            const int maxWaitSeconds = 5;
-            var deadline = DateTime.UtcNow.AddSeconds(maxWaitSeconds);
-
-            while (DateTime.UtcNow < deadline)
-            {
-                if (await _fabricGateway.IsConnectedAsync())
-                {
-                    break;
-                }
-
-                await Task.Delay(1000);
-            }
-
-            if (!await _fabricGateway.IsConnectedAsync())
-            {
-                _logger.LogWarning(
-                    "Blockchain is not ready yet for EHR {EhrId}. Returning error to EHR response.",
-                    ehrHashRecord.EhrId);
-
-                return "Blockchain chưa chạy, vui lòng thử lại sau. EHR đã được lưu nhưng đồng bộ blockchain thất bại.";
-            }
-        }
-
-        var blockchainResult = await _blockchainService.CommitEhrHashAsync(ehrHashRecord);
-        if (blockchainResult.Success)
-        {
-            return null;
-        }
-
-        _logger.LogWarning(
-            "Blockchain hash commit failed for EHR {EhrId}: {Error}",
-            ehrHashRecord.EhrId, blockchainResult.ErrorMessage);
-
-        return string.IsNullOrWhiteSpace(blockchainResult.ErrorMessage)
-            ? "Blockchain sync failed. Commit was not queued."
-            : $"Blockchain sync failed: {blockchainResult.ErrorMessage}. Commit was not queued.";
     }
 
     /// <inheritdoc />
