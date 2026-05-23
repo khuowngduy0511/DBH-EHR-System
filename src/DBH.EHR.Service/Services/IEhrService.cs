@@ -7,16 +7,16 @@ public interface IEhrService
 {
     Task<EhrResponse<CreateEhrRecordResponseDto>> CreateEhrRecordAsync(CreateEhrRecordDto request);
 
-    Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId);
+    Task<EhrResponse<EhrRecordResponseDto>> GetEhrRecordAsync(Guid ehrId);
     
     /// <summary>
-    /// Láº¥y EHR vá»›i kiá»ƒm tra consent - tráº£ null náº¿u khÃ´ng cÃ³ quyá»n
+    /// Lấy EHR với kiểm tra consent - trả null nếu không có quyền
     /// </summary>
     Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> GetEhrRecordWithConsentCheckAsync(
         Guid ehrId, Guid requesterId);
         
     /// <summary>
-    /// Láº¥y EHR Document Ä‘Ã£ Ä‘Æ°á»£c giáº£i mÃ£ - tráº£ null náº¿u khÃ´ng cÃ³ quyá»n
+    /// Lấy EHR Document đã giải mã - trả null nếu không có quyền
     /// </summary>
     Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> GetEhrDocumentAsync(
         Guid ehrId, Guid requesterId);
@@ -50,13 +50,13 @@ public interface IEhrService
     Task<EhrRecordResponseDto?> UpdateEhrRecordAsync(Guid ehrId, UpdateEhrRecordDto request);
 
     /// <summary>
-    /// Cáº­p nháº­t EHR vá»›i kiá»ƒm tra consent WRITE â€” tráº£ ConsentDenied náº¿u khÃ´ng cÃ³ quyá»n
+    /// Cập nhật EHR với kiểm tra consent WRITE — trả ConsentDenied nếu không có quyền
     /// </summary>
     Task<(EhrRecordResponseDto? Record, bool ConsentDenied, string? DenyMessage)> UpdateEhrRecordWithConsentCheckAsync(
         Guid ehrId, UpdateEhrRecordDto request, Guid requesterId);
 
     /// <summary>
-    /// Táº£i xuá»‘ng tÃ i liá»‡u EHR vá»›i kiá»ƒm tra consent DOWNLOAD â€” bá»‡nh nhÃ¢n chá»§ sá»Ÿ há»¯u khÃ´ng cáº§n consent
+    /// Tải xuống tài liệu EHR với kiểm tra consent DOWNLOAD — bệnh nhân chủ sở hữu không cần consent
     /// </summary>
     Task<(string? DecryptedData, bool ConsentDenied, string? DenyMessage)> DownloadEhrDocumentAsync(
         Guid ehrId, Guid requesterId);
@@ -64,7 +64,7 @@ public interface IEhrService
     Task<EhrVersionDetailDto?> GetVersionByIdAsync(Guid ehrId, Guid versionId);
 
     /// <summary>
-    /// L?y n?i dung tài li?u dã gi?i mã c?a m?t version EHR c? th?
+    /// Lấy nội dung tài liệu đã giải mã của một version EHR cụ thể
     /// </summary>
     Task<(EhrVersionDocumentResponseDto? Result, bool ConsentDenied, string? DenyMessage)> GetVersionDocumentAsync(
         Guid ehrId, Guid versionId, Guid requesterId);

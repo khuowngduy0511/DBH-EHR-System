@@ -103,7 +103,8 @@ public class EhrHashRecord
     public string OrganizationId { get; set; } = string.Empty;
     public int Version { get; set; }
     public string ContentHash { get; set; } = string.Empty;  // SHA-256
-    public string FileHash { get; set; } = string.Empty;     // SHA-256 of uploaded file
+    // public string FileHash { get; set; } = string.Empty;     // SHA-256 of uploaded file
+    public string? IpfsCid { get; set; }
     public string Timestamp { get; set; } = string.Empty;    // ISO 8601
     public string EncryptedAesKey { get; set; } = string.Empty; // Wrapped blue key
 }

@@ -504,6 +504,7 @@ internal sealed class ChaincodeTestRunner
             Version = sample.Version > 0 ? sample.Version : 1,
             ContentHash = Use(sample.ContentHash, Guid.NewGuid().ToString("N")),
             FileHash = Use(sample.FileHash, Guid.NewGuid().ToString("N")),
+            IpfsCid = Use(sample.IpfsCid, string.Empty),
             Timestamp = Use(sample.Timestamp, DateTime.UtcNow.ToString("o")),
             EncryptedAesKey = Use(sample.EncryptedAesKey, "demo-key")
         };

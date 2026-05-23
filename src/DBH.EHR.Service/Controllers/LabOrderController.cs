@@ -69,7 +69,7 @@ public class LabOrderController : ControllerBase
     {
         var result = await _labOrderService.GetByIdAsync(id);
         if (result == null)
-            return NotFound(new { Message = $"Lab order {id} không tìm thấy" });
+            return NotFound(new { Message = $"Không tìm thấy yêu cầu xét nghiệm {id}" });
         return Ok(result);
     }
 
@@ -136,7 +136,7 @@ public class LabOrderController : ControllerBase
 
         var result = await _labOrderService.UpdateStatusAsync(id, labTechUserId.Value, dto.Status);
         if (result == null)
-            return NotFound(new { Message = $"Lab order {id} không tìm thấy hoặc không thể cập nhật" });
+            return NotFound(new { Message = $"Không tìm thấy yêu cầu xét nghiệm {id} hoặc không thể cập nhật" });
 
         return Ok(result);
     }
@@ -162,7 +162,7 @@ public class LabOrderController : ControllerBase
 
         var result = await _labOrderService.SubmitResultAsync(id, labTechUserId.Value, dto);
         if (result == null)
-            return NotFound(new { Message = $"Lab order {id} không tìm thấy hoặc không thể nhập kết quả" });
+            return NotFound(new { Message = $"Không tìm thấy yêu cầu xét nghiệm {id} hoặc không thể nhập kết quả" });
 
         return Ok(result);
     }
@@ -183,7 +183,7 @@ public class LabOrderController : ControllerBase
 
         var cancelled = await _labOrderService.CancelAsync(id, requesterId.Value);
         if (!cancelled)
-            return BadRequest(new { Message = $"Lab order {id} không tìm thấy hoặc chỉ hủy được khi ở trạng thái PENDING" });
+            return BadRequest(new { Message = $"Không tìm thấy yêu cầu xét nghiệm {id} hoặc chỉ có thể hủy khi yêu cầu ở trạng thái PENDING (Đang chờ)" });
 
         return NoContent();
     }

@@ -44,7 +44,8 @@ public class EhrController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-
+        HttpClient httpClient = new HttpClient();
+        
         _logger.LogInformation(
             "POST /api/v1/ehr/records - Tạo EHR cho bệnh nhân {PatientId}",
             request.PatientId);
@@ -96,7 +97,7 @@ public class EhrController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
 
         if (record == null)
-            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+            return NotFound(new { Message = $"Không tìm thấy hồ sơ EHR {ehrId}" });
 
         return Ok(record);
     }
@@ -105,11 +106,11 @@ public class EhrController : ControllerBase
     /// Lấy EHR theo ID — Admin không cần consent; các role khác bắt buộc kiểm tra consent.
     /// </summary>
     [HttpGet("records/{ehrId:guid}")]
-    [ProducesResponseType(typeof(EhrRecordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(EhrResponse<EhrRecordResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrRecordResponseDto>> GetEhrRecord(
+    public async Task<ActionResult<EhrResponse<EhrRecordResponseDto>>> GetEhrRecord(
         Guid ehrId,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
@@ -117,26 +118,51 @@ public class EhrController : ControllerBase
         if (User.IsInRole("Admin"))
         {
             var adminResult = await _ehrService.GetEhrRecordAsync(ehrId);
-            if (adminResult == null)
-                return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+            if (!adminResult.Success || adminResult.Data == null)
+                return NotFound(adminResult);
             return Ok(adminResult);
         }
 
         // Xác định requester: header > JWT
         var effectiveId = requesterId ?? GetCallerUserId();
         if (!effectiveId.HasValue)
-            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+        {
+            return Unauthorized(new EhrResponse<EhrRecordResponseDto>
+            {
+                Success = false,
+                Message = "Không xác định được danh tính người yêu cầu",
+                Data = null
+            });
+        }
 
-        var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(
-            ehrId, effectiveId.Value);
+        var (record, consentDenied, denyMessage) = await _ehrService.GetEhrRecordWithConsentCheckAsync(ehrId, effectiveId.Value);
 
         if (consentDenied)
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new EhrResponse<EhrRecordResponseDto>
+            {
+                Success = false,
+                Message = denyMessage ?? "Không có quyền truy cập (consent)",
+                Data = null
+            });
+        }
 
         if (record == null)
-            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+        {
+            return NotFound(new EhrResponse<EhrRecordResponseDto>
+            {
+                Success = false,
+                Message = denyMessage ?? $"Không tìm thấy hồ sơ EHR với Id {ehrId}",
+                Data = null
+            });
+        }
 
-        return Ok(record);
+        return Ok(new EhrResponse<EhrRecordResponseDto>
+        {
+            Success = true,
+            Message = "Lấy hồ sơ EHR thành công",
+            Data = record
+        });
     }
 
     /// <summary>
@@ -155,16 +181,39 @@ public class EhrController : ControllerBase
         if (!effectiveId.HasValue)
             return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
 
-        var (decryptedData, consentDenied, denyMessage) = await _ehrService.DownloadEhrDocumentAsync(
-            ehrId, effectiveId.Value);
+        try
+        {
+            var (decryptedData, consentDenied, denyMessage) = await _ehrService.DownloadEhrDocumentAsync(
+                ehrId, effectiveId.Value);
 
-        if (consentDenied)
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+            if (consentDenied)
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
 
-        if (string.IsNullOrEmpty(decryptedData))
-            return NotFound(new { Message = denyMessage ?? $"Không tìm thấy tài liệu EHR {ehrId} hoặc trích xuất thất bại" });
+            if (string.IsNullOrEmpty(decryptedData))
+                return NotFound(new { Message = denyMessage ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại" });
 
-        return Content(decryptedData, "application/json");
+            return Content(decryptedData, "application/json");
+        }
+        catch (EhrException ex)
+        {
+            _logger.LogError(ex, "Tampering detected during document retrieval for EHR {EhrId}", ehrId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = ex.Success,
+                Message = ex.Message,
+                Data = ex.Data
+            });
+        }
+        catch (Exception ex) when (ex.Message.Contains("Tampering Detected"))
+        {
+            _logger.LogError(ex, "Tampering detected during document retrieval for EHR {EhrId}", ehrId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = false,
+                Message = ex.Message,
+                Data = null
+            });
+        }
     }
 
     /// <summary>
@@ -176,15 +225,38 @@ public class EhrController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> GetEhrDocumentForCurrentUser(Guid ehrId)
     {
-        var (decryptedData, forbidden, message) = await _ehrService.GetEhrDocumentForCurrentUserAsync(ehrId);
+        try
+        {
+            var (decryptedData, forbidden, message) = await _ehrService.GetEhrDocumentForCurrentUserAsync(ehrId);
 
-        if (forbidden)
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
+            if (forbidden)
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
 
-        if (string.IsNullOrEmpty(decryptedData))
-            return NotFound(new { Message = message ?? $"Không tìm thấy tài liệu EHR {ehrId} hoặc trích xuất thất bại" });
+            if (string.IsNullOrEmpty(decryptedData))
+                return NotFound(new { Message = message ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại" });
 
-        return Content(decryptedData, "application/json");
+            return Content(decryptedData, "application/json");
+        }
+        catch (EhrException ex)
+        {
+            _logger.LogError(ex, "Tampering detected during document retrieval for EHR {EhrId}", ehrId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = ex.Success,
+                Message = ex.Message,
+                Data = ex.Data
+            });
+        }
+        catch (Exception ex) when (ex.Message.Contains("Tampering Detected"))
+        {
+            _logger.LogError(ex, "Tampering detected during document retrieval for EHR {EhrId}", ehrId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = false,
+                Message = ex.Message,
+                Data = null
+            });
+        }
     }
 
     /// <summary>
@@ -265,7 +337,7 @@ public class EhrController : ControllerBase
     {
         var version = await _ehrService.GetVersionByIdAsync(ehrId, versionId);
         if (version == null)
-            return NotFound(new { Message = $"Không tìm thấy phiên bản {versionId} của EHR {ehrId}" });
+            return NotFound(new { Message = $"Không tìm thấy phiên bản {versionId} của hồ sơ EHR {ehrId}" });
 
         return Ok(version);
     }
@@ -286,16 +358,39 @@ public class EhrController : ControllerBase
         if (!effectiveId.HasValue)
             return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
 
-        var (result, consentDenied, denyMessage) = await _ehrService.GetVersionDocumentAsync(
-            ehrId, versionId, effectiveId.Value);
+        try
+        {
+            var (result, consentDenied, denyMessage) = await _ehrService.GetVersionDocumentAsync(
+                ehrId, versionId, effectiveId.Value);
 
-        if (consentDenied)
-            return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+            if (consentDenied)
+                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
 
-        if (result == null)
-            return NotFound(new { Message = denyMessage ?? $"Không tìm thấy phiên bản {versionId} hoặc giải mã thất bại" });
+            if (result == null)
+                return NotFound(new { Message = denyMessage ?? $"Không tìm thấy phiên bản {versionId} hoặc giải mã thất bại" });
 
-        return Ok(result);
+            return Ok(result);
+        }
+        catch (EhrException ex)
+        {
+            _logger.LogError(ex, "Tampering detected during version document retrieval for EHR {EhrId} Version {VersionId}", ehrId, versionId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = ex.Success,
+                Message = ex.Message,
+                Data = ex.Data
+            });
+        }
+        catch (Exception ex) when (ex.Message.Contains("Tampering Detected"))
+        {
+            _logger.LogError(ex, "Tampering detected during version document retrieval for EHR {EhrId} Version {VersionId}", ehrId, versionId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new EhrResponse<object>
+            {
+                Success = false,
+                Message = ex.Message,
+                Data = null
+            });
+        }
     }
 
     // EHR Files
@@ -323,12 +418,12 @@ public class EhrController : ControllerBase
     public async Task<ActionResult<EhrFileDto>> AddEhrFile(Guid ehrId, IFormFile file)
     {
         if (file == null || file.Length == 0)
-            return BadRequest(new { Message = "Bắt buộc phải có tệp" });
+            return BadRequest(new { Message = "Tệp tin đính kèm là bắt buộc" });
 
         using var stream = file.OpenReadStream();
         var result = await _ehrService.AddFileAsync(ehrId, stream, file.FileName);
         if (result == null)
-            return NotFound(new { Message = $"EHR {ehrId} không tìm thấy" });
+            return NotFound(new { Message = $"Không tìm thấy hồ sơ EHR {ehrId}" });
 
         return CreatedAtAction(nameof(GetEhrFiles), new { ehrId }, result);
     }
@@ -347,7 +442,7 @@ public class EhrController : ControllerBase
     {
         var effectiveId = requesterId ?? GetCallerUserId();
         if (!effectiveId.HasValue)
-            return Unauthorized(new { Message = "Khong xac dinh duoc danh tinh nguoi yeu cau" });
+            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
 
         var (content, fileName, consentDenied, message) =
             await _ehrService.DownloadFileAsync(ehrId, fileId, effectiveId.Value);
@@ -356,7 +451,7 @@ public class EhrController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
 
         if (content == null)
-            return NotFound(new { Message = message ?? $"Khong the tai file {fileId}" });
+            return NotFound(new { Message = message ?? $"Không thể tải tệp tin {fileId}" });
 
         // Detect content type from file extension
         var ext = Path.GetExtension(fileName)?.ToLowerInvariant() ?? "";
@@ -384,7 +479,7 @@ public class EhrController : ControllerBase
     {
         var deleted = await _ehrService.DeleteFileAsync(ehrId, fileId);
         if (!deleted)
-            return NotFound(new { Message = $"File {fileId} trong EHR {ehrId} không tìm thấy" });
+            return NotFound(new { Message = $"Không tìm thấy tệp tin {fileId} trong hồ sơ EHR {ehrId}" });
 
         return NoContent();
     }

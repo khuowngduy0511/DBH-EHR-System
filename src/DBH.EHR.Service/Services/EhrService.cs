@@ -185,12 +185,12 @@ public class EhrService : IEhrService
         var ehrHashRecord = new EhrHashRecord
         {
             EhrId = savedRecord.EhrId.ToString(),
-            PatientDid = $"did:fabric:patient:{request.PatientId}",
-            CreatedByDid = $"did:fabric:org:{request.OrgId}",
+            PatientDid = $"{request.PatientId}",
+            CreatedByDid = GetCurrentUserIdFromContext()?.ToString() ?? string.Empty,
             OrganizationId = request.OrgId?.ToString() ?? string.Empty,
             Version = 1,
-            ContentHash = $"sha256:{dataHash}",
-            FileHash = $"sha256:{dataHash}",
+            ContentHash = $"{dataHash}",
+            IpfsCid = ipfsCid,
             Timestamp = BlockchainTime.NowIsoString,
             EncryptedAesKey = encryptedAesKey
         };
@@ -222,7 +222,7 @@ public class EhrService : IEhrService
         var responseMessage = "EHR tạo thành công.";
         if (!string.IsNullOrWhiteSpace(blockchainMessage))
         {
-            responseMessage += $". {blockchainMessage}";
+            responseMessage += $" {blockchainMessage}";
         }
 
         return new EhrResponse<CreateEhrRecordResponseDto>
@@ -244,15 +244,29 @@ public class EhrService : IEhrService
         };
     }
 
-    public async Task<EhrRecordResponseDto?> GetEhrRecordAsync(Guid ehrId)
+    public async Task<EhrResponse<EhrRecordResponseDto>> GetEhrRecordAsync(Guid ehrId)
     {
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
-        if (record == null) return null;
+        if (record == null)
+        {
+            return new EhrResponse<EhrRecordResponseDto>
+            {
+                Success = false,
+                Message = $"Không tìm thấy hồ sơ EHR với Id {ehrId}",
+                Data = null
+            };
+        }
 
         var response = MapToEhrRecordResponse(record);
         var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
         response.PatientProfile = patientProfile;
-        return response;
+
+        return new EhrResponse<EhrRecordResponseDto>
+        {
+            Success = true,
+            Message = "Lấy hồ sơ EHR thành công",
+            Data = response
+        };
     }
 
     /// <inheritdoc />
@@ -261,7 +275,9 @@ public class EhrService : IEhrService
     {
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
-            return (null, false, null);
+        {
+            return (null, false, $"Không tìm thấy hồ sơ EHR với Id {ehrId}");
+        }
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var bearerToken = GetBearerTokenFromContext();
@@ -275,6 +291,7 @@ public class EhrService : IEhrService
             var response = MapToEhrRecordResponse(record);
             var (_, patientProfile) = await GetPatientUserProfileAsync(response.PatientId);
             response.PatientProfile = patientProfile;
+
             return (response, false, null);
         }
 
@@ -291,6 +308,7 @@ public class EhrService : IEhrService
         var consentedResponse = MapToEhrRecordResponse(record);
         var (_, consentedPatientProfile) = await GetPatientUserProfileAsync(consentedResponse.PatientId);
         consentedResponse.PatientProfile = consentedPatientProfile;
+
         return (consentedResponse, false, null);
     }
 
@@ -310,19 +328,37 @@ public class EhrService : IEhrService
         if (latestVersion == null)
             return (null, false, "Không tìm thấy phiên bản nào của EHR");
 
-        // Retrieve encrypted text from IPFS or fallback
+        // Blockchain verification: fetch from Fabric chaincode
+        EhrHashRecord? blockchainRecord = null;
+        if (_blockchainService != null)
+        {
+            blockchainRecord = await _blockchainService.GetEhrHashAsync(ehrId.ToString(), latestVersion.VersionNumber);
+            if (blockchainRecord == null)
+            {
+                throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): Không tìm thấy bản ghi gốc trên blockchain.", false, null);
+            }
+
+            // Compare CIDs
+            if (latestVersion.IpfsCid != blockchainRecord.IpfsCid)
+            {
+                throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): CID của IPFS trong cơ sở dữ liệu đã bị sửa đổi trái phép.", false, null);
+            }
+        }
+
+        // Retrieve encrypted text from IPFS (using trusted CID) or fallback
         string encryptedText;
-        if (!string.IsNullOrEmpty(latestVersion.IpfsCid))
+        string? cidToUse = _blockchainService != null ? blockchainRecord?.IpfsCid : latestVersion.IpfsCid;
+        if (!string.IsNullOrEmpty(cidToUse))
         {
             try
             {
-                var downloadedPath = await IpfsClientService.RetrieveAsync(latestVersion.IpfsCid);
+                var downloadedPath = await IpfsClientService.RetrieveAsync(cidToUse);
                 encryptedText = await File.ReadAllTextAsync(downloadedPath);
                 if (File.Exists(downloadedPath)) File.Delete(downloadedPath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", latestVersion.IpfsCid);
+                _logger.LogError(ex, "Failed to retrieve encrypted EHR from IPFS: {Cid}", cidToUse);
                 return (null, false, "Không thể lấy tài liệu từ IPFS");
             }
         }
@@ -471,10 +507,30 @@ public class EhrService : IEhrService
             {
                 var decryptedPayload = SymmetricEncryptionService.DecryptString(encryptedText, candidateKey);
 
+                // Content verification: locally hash the decrypted file and compare with blockchain hash
+                if (_blockchainService != null && blockchainRecord != null)
+                {
+                    var localHash = ComputeHash(decryptedPayload);
+                    var blockchainHash = blockchainRecord.ContentHash;
+                    if (blockchainHash.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        blockchainHash = blockchainHash.Substring("sha256:".Length);
+                    }
+
+                    if (!string.Equals(localHash, blockchainHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): Mã băm của dữ liệu giải mã không khớp với mã băm trên blockchain.", false, null);
+                    }
+                }
+
                 // Tự động Audit Log
                 EnqueueEhrAuditLog("VIEW", ehrId, record.PatientId, record.OrgId);
 
                 return (decryptedPayload, false, null);
+            }
+            catch (EhrException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -969,12 +1025,12 @@ public class EhrService : IEhrService
                 var ehrHashRecord = new EhrHashRecord
                 {
                     EhrId = ehrId.ToString(),
-                    PatientDid = $"did:fabric:patient:{record.PatientId}",
-                    CreatedByDid = $"did:fabric:org:{record.OrgId}",
+                    PatientDid = $"{record.PatientId}",
+                    CreatedByDid = requesterUserId?.ToString() ?? GetCurrentUserIdFromContext()?.ToString() ?? string.Empty,
                     OrganizationId = record.OrgId?.ToString() ?? string.Empty,
                     Version = newVersionNumber,
                     ContentHash = $"sha256:{dataHash}",
-                    FileHash = $"sha256:{dataHash}",
+                    IpfsCid = ipfsCid,
                     Timestamp = BlockchainTime.NowIsoString,
                     EncryptedAesKey = encryptedAesKeyForPatient
                 };
@@ -1094,7 +1150,7 @@ public class EhrService : IEhrService
         // Load EHR và version cụ thể
         var record = await _ehrRecordRepo.GetByIdWithVersionsAsync(ehrId);
         if (record == null)
-            return (null, false, "EHR Record not found");
+            return (null, false, "Không tìm thấy hồ sơ bệnh án EHR");
 
         var version = await _ehrRecordRepo.GetVersionByIdAsync(ehrId, versionId);
         if (version == null)
@@ -1105,31 +1161,38 @@ public class EhrService : IEhrService
         var normalizedPatientId = await ResolvePatientUserIdAsync(authClient, record.PatientId, bearerToken) ?? record.PatientId;
         var normalizedRequesterId = await ResolveRequesterUserIdAsync(authClient, requesterId, bearerToken) ?? requesterId;
 
-        bool isPatientOwner = requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId;
-
-        // Kiểm tra consent nếu không phải chính bệnh nhân
-        (bool HasAccess, string? ConsentId) consentCheckResult = (true, null);
-        if (!isPatientOwner)
+        // Blockchain verification: fetch from Fabric chaincode
+        EhrHashRecord? blockchainRecord = null;
+        if (_blockchainService != null)
         {
-            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
-            if (!consentCheckResult.HasAccess)
-                return (null, true, "Requester does not have consent to read this EHR.");
+            blockchainRecord = await _blockchainService.GetEhrHashAsync(ehrId.ToString(), version.VersionNumber);
+            if (blockchainRecord == null)
+            {
+                throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): Không tìm thấy bản ghi gốc trên blockchain.", false, null);
+            }
+
+            // Compare CIDs
+            if (version.IpfsCid != blockchainRecord.IpfsCid)
+            {
+                throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): CID của IPFS trong cơ sở dữ liệu đã bị sửa đổi trái phép.", false, null);
+            }
         }
 
-        // Lấy dữ liệu mã hóa từ IPFS hoặc fallback
+        // Lấy dữ liệu mã hóa từ IPFS (using trusted CID) hoặc fallback
         string encryptedText;
-        if (!string.IsNullOrEmpty(version.IpfsCid))
+        string? cidToUse = _blockchainService != null ? blockchainRecord?.IpfsCid : version.IpfsCid;
+        if (!string.IsNullOrEmpty(cidToUse))
         {
             try
             {
-                var downloadedPath = await IpfsClientService.RetrieveAsync(version.IpfsCid);
+                var downloadedPath = await IpfsClientService.RetrieveAsync(cidToUse);
                 encryptedText = await File.ReadAllTextAsync(downloadedPath);
                 if (File.Exists(downloadedPath)) File.Delete(downloadedPath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to retrieve version {VersionId} from IPFS: {Cid}", versionId, version.IpfsCid);
-                return (null, false, "Failed to retrieve document from IPFS");
+                _logger.LogError(ex, "Failed to retrieve version {VersionId} from IPFS: {Cid}", versionId, cidToUse);
+                return (null, false, "Không thể tải tài liệu từ IPFS");
             }
         }
         else if (!string.IsNullOrEmpty(version.EncryptedFallbackData))
@@ -1138,18 +1201,29 @@ public class EhrService : IEhrService
         }
         else
         {
-            return (null, false, "No encrypted data available for this version");
+            return (null, false, "Không có dữ liệu mã hóa cho phiên bản này");
+        }
+
+        bool isPatientOwner = requesterId == record.PatientId || normalizedRequesterId == normalizedPatientId;
+
+        // Kiểm tra consent nếu không phải chính bệnh nhân
+        (bool HasAccess, string? ConsentId) consentCheckResult = (true, null);
+        if (!isPatientOwner)
+        {
+            consentCheckResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "READ");
+            if (!consentCheckResult.HasAccess)
+                return (null, true, "Người yêu cầu không có quyền truy cập (consent) để đọc hồ sơ EHR này.");
         }
 
         // Lấy private key của requester
         var requesterKeyRes = await SendAuthGetAsync(authClient, $"/api/v1/auth/{normalizedRequesterId}/keys", bearerToken);
         if (!requesterKeyRes.IsSuccessStatusCode)
-            return (null, false, "Cannot fetch requester keys from Auth Service");
+            return (null, false, "Không thể tải khóa của người yêu cầu từ Auth Service");
 
         var keysJson = await requesterKeyRes.Content.ReadAsStringAsync();
         var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (keys == null || string.IsNullOrEmpty(keys.EncryptedPrivateKey))
-            return (null, false, "Requester missing encrypted private key.");
+            return (null, false, "Người yêu cầu thiếu khóa riêng đã mã hóa.");
 
         var privateKey = MasterKeyEncryptionService.Decrypt(keys.EncryptedPrivateKey);
 
@@ -1237,9 +1311,30 @@ public class EhrService : IEhrService
             try
             {
                 var decrypted = SymmetricEncryptionService.DecryptString(encryptedText, candidateKey);
+
+                // Content verification: locally hash the decrypted file and compare with blockchain hash
+                if (_blockchainService != null && blockchainRecord != null)
+                {
+                    var localHash = ComputeHash(decrypted);
+                    var blockchainHash = blockchainRecord.ContentHash;
+                    if (blockchainHash.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        blockchainHash = blockchainHash.Substring("sha256:".Length);
+                    }
+
+                    if (!string.Equals(localHash, blockchainHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new EhrException("Phát hiện thay đổi trái phép (Tampering Detected): Mã băm của dữ liệu giải mã không khớp với mã băm trên blockchain.", false, null);
+                    }
+                }
+
                 EnqueueEhrAuditLog("READ_VERSION", ehrId, record.PatientId, record.OrgId);
                 var (dto, _) = await BuildVersionDocumentResponseAsync(version, record, decrypted);
                 return (dto, false, null);
+            }
+            catch (EhrException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -1393,10 +1488,10 @@ public class EhrService : IEhrService
         DownloadFileAsync(Guid ehrId, Guid fileId, Guid requesterId)
     {
         var record = await _ehrRecordRepo.GetByIdAsync(ehrId);
-        if (record == null) return (null, null, false, "EHR not found");
+        if (record == null) return (null, null, false, "Không tìm thấy hồ sơ bệnh án EHR");
 
         var file = await _ehrRecordRepo.GetFileByIdAsync(ehrId, fileId);
-        if (file == null) return (null, null, false, "File not found");
+        if (file == null) return (null, null, false, "Không tìm thấy tệp tin");
 
         var authClient = _httpClientFactory.CreateClient("AuthService");
         var bearerToken = GetBearerTokenFromContext();
@@ -1409,7 +1504,7 @@ public class EhrService : IEhrService
         {
             var consentResult = await VerifyConsentAsync(normalizedPatientId, requesterId, ehrId, "DOWNLOAD");
             if (!consentResult.HasAccess)
-                return (null, null, true, "Nguoi yeu cau khong co consent DOWNLOAD de tai file nay.");
+                return (null, null, true, "Người yêu cầu không có quyền truy cập (consent) DOWNLOAD để tải tệp tin này.");
         }
 
         // Get encrypted content from IPFS or fallback
@@ -1425,7 +1520,7 @@ public class EhrService : IEhrService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to retrieve file {FileId} from IPFS: {Cid}", fileId, file.IpfsCid);
-                return (null, null, false, "Khong the tai file tu IPFS");
+                return (null, null, false, "Không thể tải tệp tin từ IPFS");
             }
         }
         else if (!string.IsNullOrEmpty(file.EncryptedFallbackData))
@@ -1434,7 +1529,7 @@ public class EhrService : IEhrService
         }
         else
         {
-            return (null, null, false, "Khong co du lieu file");
+            return (null, null, false, "Không có dữ liệu tệp tin");
         }
 
         // Unwrap AES key — try patient private key from DB-stored wrapped key
@@ -1449,20 +1544,20 @@ public class EhrService : IEhrService
             }
             else
             {
-                return (null, null, false, "File nay khong co AES key (upload cu, chua ho tro tai ve).");
+                return (null, null, false, "Tệp tin này không có khóa AES (phiên bản cũ, chưa hỗ trợ tải về).");
             }
         }
 
         var requesterKeyRes = await SendAuthGetAsync(authClient,
             $"/api/v1/auth/{(isPatientOwner ? normalizedRequesterId : normalizedPatientId)}/keys", bearerToken);
         if (!requesterKeyRes.IsSuccessStatusCode)
-            return (null, null, false, "Khong the lay private key de giai ma file");
+            return (null, null, false, "Không thể lấy khóa riêng để giải mã tệp tin");
 
         var keysJson = await requesterKeyRes.Content.ReadAsStringAsync();
         var keys = JsonSerializer.Deserialize<AuthUserKeysDto>(keysJson,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (keys == null || string.IsNullOrEmpty(keys.EncryptedPrivateKey))
-            return (null, null, false, "Private key khong ton tai");
+            return (null, null, false, "Khóa riêng không tồn tại");
 
         byte[] aesKey;
         try
@@ -1473,7 +1568,7 @@ public class EhrService : IEhrService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to unwrap AES key for file {FileId}", fileId);
-            return (null, null, false, "Giai ma AES key that bai");
+            return (null, null, false, "Giải mã khóa AES thất bại");
         }
 
         try
@@ -1495,7 +1590,7 @@ public class EhrService : IEhrService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Decryption failed for file {FileId}", fileId);
-            return (null, null, false, "Giai ma file that bai");
+            return (null, null, false, "Giải mã tệp tin thất bại");
         }
     }
 

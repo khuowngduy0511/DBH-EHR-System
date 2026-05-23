@@ -175,3 +175,16 @@ public class EhrResponse<T> where T : class
     public string Message { get; set; } = string.Empty;
     public T? Data { get; set; }
 }
+
+public class EhrException : Exception
+{
+    public bool Success { get; }
+    public object? Data { get; }
+
+    public EhrException(string message, bool success = false, object? data = null) 
+        : base(message)
+    {
+        Success = success;
+        Data = data;
+    }
+}
