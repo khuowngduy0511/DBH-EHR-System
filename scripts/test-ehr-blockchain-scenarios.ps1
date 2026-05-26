@@ -125,7 +125,14 @@ function ApiJsonSafe {
         Write-FlowLog ("FAILED [{0}]: {1} {2}" -f $statusCode, $Method, $Url)
         if ($errorBody) { Write-FlowLog ("ErrorBody: {0}" -f $errorBody) }
         Write-FlowLog ("Exception: {0}" -f $_.Exception.Message)
-        $errObj = $errorBody | ConvertFrom-Json -ErrorAction SilentlyContinue
+        $errObj = $null
+        if (-not [string]::IsNullOrWhiteSpace($errorBody)) {
+            try {
+                $errObj = $errorBody | ConvertFrom-Json -ErrorAction Stop
+            } catch {
+                $errObj = $null
+            }
+        }
         return @{ Response = $errObj; StatusCode = $statusCode; ErrorBody = $errorBody; Success = $false; RawContent = $errorBody }
     }
 }
@@ -303,13 +310,39 @@ $null = ApiJson -Method 'PUT' -Url "$base/api/v1/appointments/$appointmentId/che
 
 Write-FlowLog "Setup complete: appointment=$appointmentId"
 
+# Create an encounter for this appointment (doctor starts the encounter)
+Start-Sleep -Seconds 1
+Write-FlowLog "Creating encounter for appointment $appointmentId..."
+$encReq = @{ patientId = $patientId; doctorId = $doctorId; appointmentId = $appointmentId; orgId = $orgId; notes = 'BCTest encounter' }
+try {
+    $encRes = ApiJson -Method 'POST' -Url "$base/api/v1/encounters" -Token $doctorToken -Body $encReq
+    $encounterId = $encRes.data.encounterId
+    Write-FlowLog "Encounter created: $encounterId"
+} catch {
+    Write-FlowLog "Failed to create encounter: $($_.Exception.Message)"
+    $encounterId = $null
+}
+
+$resultObj = [ordered]@{
+    receptionToken          = $receptionToken
+    doctorToken             = $doctorToken
+    patientToken            = $patientToken
+    encounterId             = if ($encounterId) { $encounterId.ToString() } else { $null }
+    doctorId                = if ($doctorId) { $doctorId.ToString() } else { $null }
+    patientId               = if ($patientId) { $patientId.ToString() } else { $null }
+}
+Write-FlowLog "Tokens:"
+foreach ($tokenEntry in $resultObj.GetEnumerator()) {
+    Write-FlowLog ("{0}: {1}" -f $tokenEntry.Key, $tokenEntry.Value)
+}
+Start-Sleep -Seconds 10 
 # Common EHR payload builder
 function New-EhrPayload {
-    param([string]$Label = 'Blockchain Test')
-    return @{
+    param([string]$Label = 'Blockchain Test', [Guid]$EncounterId = $null)
+    $payload = @{ 
         patientId = $patientId
         orgId     = $orgId
-        data      = @{
+        data      = @{ 
             resourceType = 'Bundle'
             type         = 'document'
             entry        = @(
@@ -317,7 +350,12 @@ function New-EhrPayload {
             )
         }
     }
-}
+    if ($EncounterId -ne $null -and $EncounterId -ne [Guid]::Empty) { $payload['encounterId'] = $EncounterId }
+    return $payload
+    }
+
+
+
 
 # =============================================================================
 # SCENARIO 1: Blockchain OFF -> Create EHR -> blockchain-down message expected
@@ -329,7 +367,7 @@ Stop-FabricAll
 Start-Sleep -Seconds 5
 
 Write-FlowLog "Creating EHR with blockchain stopped..."
-$ehr1Payload = New-EhrPayload -Label 'Scenario1-BlockchainOFF'
+$ehr1Payload = New-EhrPayload -Label 'Scenario1-BlockchainOFF' -EncounterId $encounterId
 $ehr1Result = ApiJsonSafe -Method 'POST' -Url "$base/api/v1/ehr/records" -Token $doctorToken `
     -Headers @{ 'X-Doctor-Id' = $doctorId.ToString() } -Body $ehr1Payload
 
@@ -369,7 +407,7 @@ Sep "SCENARIO 2: Blockchain ON -> Create EHR"
 Start-FabricAll -WaitSeconds 30
 
 Write-FlowLog "Creating EHR with blockchain running..."
-$ehr2Payload = New-EhrPayload -Label 'Scenario2-BlockchainON'
+$ehr2Payload = New-EhrPayload -Label 'Scenario2-BlockchainON' -EncounterId $encounterId
 $ehr2Result = ApiJsonSafe -Method 'POST' -Url "$base/api/v1/ehr/records" -Token $doctorToken `
     -Headers @{ 'X-Doctor-Id' = $doctorId.ToString() } -Body $ehr2Payload
 
@@ -408,7 +446,7 @@ Stop-FabricMinorityPeers
 Start-Sleep -Seconds 5
 
 Write-FlowLog "Creating EHR with majority of peers down (Hospital2 + Clinic stopped)..."
-$ehr3Payload = New-EhrPayload -Label 'Scenario3-MajorityDown'
+$ehr3Payload = New-EhrPayload -Label 'Scenario3-MajorityDown' -EncounterId $encounterId
 $ehr3Result = ApiJsonSafe -Method 'POST' -Url "$base/api/v1/ehr/records" -Token $doctorToken `
     -Headers @{ 'X-Doctor-Id' = $doctorId.ToString() } -Body $ehr3Payload
 
@@ -591,6 +629,9 @@ $resultObj = [ordered]@{
     passed                  = $passed
     failed                  = $failed
     adminToken              = $adminToken
+    receptionToken          = $receptionToken
+    doctorToken             = $doctorToken
+    patientToken            = $patientToken
     orgId                   = $orgId.ToString()
     doctorEmail             = $doctorEmail
     doctorUserId            = $doctorUserId.ToString()

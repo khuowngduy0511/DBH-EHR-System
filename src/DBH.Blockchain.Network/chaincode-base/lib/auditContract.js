@@ -30,8 +30,10 @@ class AuditContract extends Contract {
             await ctx.stub.putState(patientKey, entryBytes);
         }
 
-        const targetKey = ctx.stub.createCompositeKey('TARGET_AUDIT', [entry.targetType, entry.targetId, auditID]);
-        await ctx.stub.putState(targetKey, entryBytes);
+        if (entry.targetType && entry.targetId) {
+            const targetKey = ctx.stub.createCompositeKey('TARGET_AUDIT', [entry.targetType, entry.targetId, auditID]);
+            await ctx.stub.putState(targetKey, entryBytes);
+        }
 
         const eventPayload = Buffer.from(JSON.stringify({
             type: 'AUDIT_CREATED',

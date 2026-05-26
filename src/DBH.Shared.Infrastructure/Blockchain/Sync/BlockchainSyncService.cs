@@ -384,7 +384,7 @@ public class BlockchainSyncService : IBlockchainSyncService
         {
             _logger.LogWarning("FALLBACK TRIGGERED: Blockchain not connected for {EntityId}. Moving to dead-letter queue.", entityId);
             enqueueFallback();
-            return (false, "Blockcha kếin chưat nối được. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ sau khi service khởi động lại.");
+            return (false, "Blockchain chưa kết nối được. Dữ liệu đã được lưu, blockchain sẽ được đồng bộ sau khi service khởi động lại.");
         }
 
         // Step 2: Commit with up to 3 attempts

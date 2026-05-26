@@ -390,6 +390,7 @@ services:
       - ./src/DBH.Blockchain.Network/explorer/config.json:/opt/explorer/app/platform/fabric/config.json
       - ./src/DBH.Blockchain.Network/explorer/connection-profile:/opt/explorer/app/platform/fabric/connection-profile
       - ./src/DBH.Blockchain.Network/organizations:/tmp/crypto
+      - ./src/DBH.Blockchain.Network/explorer/Proxy.js:/opt/explorer/app/platform/fabric/Proxy.js
       - explorer_walletstore:/opt/explorer/wallet
     ports:
       - "8070:8070"

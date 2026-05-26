@@ -80,7 +80,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
     /// </summary>
     private async Task WaitForBlockchainReadinessAsync(CancellationToken stoppingToken)
     {
-        const int maxWaitMinutes = 1/6;
+        const double maxWaitMinutes = 1.0 / 6.0;
         const int pollIntervalSeconds = 2;
         var deadline = DateTime.UtcNow.AddMinutes(maxWaitMinutes);
 
@@ -346,7 +346,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
     /// so callers don't need to handle audit-after-blockchain separately.
     /// If the audit enqueue itself fails, it is moved to the DLQ by the normal retry path.
     /// </summary>
-    private async Task EnqueueAuditAfterEhrSuccessAsync(IServiceProvider serviceProvider, string ehrPayloadJson)
+    private Task EnqueueAuditAfterEhrSuccessAsync(IServiceProvider serviceProvider, string ehrPayloadJson)
     {
         try
         {
@@ -354,7 +354,7 @@ public class BlockchainSyncBackgroundService : BackgroundService
             if (ehrRecord == null)
             {
                 _logger.LogWarning("Cannot enqueue audit after EHR success: failed to deserialize EHR payload.");
-                return;
+                return Task.CompletedTask;
             }
 
             var auditEntry = new AuditEntry
@@ -397,6 +397,8 @@ public class BlockchainSyncBackgroundService : BackgroundService
         {
             _logger.LogError(ex, "Failed to enqueue audit entry after successful EHR hash commit.");
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

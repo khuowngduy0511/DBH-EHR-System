@@ -68,6 +68,40 @@ public class EhrService : IEhrService
             "Tạo EHR cho bệnh nhân {PatientId}, org: {OrgId}",
             request.PatientId, request.OrgId);
 
+        // If an EncounterId is provided, verify it exists in Appointment Service
+        if (request.EncounterId.HasValue && request.EncounterId.Value != Guid.Empty)
+        {
+            try
+            {
+                var apptClient = _httpClientFactory.CreateClient("AppointmentService");
+                var bearer = GetBearerTokenFromContext();
+                if (!string.IsNullOrEmpty(bearer))
+                {
+                    apptClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                }
+
+                var resp = await apptClient.GetAsync($"/api/v1/encounters/{request.EncounterId.Value}");
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Referenced encounter {EncounterId} not found when creating EHR for patient {PatientId}", request.EncounterId.Value, request.PatientId);
+                    return new EhrResponse<CreateEhrRecordResponseDto>
+                    {
+                        Success = false,
+                        Message = $"Không tìm thấy lượt khám (encounter) với Id {request.EncounterId.Value}"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while verifying encounter {EncounterId} existence", request.EncounterId.Value);
+                return new EhrResponse<CreateEhrRecordResponseDto>
+                {
+                    Success = false,
+                    Message = "Lỗi khi kiểm tra lượt khám liên kết. Vui lòng thử lại sau."
+                };
+            }
+        }
+
         var documentJson = request.Data.GetRawText();
         var dataHash = ComputeHash(documentJson);
 

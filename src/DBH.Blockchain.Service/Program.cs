@@ -77,7 +77,7 @@ builder.Services.AddAuthorization();
 // Hyperledger Fabric & Blockchain Services
 // ============================================================================
 
-builder.Services.AddHyperledgerFabric(builder.Configuration.GetSection("HyperledgerFabric"));
+builder.Services.AddHyperledgerFabric(builder.Configuration);
 
 // ============================================================================
 // CORS

@@ -44,7 +44,6 @@ public class EhrController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-        HttpClient httpClient = new HttpClient();
         
         _logger.LogInformation(
             "POST /api/v1/ehr/records - Tạo EHR cho bệnh nhân {PatientId}",
@@ -52,7 +51,12 @@ public class EhrController : ControllerBase
 
         var result = await _ehrService.CreateEhrRecordAsync(request);
 
-        return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.Data.EhrId}, result);
+        if (!result.Success || result.Data == null)
+        {
+            return BadRequest(result);
+        }
+
+        return CreatedAtAction(nameof(GetEhrRecord), new { ehrId = result.Data.EhrId }, result);
     }
 
     /// <summary>
@@ -169,17 +173,22 @@ public class EhrController : ControllerBase
     /// Lấy EHR Payload (Document) theo ID - Bắt buộc có X-Requester-Id. Bệnh nhân chủ sở hữu không cần consent; người khác cần consent DOWNLOAD.
     /// </summary>
     [HttpGet("records/{ehrId:guid}/document")]
-    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(EhrResponse<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> GetEhrDocument(
+    public async Task<ActionResult<EhrResponse<string>>> GetEhrDocument(
         Guid ehrId,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         var effectiveId = requesterId ?? GetCallerUserId();
         if (!effectiveId.HasValue)
-            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+            return Unauthorized(new EhrResponse<string>
+            {
+                Success = false,
+                Message = "Không xác định được danh tính người yêu cầu",
+                Data = null
+            });
 
         try
         {
@@ -187,12 +196,27 @@ public class EhrController : ControllerBase
                 ehrId, effectiveId.Value);
 
             if (consentDenied)
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+                return StatusCode(StatusCodes.Status403Forbidden, new EhrResponse<string>
+                {
+                    Success = false,
+                    Message = denyMessage ?? "Không có quyền truy cập (consent)",
+                    Data = null
+                });
 
             if (string.IsNullOrEmpty(decryptedData))
-                return NotFound(new { Message = denyMessage ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại" });
+                return NotFound(new EhrResponse<string>
+                {
+                    Success = false,
+                    Message = denyMessage ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại",
+                    Data = null
+                });
 
-            return Content(decryptedData, "application/json");
+            return Ok(new EhrResponse<string>
+            {
+                Success = true,
+                Message = "Lấy tài liệu EHR thành công",
+                Data = decryptedData
+            });
         }
         catch (EhrException ex)
         {
@@ -220,22 +244,37 @@ public class EhrController : ControllerBase
     /// Lấy EHR Document theo user đăng nhập hiện tại (không cần X-Requester-Id)
     /// </summary>
     [HttpGet("records/{ehrId:guid}/document/self")]
-    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(EhrResponse<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> GetEhrDocumentForCurrentUser(Guid ehrId)
+    public async Task<ActionResult<EhrResponse<string>>> GetEhrDocumentForCurrentUser(Guid ehrId)
     {
         try
         {
             var (decryptedData, forbidden, message) = await _ehrService.GetEhrDocumentForCurrentUserAsync(ehrId);
 
             if (forbidden)
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = message });
+                return StatusCode(StatusCodes.Status403Forbidden, new EhrResponse<string>
+                {
+                    Success = false,
+                    Message = message ?? "Không có quyền truy cập",
+                    Data = null
+                });
 
             if (string.IsNullOrEmpty(decryptedData))
-                return NotFound(new { Message = message ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại" });
+                return NotFound(new EhrResponse<string>
+                {
+                    Success = false,
+                    Message = message ?? $"Không tìm thấy tài liệu của hồ sơ EHR {ehrId} hoặc giải mã thất bại",
+                    Data = null
+                });
 
-            return Content(decryptedData, "application/json");
+            return Ok(new EhrResponse<string>
+            {
+                Success = true,
+                Message = "Lấy tài liệu EHR thành công",
+                Data = decryptedData
+            });
         }
         catch (EhrException ex)
         {
@@ -346,17 +385,22 @@ public class EhrController : ControllerBase
     /// Lấy nội dung đã giải mã của một version EHR cụ thể
     /// </summary>
     [HttpGet("records/{ehrId:guid}/versions/{versionId:guid}/document")]
-    [ProducesResponseType(typeof(EhrVersionDocumentResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(EhrResponse<EhrVersionDocumentResponseDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<EhrVersionDocumentResponseDto>> GetVersionDocument(
+    public async Task<ActionResult<EhrResponse<EhrVersionDocumentResponseDto>>> GetVersionDocument(
         Guid ehrId, Guid versionId,
         [FromHeader(Name = "X-Requester-Id")] Guid? requesterId = null)
     {
         var effectiveId = requesterId ?? GetCallerUserId();
         if (!effectiveId.HasValue)
-            return Unauthorized(new { Message = "Không xác định được danh tính người yêu cầu" });
+            return Unauthorized(new EhrResponse<EhrVersionDocumentResponseDto>
+            {
+                Success = false,
+                Message = "Không xác định được danh tính người yêu cầu",
+                Data = null
+            });
 
         try
         {
@@ -364,12 +408,27 @@ public class EhrController : ControllerBase
                 ehrId, versionId, effectiveId.Value);
 
             if (consentDenied)
-                return StatusCode(StatusCodes.Status403Forbidden, new { Message = denyMessage });
+                return StatusCode(StatusCodes.Status403Forbidden, new EhrResponse<EhrVersionDocumentResponseDto>
+                {
+                    Success = false,
+                    Message = denyMessage ?? "Không có quyền truy cập (consent)",
+                    Data = null
+                });
 
             if (result == null)
-                return NotFound(new { Message = denyMessage ?? $"Không tìm thấy phiên bản {versionId} hoặc giải mã thất bại" });
+                return NotFound(new EhrResponse<EhrVersionDocumentResponseDto>
+                {
+                    Success = false,
+                    Message = denyMessage ?? $"Không tìm thấy phiên bản {versionId} hoặc giải mã thất bại",
+                    Data = null
+                });
 
-            return Ok(result);
+            return Ok(new EhrResponse<EhrVersionDocumentResponseDto>
+            {
+                Success = true,
+                Message = "Lấy tài liệu phiên bản EHR thành công",
+                Data = result
+            });
         }
         catch (EhrException ex)
         {

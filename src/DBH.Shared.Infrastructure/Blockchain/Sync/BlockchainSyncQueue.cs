@@ -21,6 +21,14 @@ public class BlockchainSyncQueue
     private const string DlqExchange = "dbh.blockchain.sync.dlx";
     private const string DlqQueue = "dbh.blockchain.sync.dlq";
     private const string DlqRoutingKey = "dbh.blockchain.sync.dead";
+    private static readonly string[] KnownBlockchainQueues =
+    {
+        MainQueue,
+        "dbh.blockchain.sync.ehr.queue",
+        "dbh.blockchain.sync.consent.queue",
+        "dbh.blockchain.sync.audit.queue",
+        "dbh.blockchain.sync.auth.queue"
+    };
     private const string RetryHeader = "x-retry-count";
     private const string ErrorHeader = "x-error-message";
 
@@ -419,6 +427,13 @@ public class BlockchainSyncQueue
                 continue;
             }
 
+            if (job == null)
+            {
+                _logger.LogWarning("Queued message deserialized to null while moving to DLQ; acking and skipping");
+                try { _channel.BasicAck(result.DeliveryTag, multiple: false); } catch { }
+                continue;
+            }
+
             try
             {
                 var props = _channel.CreateBasicProperties();
@@ -553,6 +568,124 @@ public class BlockchainSyncQueue
     }
 
     /// <summary>
+    /// Returns the total number of queued blockchain jobs across all known blockchain sync queues.
+    /// This is useful for admin status checks that need a system-wide view rather than a single service queue.
+    /// </summary>
+    public int GetTotalQueuedJobs()
+    {
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            return _fallbackQueue.Count;
+        }
+
+        var queueNames = KnownBlockchainQueues
+            .Append(_queueName)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var total = 0;
+        foreach (var queueName in queueNames)
+        {
+            total += TryGetQueueMessageCount(queueName);
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Returns counts of queued jobs per queue name.
+    /// Uses passive queue lookup; falls back to in-memory queue count when channel is not available.
+    /// </summary>
+    public Dictionary<string, int> GetQueuedJobsByQueue()
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            result[_queueName] = _fallbackQueue.Count;
+            return result;
+        }
+
+        var queueNames = KnownBlockchainQueues
+            .Append(_queueName)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var q in queueNames)
+        {
+            result[q] = TryGetQueueMessageCount(q);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns counts of dead-letter messages grouped by job type.
+    /// Uses the existing GetDeadLetters helper which peeks DLQ messages.
+    /// </summary>
+    public Dictionary<string, int> GetDeadLetterCountsByJobType()
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            return result;
+        }
+
+        var deadLetters = GetDeadLetters();
+        var groups = deadLetters
+            .Where(dl => dl.Job != null)
+            .GroupBy(dl => dl.Job.JobType.ToString());
+
+        foreach (var g in groups)
+        {
+            result[g.Key] = g.Count();
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns counts of dead-letter messages grouped by inferred originating queue.
+    /// The originating queue is inferred from the job type.
+    /// </summary>
+    public Dictionary<string, int> GetDeadLetterCountsByOriginQueue()
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            return result;
+        }
+
+        var deadLetters = GetDeadLetters();
+        foreach (var (job, _, _) in deadLetters)
+        {
+            if (job == null) continue;
+            var queue = MapJobTypeToQueueName(job.JobType);
+            if (!result.ContainsKey(queue)) result[queue] = 0;
+            result[queue]++;
+        }
+
+        return result;
+    }
+
+    private static string MapJobTypeToQueueName(BlockchainSyncJobType jobType)
+    {
+        return jobType switch
+        {
+            BlockchainSyncJobType.EhrHash => "dbh.blockchain.sync.ehr.queue",
+            BlockchainSyncJobType.ConsentGrant => "dbh.blockchain.sync.consent.queue",
+            BlockchainSyncJobType.ConsentRevoke => "dbh.blockchain.sync.consent.queue",
+            BlockchainSyncJobType.AuditLog => "dbh.blockchain.sync.audit.queue",
+            BlockchainSyncJobType.FabricCaEnrollment => "dbh.blockchain.sync.auth.queue",
+            _ => MainQueue
+        };
+    }
+
+    /// <summary>
     /// Retrieves all messages from the dead-letter queue without consuming them.
     /// Returns a list of tuples containing (job, retryCount, errorMessage).
     /// </summary>
@@ -560,6 +693,7 @@ public class BlockchainSyncQueue
     {
         var result = new List<(BlockchainSyncJob, int, string?)>();
 
+        EnsureChannelOpen();
         if (_channel == null)
         {
             return result;
@@ -630,12 +764,33 @@ public class BlockchainSyncQueue
     {
         get
         {
+            EnsureChannelOpen();
             if (_channel == null)
             {
                 return 0;
             }
 
             return (int)_channel.MessageCount(DlqQueue);
+        }
+    }
+
+    private int TryGetQueueMessageCount(string queueName)
+    {
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var queueInfo = _channel.QueueDeclarePassive(queueName);
+            return (int)queueInfo.MessageCount;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Unable to read message count for queue {QueueName}", queueName);
+            return 0;
         }
     }
 

@@ -535,8 +535,13 @@ public class BlockchainOpsController : ControllerBase
             var isConnected = await _fabricGateway.IsConnectedAsync();
             
             // Get queue statistics
-            var queuedJobs = _syncQueue.Count;
+            var queuedJobs = _syncQueue.GetTotalQueuedJobs();
             var deadLetterCount = _syncQueue.DeadLetterCount;
+
+            // Per-queue and per-type breakdowns
+            var queuedByQueue = _syncQueue.GetQueuedJobsByQueue() ?? new Dictionary<string, int>();
+            var deadLetterByType = _syncQueue.GetDeadLetterCountsByJobType() ?? new Dictionary<string, int>();
+            var deadLetterByQueue = _syncQueue.GetDeadLetterCountsByOriginQueue() ?? new Dictionary<string, int>();
 
             _logger.LogInformation(
                 "Blockchain status check - Connected: {Connected}, QueuedJobs: {Queued}, DeadLetters: {DLQ}",
@@ -551,6 +556,9 @@ public class BlockchainOpsController : ControllerBase
                     : "Blockchain network chưa kết nối. Vui lòng kiểm tra cấu hình và trạng thái của Blockchain.",
                 QueuedJobs = queuedJobs,
                 DeadLetterCount = deadLetterCount,
+                QueuedCountByQueue = queuedByQueue,
+                DeadLetterCountByType = deadLetterByType,
+                DeadLetterCountByQueue = deadLetterByQueue,
                 CheckedAt = DateTime.UtcNow
             };
 

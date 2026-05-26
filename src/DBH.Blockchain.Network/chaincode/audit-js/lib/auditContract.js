@@ -55,9 +55,12 @@ class AuditContract extends Contract {
             await ctx.stub.putState(patientKey, entryBytes);
         }
 
-        // Index by target
-        const targetKey = ctx.stub.createCompositeKey('TARGET_AUDIT', [entry.targetType, entry.targetId, auditID]);
-        await ctx.stub.putState(targetKey, entryBytes);
+        // Index by target only when both target type and target id exist.
+        // Some audit events are system-level and do not have a concrete target resource.
+        if (entry.targetType && entry.targetId) {
+            const targetKey = ctx.stub.createCompositeKey('TARGET_AUDIT', [entry.targetType, entry.targetId, auditID]);
+            await ctx.stub.putState(targetKey, entryBytes);
+        }
 
         // Emit event
         const eventPayload = Buffer.from(JSON.stringify({

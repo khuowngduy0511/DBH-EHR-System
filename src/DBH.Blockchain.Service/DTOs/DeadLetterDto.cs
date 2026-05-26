@@ -140,6 +140,21 @@ public class BlockchainStatusResponseDto
     public int DeadLetterCount { get; set; }
 
     /// <summary>
+    /// Number of queued jobs grouped by queue name
+    /// </summary>
+    public Dictionary<string, int> QueuedCountByQueue { get; set; } = new();
+
+    /// <summary>
+    /// Number of dead-letter messages grouped by job type
+    /// </summary>
+    public Dictionary<string, int> DeadLetterCountByType { get; set; } = new();
+
+    /// <summary>
+    /// Number of dead-letter messages grouped by originating queue
+    /// </summary>
+    public Dictionary<string, int> DeadLetterCountByQueue { get; set; } = new();
+
+    /// <summary>
     /// Last health check timestamp
     /// </summary>
     public DateTime CheckedAt { get; set; } = DateTime.UtcNow;

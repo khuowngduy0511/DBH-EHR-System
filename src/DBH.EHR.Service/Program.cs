@@ -122,6 +122,12 @@ builder.Services.AddHttpClient("AuditService", client =>
     client.BaseAddress = new Uri(auditUrl);
 });
 
+builder.Services.AddHttpClient("AppointmentService", client =>
+{
+    var appointmentUrl = builder.Configuration["ServiceUrls:AppointmentService"] ?? "http://localhost:5007";
+    client.BaseAddress = new Uri(appointmentUrl);
+});
+
 // ============================================================================
 // Notification Client  
 // ============================================================================

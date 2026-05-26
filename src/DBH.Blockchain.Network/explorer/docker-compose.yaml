@@ -48,6 +48,7 @@ services:
       - ./config.json:/opt/explorer/app/platform/fabric/config.json
       - ./connection-profile:/opt/explorer/app/platform/fabric/connection-profile
       - ./organizations:/tmp/crypto
+      - ./Proxy.js:/opt/explorer/app/platform/fabric/Proxy.js
       - walletstore:/opt/explorer/wallet
     ports:
       - ${PORT:-8070}:${PORT:-8070}
