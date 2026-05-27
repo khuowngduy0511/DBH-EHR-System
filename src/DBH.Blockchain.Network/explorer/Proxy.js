@@ -192,7 +192,9 @@ class Proxy {
                     let orderersCount = orderersList.length;
                     if (orderersCount != 0) {
                         for (const orderer of orderersList) {
-                            if (orderer.name === node.requests) {
+                            const nodeHost = node.requests.split(':')[0].toLowerCase();
+                            const ordererHost = orderer.name.split(':')[0].toLowerCase();
+                            if (nodeHost === ordererHost) {
                                 node.status = 'UP';
                             }
                         }
