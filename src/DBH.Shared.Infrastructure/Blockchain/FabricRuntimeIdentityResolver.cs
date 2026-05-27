@@ -71,8 +71,11 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
         var httpContext = _httpContextAccessor.HttpContext;
         var orgIdRaw = httpContext?.User?.FindFirstValue(ClaimTypes.GroupSid);
 
+        _logger.LogInformation("Resolving Fabric identity. OrgIdClaim={OrgIdRaw}", orgIdRaw ?? "<missing>");
+
         if (string.IsNullOrWhiteSpace(orgIdRaw) || !Guid.TryParse(orgIdRaw, out var orgId))
         {
+            _logger.LogWarning("OrgId claim missing/invalid; using fallback Fabric identity.");
             return BuildFallbackIdentity();
         }
 
@@ -89,6 +92,10 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
             var caUrl = orgData.Value<string>("fabricCaUrl") ?? DeriveCaUrlByMsp(mspId);
             var peerEndpoint = DerivePeerEndpoint(orgData["fabricChannelPeers"], mspId) ?? _fabricOptions.PeerEndpoint;
             var gatewayOverride = peerEndpoint.Split(':')[0];
+
+            _logger.LogInformation(
+                "Resolved Fabric identity for OrgId={OrgId}: MspId={MspId}, PeerEndpoint={PeerEndpoint}, CaUrl={CaUrl}",
+                orgId, mspId, peerEndpoint, caUrl);
 
             var orgDomain = DeriveOrgDomain(mspId);
             var orgAlias = DeriveOrgAlias(mspId);

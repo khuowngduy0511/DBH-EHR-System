@@ -223,6 +223,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         var nurseUserId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
         var patientUserId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
         var receptionistUserId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
+        var admin2UserId = Guid.Parse("aaaaaaa2-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
         var hospitalAOrgId = Guid.Parse("11111111-1111-1111-1111-111111111101");
         var hospitalBOrgId = Guid.Parse("11111111-1111-1111-1111-111111111102");
@@ -231,6 +232,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         var userIds = new[]
         {
             adminUserId,
+            admin2UserId,
             doctorUserId,
             pharmacistUserId,
             nurseUserId,
@@ -257,6 +259,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         var users = new[]
         {
             new User { UserId = adminUserId, FullName = "Admin User", Email = "admin@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("admin123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567890", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1985, 6, 15), DateTimeKind.Utc), Address = "100 Nguyen Du, Quan 1, TP.HCM", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[adminUserId].PublicKey },
+            new User { UserId = admin2UserId, FullName = "Admin User 2", Email = "admin2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("admin123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567896", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1986, 7, 16), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[admin2UserId].PublicKey },
             new User { UserId = doctorUserId, FullName = "Dr. House", Email = "doctor@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("doctor123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567891", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1980, 3, 20), DateTimeKind.Utc), Address = "50 Pasteur, Quan 1, TP.HCM", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[doctorUserId].PublicKey },
             new User { UserId = pharmacistUserId, FullName = "Pharma Joe", Email = "pharmacist@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("pharma123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567892", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1991, 2, 8), DateTimeKind.Utc), Address = "56 Dien Bien Phu, Binh Thanh", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[pharmacistUserId].PublicKey },
             new User { UserId = nurseUserId, FullName = "Nurse Joy", Email = "nurse@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("nurse123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567893", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1992, 4, 18), DateTimeKind.Utc), Address = "22 Le Van Sy, Quan 3, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[nurseUserId].PublicKey },
@@ -279,6 +282,7 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         // 3. UserRoles
         modelBuilder.Entity<UserRole>().HasData(
             new UserRole { UserId = adminUserId, RoleId = 1 },
+            new UserRole { UserId = admin2UserId, RoleId = 1 },
             new UserRole { UserId = doctorUserId, RoleId = 2 },
             new UserRole { UserId = pharmacistUserId, RoleId = 3 },
             new UserRole { UserId = nurseUserId, RoleId = 4 },

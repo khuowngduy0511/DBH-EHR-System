@@ -1051,36 +1051,33 @@ public class EhrService : IEhrService
             _logger.LogError(ex, "Error re-wrapping keys during EHR update for EHR {EhrId}", ehrId);
         }
 
-        // Blockchain: Commit updated hash
-        if (_blockchainService != null)
+        // Blockchain: Commit updated hash with connection check + fallback message
+        try
         {
-            try
+            var ehrHashRecord = new EhrHashRecord
             {
-                var ehrHashRecord = new EhrHashRecord
-                {
-                    EhrId = ehrId.ToString(),
-                    PatientDid = $"{record.PatientId}",
-                    CreatedByDid = requesterUserId?.ToString() ?? GetCurrentUserIdFromContext()?.ToString() ?? string.Empty,
-                    OrganizationId = record.OrgId?.ToString() ?? string.Empty,
-                    Version = newVersionNumber,
-                    ContentHash = $"sha256:{dataHash}",
-                    IpfsCid = ipfsCid,
-                    Timestamp = BlockchainTime.NowIsoString,
-                    EncryptedAesKey = encryptedAesKeyForPatient
-                };
+                EhrId = ehrId.ToString(),
+                PatientDid = $"{record.PatientId}",
+                CreatedByDid = requesterUserId?.ToString() ?? GetCurrentUserIdFromContext()?.ToString() ?? string.Empty,
+                OrganizationId = record.OrgId?.ToString() ?? string.Empty,
+                Version = newVersionNumber,
+                ContentHash = $"sha256:{dataHash}",
+                IpfsCid = ipfsCid,
+                Timestamp = BlockchainTime.NowIsoString,
+                EncryptedAesKey = encryptedAesKeyForPatient
+            };
 
-                _blockchainSyncService.EnqueueEhrHash(
-                    ehrHashRecord,
-                    onFailure: error =>
-                    {
-                        _logger.LogWarning("Queued blockchain hash commit failed for EHR {EhrId} v{Version}: {Error}", ehrId, newVersionNumber, error);
-                        return Task.CompletedTask;
-                    });
-            }
-            catch (Exception ex)
+            var (blockchainSuccess, blockchainMessage) = await _blockchainSyncService.TryCommitEhrHashAsync(ehrHashRecord);
+            if (!blockchainSuccess && !string.IsNullOrWhiteSpace(blockchainMessage))
             {
-                _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId} v{Version}", ehrId, newVersionNumber);
+                _logger.LogWarning(
+                    "Blockchain commit warning for EHR {EhrId} v{Version}: {Message}",
+                    ehrId, newVersionNumber, blockchainMessage);
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Blockchain hash commit exception for EHR {EhrId} v{Version}", ehrId, newVersionNumber);
         }
 
         // Tự động Audit Log
