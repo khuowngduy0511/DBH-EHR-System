@@ -219,10 +219,15 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
 
         var adminUserId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var doctorUserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var doctor2UserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2");
         var pharmacistUserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var pharmacist2UserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccd");
         var nurseUserId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var nurse2UserId = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddde");
         var patientUserId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var patient2UserId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeef");
         var receptionistUserId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
+        var receptionist2UserId = Guid.Parse("ffffffff-ffff-ffff-ffff-fffffffffff1");
         var admin2UserId = Guid.Parse("aaaaaaa2-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
         var hospitalAOrgId = Guid.Parse("11111111-1111-1111-1111-111111111101");
@@ -234,10 +239,15 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             adminUserId,
             admin2UserId,
             doctorUserId,
+            doctor2UserId,
             pharmacistUserId,
+            pharmacist2UserId,
             nurseUserId,
+            nurse2UserId,
             patientUserId,
+            patient2UserId,
             receptionistUserId
+            ,receptionist2UserId
         };
 
         var keyPairsByUserId = userIds.ToDictionary(
@@ -261,10 +271,15 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             new User { UserId = adminUserId, FullName = "Admin User", Email = "admin@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("admin123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567890", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1985, 6, 15), DateTimeKind.Utc), Address = "100 Nguyen Du, Quan 1, TP.HCM", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[adminUserId].PublicKey },
             new User { UserId = admin2UserId, FullName = "Admin User 2", Email = "admin2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("admin123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567896", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1986, 7, 16), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[admin2UserId].PublicKey },
             new User { UserId = doctorUserId, FullName = "Dr. House", Email = "doctor@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("doctor123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567891", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1980, 3, 20), DateTimeKind.Utc), Address = "50 Pasteur, Quan 1, TP.HCM", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[doctorUserId].PublicKey },
+            new User { UserId = doctor2UserId, FullName = "Dr. Watson", Email = "doctor2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("doctor123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567801", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1982, 5, 10), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[doctor2UserId].PublicKey },
             new User { UserId = pharmacistUserId, FullName = "Pharma Joe", Email = "pharmacist@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("pharma123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567892", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1991, 2, 8), DateTimeKind.Utc), Address = "56 Dien Bien Phu, Binh Thanh", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[pharmacistUserId].PublicKey },
+            new User { UserId = pharmacist2UserId, FullName = "Pharma Linh", Email = "pharmacist2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("pharma123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567802", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1990, 9, 12), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[pharmacist2UserId].PublicKey },
             new User { UserId = nurseUserId, FullName = "Nurse Joy", Email = "nurse@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("nurse123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567893", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1992, 4, 18), DateTimeKind.Utc), Address = "22 Le Van Sy, Quan 3, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[nurseUserId].PublicKey },
+            new User { UserId = nurse2UserId, FullName = "Nurse Minh", Email = "nurse2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("nurse123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567803", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1993, 11, 25), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[nurse2UserId].PublicKey },
             new User { UserId = patientUserId, FullName = "John Doe", Email = "patient@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("patient123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567894", Gender = "Male", DateOfBirth = DateTime.SpecifyKind(new DateTime(1990, 1, 1), DateTimeKind.Utc), Address = "12 Le Lai, Quan 1, TP.HCM", OrganizationId = clinicOrgId.ToString(), PublicKey = keyPairsByUserId[patientUserId].PublicKey },
+            new User { UserId = patient2UserId, FullName = "Jane Nguyen", Email = "patient2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("patient123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567804", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1995, 3, 5), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[patient2UserId].PublicKey },
             new User { UserId = receptionistUserId, FullName = "Pam Beesly", Email = "receptionist@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("receptionist123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567895", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1994, 6, 12), DateTimeKind.Utc), Address = "34 Pham Ngoc Thach, Quan 3, TP.HCM", OrganizationId = hospitalAOrgId.ToString(), PublicKey = keyPairsByUserId[receptionistUserId].PublicKey }
+            ,new User { UserId = receptionist2UserId, FullName = "Pam Tran", Email = "receptionist2@dbh.com", Password = BCrypt.Net.BCrypt.HashPassword("receptionist123"), Status = UserStatus.Active, CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1), DateTimeKind.Utc), Phone = "1234567805", Gender = "Female", DateOfBirth = DateTime.SpecifyKind(new DateTime(1996, 8, 22), DateTimeKind.Utc), Address = "341 Su Van Hanh, Quan 10, TP.HCM", OrganizationId = hospitalBOrgId.ToString(), PublicKey = keyPairsByUserId[receptionist2UserId].PublicKey }
         };
         modelBuilder.Entity<User>().HasData(users);
 
@@ -284,10 +299,15 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
             new UserRole { UserId = adminUserId, RoleId = 1 },
             new UserRole { UserId = admin2UserId, RoleId = 1 },
             new UserRole { UserId = doctorUserId, RoleId = 2 },
+            new UserRole { UserId = doctor2UserId, RoleId = 2 },
             new UserRole { UserId = pharmacistUserId, RoleId = 3 },
+            new UserRole { UserId = pharmacist2UserId, RoleId = 3 },
             new UserRole { UserId = nurseUserId, RoleId = 4 },
+            new UserRole { UserId = nurse2UserId, RoleId = 4 },
             new UserRole { UserId = patientUserId, RoleId = 5 },
-            new UserRole { UserId = receptionistUserId, RoleId = 6 }
+            new UserRole { UserId = patient2UserId, RoleId = 5 },
+            new UserRole { UserId = receptionistUserId, RoleId = 6 },
+            new UserRole { UserId = receptionist2UserId, RoleId = 6 }
         );
 
         // 4. UserSecurity
@@ -295,12 +315,21 @@ public class AuthDbContext : Microsoft.EntityFrameworkCore.DbContext
         modelBuilder.Entity<UserSecurity>().HasData(securities);
 
         // 5. Profiles (Seed basic placeholders)
-        modelBuilder.Entity<Doctor>().HasData(new Doctor { DoctorId = doctorUserId, UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", VerifiedStatus = VerificationStatus.Verified });
-        modelBuilder.Entity<Patient>().HasData(new Patient { PatientId = patientUserId, UserId = patientUserId, Dob = new DateOnly(1990, 1, 1) });
+        modelBuilder.Entity<Doctor>().HasData(
+            new Doctor { DoctorId = doctorUserId, UserId = doctorUserId, LicenseNumber = "DOC123", Specialty = "General", VerifiedStatus = VerificationStatus.Verified },
+            new Doctor { DoctorId = doctor2UserId, UserId = doctor2UserId, LicenseNumber = "DOC456", Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified }
+        );
+        modelBuilder.Entity<Patient>().HasData(
+            new Patient { PatientId = patientUserId, UserId = patientUserId, Dob = new DateOnly(1990, 1, 1) },
+            new Patient { PatientId = patient2UserId, UserId = patient2UserId, Dob = new DateOnly(1995, 3, 5) }
+        );
         modelBuilder.Entity<Staff>().HasData(
             new Staff { StaffId = pharmacistUserId, UserId = pharmacistUserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM123", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = pharmacist2UserId, UserId = pharmacist2UserId, Role = StaffRole.Pharmacist, LicenseNumber = "PHARM456", VerifiedStatus = VerificationStatus.Verified },
             new Staff { StaffId = nurseUserId, UserId = nurseUserId, Role = StaffRole.Nurse, Specialty = "Pediatrics", VerifiedStatus = VerificationStatus.Verified },
-            new Staff { StaffId = receptionistUserId, UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified }
+            new Staff { StaffId = nurse2UserId, UserId = nurse2UserId, Role = StaffRole.Nurse, Specialty = "Emergency", VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = receptionistUserId, UserId = receptionistUserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified },
+            new Staff { StaffId = receptionist2UserId, UserId = receptionist2UserId, Role = StaffRole.Receptionist, VerifiedStatus = VerificationStatus.Verified }
         );
     }
 }
