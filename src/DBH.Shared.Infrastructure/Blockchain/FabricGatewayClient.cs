@@ -222,53 +222,93 @@ public class FabricGatewayClient : IFabricGateway
 
         try
         {
-            // Load signing key
-            if (!string.IsNullOrEmpty(runtimeIdentity.PrivateKeyPath) && File.Exists(runtimeIdentity.PrivateKeyPath))
-            {
-                var keyPem = await File.ReadAllTextAsync(runtimeIdentity.PrivateKeyPath);
-                _signingKey = ECDsa.Create();
-                _signingKey.ImportFromPem(keyPem);
-                _logger.LogInformation("Loaded signing key from {Path}", runtimeIdentity.PrivateKeyPath);
-            }
-            else if (!string.IsNullOrEmpty(runtimeIdentity.PrivateKeyDirectory) && Directory.Exists(runtimeIdentity.PrivateKeyDirectory))
-            {
-                // Fabric CA stores keys with random names in keystore/
-                var keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*_sk");
-                if (keyFiles.Length == 0)
-                    keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*.pem");
+            _logger.LogInformation("Attempting to load Fabric gateway crypto material. PrivateKeyPath: {PrivateKeyPath}, PrivateKeyDirectory: {PrivateKeyDirectory}, CertificatePath: {CertificatePath}, GatewayTlsCertificatePath: {GatewayTlsCertificatePath}",
+                runtimeIdentity.PrivateKeyPath ?? "<null>",
+                runtimeIdentity.PrivateKeyDirectory ?? "<null>",
+                runtimeIdentity.CertificatePath ?? "<null>",
+                runtimeIdentity.GatewayTlsCertificatePath ?? "<null>");
 
-                if (keyFiles.Length > 0)
+            // Load signing key
+            if (!string.IsNullOrEmpty(runtimeIdentity.PrivateKeyPath))
+            {
+                var exists = File.Exists(runtimeIdentity.PrivateKeyPath);
+                _logger.LogInformation("Checking PrivateKeyPath: {Path} (Exists: {Exists})", runtimeIdentity.PrivateKeyPath, exists);
+                if (exists)
                 {
-                    var keyPem = await File.ReadAllTextAsync(keyFiles[0]);
+                    var keyPem = await File.ReadAllTextAsync(runtimeIdentity.PrivateKeyPath);
                     _signingKey = ECDsa.Create();
                     _signingKey.ImportFromPem(keyPem);
-                    _logger.LogInformation("Loaded signing key from {Path}", keyFiles[0]);
+                    _logger.LogInformation("Loaded signing key from PrivateKeyPath: {Path}", runtimeIdentity.PrivateKeyPath);
+                }
+            }
+
+            if (_signingKey == null && !string.IsNullOrEmpty(runtimeIdentity.PrivateKeyDirectory))
+            {
+                var exists = Directory.Exists(runtimeIdentity.PrivateKeyDirectory);
+                _logger.LogInformation("Checking PrivateKeyDirectory: {Dir} (Exists: {Exists})", runtimeIdentity.PrivateKeyDirectory, exists);
+                if (exists)
+                {
+                    // Fabric CA stores keys with random names in keystore/
+                    var keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*_sk");
+                    if (keyFiles.Length == 0)
+                        keyFiles = Directory.GetFiles(runtimeIdentity.PrivateKeyDirectory, "*.pem");
+
+                    _logger.LogInformation("Found {Count} candidate key files in {Dir}", keyFiles.Length, runtimeIdentity.PrivateKeyDirectory);
+                    foreach (var file in keyFiles)
+                    {
+                        _logger.LogInformation("Candidate key file: {File}", file);
+                    }
+
+                    if (keyFiles.Length > 0)
+                    {
+                        var keyPem = await File.ReadAllTextAsync(keyFiles[0]);
+                        _signingKey = ECDsa.Create();
+                        _signingKey.ImportFromPem(keyPem);
+                        _logger.LogInformation("Loaded signing key from {Path}", keyFiles[0]);
+                    }
                 }
             }
 
             // Load certificate
-            if (!string.IsNullOrEmpty(runtimeIdentity.CertificatePath) && File.Exists(runtimeIdentity.CertificatePath))
+            if (!string.IsNullOrEmpty(runtimeIdentity.CertificatePath))
             {
-                _certificate = await File.ReadAllTextAsync(runtimeIdentity.CertificatePath);
-                _logger.LogInformation("Loaded certificate from {Path}", runtimeIdentity.CertificatePath);
+                var exists = File.Exists(runtimeIdentity.CertificatePath);
+                _logger.LogInformation("Checking CertificatePath: {Path} (Exists: {Exists})", runtimeIdentity.CertificatePath, exists);
+                if (exists)
+                {
+                    _certificate = await File.ReadAllTextAsync(runtimeIdentity.CertificatePath);
+                    _logger.LogInformation("Loaded certificate from {Path}", runtimeIdentity.CertificatePath);
+                }
             }
 
             // Load TLS CA cert
-            if (!string.IsNullOrEmpty(runtimeIdentity.GatewayTlsCertificatePath) && File.Exists(runtimeIdentity.GatewayTlsCertificatePath))
+            if (!string.IsNullOrEmpty(runtimeIdentity.GatewayTlsCertificatePath))
             {
-                _tlsCaCert = await File.ReadAllBytesAsync(runtimeIdentity.GatewayTlsCertificatePath);
-                _logger.LogInformation("Loaded TLS CA cert from {Path}", runtimeIdentity.GatewayTlsCertificatePath);
+                var exists = File.Exists(runtimeIdentity.GatewayTlsCertificatePath);
+                _logger.LogInformation("Checking GatewayTlsCertificatePath: {Path} (Exists: {Exists})", runtimeIdentity.GatewayTlsCertificatePath, exists);
+                if (exists)
+                {
+                    _tlsCaCert = await File.ReadAllBytesAsync(runtimeIdentity.GatewayTlsCertificatePath);
+                    _logger.LogInformation("Loaded TLS CA cert from {Path}", runtimeIdentity.GatewayTlsCertificatePath);
+                }
             }
 
             _cryptoLoaded = _signingKey != null && _certificate != null;
 
             if (!_cryptoLoaded)
             {
-                _logger.LogWarning(
-                    "Crypto material not fully loaded (Key={HasKey}, Cert={HasCert}). " +
-                    "Running in SIMULATION mode. To use real Fabric network, " +
-                    "run 'blockchain/network.sh up' first.",
-                    _signingKey != null, _certificate != null);
+                if (_options.SimulationMode)
+                {
+                    _logger.LogInformation("Crypto material not fully loaded. Running in configured SIMULATION mode.");
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Crypto material not fully loaded (Key={HasKey}, Cert={HasCert}). " +
+                        "Running in SIMULATION mode. To use real Fabric network, " +
+                        "run 'blockchain/network.sh up' first.",
+                        _signingKey != null, _certificate != null);
+                }
             }
         }
         catch (Exception ex)

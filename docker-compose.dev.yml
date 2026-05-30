@@ -69,9 +69,11 @@ services:
       - ServiceUrls__OrganizationService=http://organization_service:5002
       - FabricCA__CaUrl=https://ca_hospital1:7054
       - FabricCA__CaName=ca-hospital1
-      - FabricCA__AdminCertPath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
-      - FabricCA__AdminKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
+      - FabricCA__AdminCertPath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/msp/signcerts/cert.pem
+      - FabricCA__AdminKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/msp/keystore
       - FabricCA__TlsCertPath=/tmp/fabric-crypto/fabric-ca/hospital1/ca-cert.pem
+      - FabricCA__AdminUsername=admin
+      - FabricCA__AdminPassword=adminpw
     depends_on:
       pg_primary:
         condition: service_healthy
@@ -172,6 +174,7 @@ services:
       - ServiceUrls__NotificationService=http://notification_service:5006
       - HyperledgerFabric__Enabled=true
       - HyperledgerFabric__SimulationMode=false
+      - HyperledgerFabric__MaxRetries=2
       - HyperledgerFabric__PeerEndpoint=peer0.hospital1.ehr.com:7051
       - HyperledgerFabric__GatewayPeerOverride=peer0.hospital1.ehr.com
       - HyperledgerFabric__MspId=Hospital1MSP
@@ -498,6 +501,10 @@ services:
       - HyperledgerFabric__CertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
       - HyperledgerFabric__PrivateKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
       - HyperledgerFabric__TlsCertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt
+      - FabricCA__CaUrl=https://ca_hospital1:7054
+      - FabricCA__CaName=ca-hospital1
+      - FabricCA__AdminUsername=admin
+      - FabricCA__AdminPassword=adminpw
     depends_on:
       pg_primary:
         condition: service_healthy

@@ -4,6 +4,7 @@ using DBH.Shared.Infrastructure.Blockchain.Sync;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace DBH.Blockchain.Service.Controllers;
 
@@ -417,24 +418,31 @@ public class BlockchainOpsController : ControllerBase
                 return Forbid();
             }
 
-            // Get all dead-letter messages
-            var deadLetters = _syncQueue.GetDeadLetters();
+            // Get all dead-letter messages, then filter by organization
+            var deadLetters = _syncQueue.GetDeadLetters()
+                .Select(dl => new
+                {
+                    DeadLetter = dl,
+                    OrganizationId = ResolveOrganizationId(dl.Job)
+                })
+                .Where(x => string.Equals(x.OrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
             
             _logger.LogInformation(
                 "Retrieved {Count} dead-letter messages for organization {OrgId}",
                 deadLetters.Count, organizationId);
 
             // Map to DTOs with organization filtering
-            var deadLetterDtos = deadLetters.Select(dl => new DeadLetterDto
+            var deadLetterDtos = deadLetters.Select(x => new DeadLetterDto
             {
-                JobId = dl.Job.JobId,
-                JobType = dl.Job.JobType.ToString(),
-                EntityId = dl.Job.EntityId,
-                Attempts = dl.RetryCount,
-                ErrorMessage = dl.ErrorMessage,
-                CreatedAt = dl.Job.CreatedAt,
-                PayloadJson = dl.Job.PayloadJson,
-                OrganizationId = organizationId // Attach the requesting org's ID
+                JobId = x.DeadLetter.Job.JobId,
+                JobType = x.DeadLetter.Job.JobType.ToString(),
+                EntityId = x.DeadLetter.Job.EntityId,
+                Attempts = x.DeadLetter.RetryCount,
+                ErrorMessage = x.DeadLetter.ErrorMessage,
+                CreatedAt = x.DeadLetter.Job.CreatedAt,
+                PayloadJson = x.DeadLetter.Job.PayloadJson,
+                OrganizationId = x.OrganizationId
             }).ToList();
 
             var response = new DeadLetterListResponseDto
@@ -521,41 +529,63 @@ public class BlockchainOpsController : ControllerBase
     }
 
     /// <summary>
-    /// Check if blockchain network is running and ready
+    /// Check if blockchain network is running and ready (admin only, filtered by organization)
     /// </summary>
     [HttpGet("status")]
-    [AllowAnonymous]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(BlockchainStatusResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<BlockchainStatusResponseDto>> CheckBlockchainStatus()
     {
         try
         {
+            var organizationId = User.FindFirstValue(ClaimTypes.GroupSid);
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogWarning("CheckBlockchainStatus called but organization claim is missing in token");
+                return Forbid();
+            }
+
             // Check if blockchain gateway is connected
             var isConnected = await _fabricGateway.IsConnectedAsync();
-            
-            // Get queue statistics
-            var queuedJobs = _syncQueue.GetTotalQueuedJobs();
-            var deadLetterCount = _syncQueue.DeadLetterCount;
 
-            // Per-queue and per-type breakdowns
-            var queuedByQueue = _syncQueue.GetQueuedJobsByQueue() ?? new Dictionary<string, int>();
-            var deadLetterByType = _syncQueue.GetDeadLetterCountsByJobType() ?? new Dictionary<string, int>();
-            var deadLetterByQueue = _syncQueue.GetDeadLetterCountsByOriginQueue() ?? new Dictionary<string, int>();
+            // Get queue statistics filtered by organization
+            var queuedJobs = _syncQueue.GetQueuedJobs();
+            var queuedForOrg = queuedJobs
+                .Where(x => IsJobForOrganization(x.Job, organizationId))
+                .ToList();
+
+            var deadLetters = _syncQueue.GetDeadLetters();
+            var deadLettersForOrg = deadLetters
+                .Where(x => IsJobForOrganization(x.Job, organizationId))
+                .ToList();
+
+            var queuedByQueue = queuedForOrg
+                .GroupBy(x => x.QueueName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+            var deadLetterByType = deadLettersForOrg
+                .GroupBy(x => x.Job.JobType.ToString(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+            var deadLetterByQueue = deadLettersForOrg
+                .GroupBy(x => BlockchainSyncQueue.MapJobTypeToQueueName(x.Job.JobType), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
             _logger.LogInformation(
                 "Blockchain status check - Connected: {Connected}, QueuedJobs: {Queued}, DeadLetters: {DLQ}",
-                isConnected, queuedJobs, deadLetterCount);
+                isConnected, queuedForOrg.Count, deadLettersForOrg.Count);
 
             var response = new BlockchainStatusResponseDto
             {
                 IsRunning = isConnected,
-                IsReady = isConnected && deadLetterCount < 100, // Consider "ready" if connected and not too many DLQ messages
+                IsReady = isConnected && deadLettersForOrg.Count < 100, // Consider "ready" if connected and not too many DLQ messages
                 StatusMessage = isConnected
                     ? "Blockchain network đang chạy và sẵn sàng nhận yêu cầu."
                     : "Blockchain network chưa kết nối. Vui lòng kiểm tra cấu hình và trạng thái của Blockchain.",
-                QueuedJobs = queuedJobs,
-                DeadLetterCount = deadLetterCount,
+                QueuedJobs = queuedForOrg.Count,
+                DeadLetterCount = deadLettersForOrg.Count,
                 QueuedCountByQueue = queuedByQueue,
                 DeadLetterCountByType = deadLetterByType,
                 DeadLetterCountByQueue = deadLetterByQueue,
@@ -583,5 +613,71 @@ public class BlockchainOpsController : ControllerBase
         return DateTime.TryParse(value, out var parsed)
             ? parsed
             : DateTime.UtcNow;
+    }
+
+    private static bool IsJobForOrganization(BlockchainSyncJob job, string organizationId)
+    {
+        var jobOrgId = ResolveOrganizationId(job);
+        return !string.IsNullOrWhiteSpace(jobOrgId)
+               && string.Equals(jobOrgId, organizationId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveOrganizationId(BlockchainSyncJob job)
+    {
+        if (job == null || string.IsNullOrWhiteSpace(job.PayloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            switch (job.JobType)
+            {
+                case BlockchainSyncJobType.EhrHash:
+                {
+                    var ehr = JsonSerializer.Deserialize<EhrHashRecord>(job.PayloadJson);
+                    return string.IsNullOrWhiteSpace(ehr?.OrganizationId)
+                        ? TryExtractOrganizationId(job.PayloadJson)
+                        : ehr.OrganizationId;
+                }
+                case BlockchainSyncJobType.AuditLog:
+                {
+                    var audit = JsonSerializer.Deserialize<AuditEntry>(job.PayloadJson);
+                    return string.IsNullOrWhiteSpace(audit?.OrganizationId)
+                        ? TryExtractOrganizationId(job.PayloadJson)
+                        : audit.OrganizationId;
+                }
+                default:
+                    return TryExtractOrganizationId(job.PayloadJson);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryExtractOrganizationId(string payloadJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (doc.RootElement.TryGetProperty("organizationId", out var orgIdValue)
+                || doc.RootElement.TryGetProperty("OrganizationId", out orgIdValue))
+            {
+                return orgIdValue.GetString();
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
     }
 }

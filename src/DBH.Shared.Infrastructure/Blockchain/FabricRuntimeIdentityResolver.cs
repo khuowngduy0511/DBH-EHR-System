@@ -103,6 +103,8 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
 
             var certPath = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "signcerts", "cert.pem");
             var keyDir = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "keystore");
+            var caAdminCertPath = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "msp", "signcerts", "cert.pem");
+            var caAdminKeyDir = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "msp", "keystore");
             var tlsCert = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "peers", $"peer0.{orgDomain}", "tls", "ca.crt");
             var caTls = Path.Combine(_cryptoRoot, "fabric-ca", orgAlias, "ca-cert.pem");
 
@@ -116,9 +118,9 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
                 CaUrl = caUrl,
                 CaName = caName,
                 DefaultAffiliation = _fabricCaOptions.DefaultAffiliation,
-                AdminCertPath = certPath,
+                AdminCertPath = caAdminCertPath,
                 AdminKeyPath = null,
-                AdminKeyDirectory = keyDir,
+                AdminKeyDirectory = caAdminKeyDir,
                 TlsCaCertPath = caTls,
                 CertificatePath = certPath,
                 PrivateKeyPath = null,

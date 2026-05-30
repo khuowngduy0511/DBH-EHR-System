@@ -1,4 +1,6 @@
+using System.Formats.Asn1;
 using System.Net.Http.Headers;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -14,8 +16,9 @@ namespace DBH.Shared.Infrastructure.Blockchain;
 /// Calls the Hyperledger Fabric CA REST API (v1) to register and enroll a new user identity.
 ///
 /// Flow:
-///   1. Register  – POST /api/v1/register  authenticated with the admin's cert+key token.
-///   2. Enroll    – POST /api/v1/enroll    authenticated with  Basic(id:secret) + a CSR.
+///   1. Enroll bootstrap admin with the CA (Basic Auth with admin:adminpw) to get a CA-issued cert+key
+///   2. Register – POST /api/v1/register  authenticated with the enrolled admin's cert+key token.
+///   3. Enroll  – POST /api/v1/enroll    authenticated with Basic(id:secret) + a CSR.
 ///
 /// When <see cref="FabricCaOptions.Enabled"/> is false the call is a no-op and returns Success=true
 /// so that user registration is never blocked.
@@ -29,7 +32,7 @@ public sealed class FabricCaService : IFabricCaService
 
     // Loaded lazily / once
     private ECDsa? _adminKey;
-    private byte[]? _adminCertDer;   // DER bytes of the admin PEM certificate
+    private byte[]? _adminCertPemBytes;   // PEM bytes for the admin certificate
     private bool _adminLoaded;
     private string? _adminIdentityKey;
 
@@ -69,14 +72,14 @@ public sealed class FabricCaService : IFabricCaService
             if (!await EnsureAdminLoadedAsync(runtimeIdentity))
             {
                 _logger.LogWarning(
-                    "Fabric CA crypto material is unavailable for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                    "Fabric CA admin identity unavailable for {EnrollmentId}; skipping enrollment.",
                     enrollmentId);
 
-                return new FabricEnrollResult { Success = true };
+                return new FabricEnrollResult { Success = false, ErrorMessage = "Admin identity unavailable" };
             }
 
             // ----------------------------------------------------------------
-            // Step 1: Register the identity on the CA
+            // Step 1: Register the identity on the CA (token auth with enrolled admin cert+key)
             // ----------------------------------------------------------------
             var enrollmentSecret = string.IsNullOrWhiteSpace(secret) ? GenerateSecret() : secret;
             await RegisterAsync(runtimeIdentity, enrollmentId, username, role, enrollmentSecret);
@@ -105,7 +108,7 @@ public sealed class FabricCaService : IFabricCaService
         {
             _logger.LogWarning(
                 ex,
-                "Fabric CA is unreachable for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                "Fabric CA is unreachable for {EnrollmentId}; skipping enrollment.",
                 enrollmentId);
 
             return new FabricEnrollResult
@@ -120,7 +123,7 @@ public sealed class FabricCaService : IFabricCaService
         {
             _logger.LogWarning(
                 ex,
-                "Fabric CA request timed out for {EnrollmentId}; skipping enrollment and continuing without blockchain registration.",
+                "Fabric CA request timed out for {EnrollmentId}; skipping enrollment.",
                 enrollmentId);
 
             return new FabricEnrollResult
@@ -146,7 +149,7 @@ public sealed class FabricCaService : IFabricCaService
     }
 
     // ========================================================================
-    // Register (POST /api/v1/register)
+    // Register (POST /api/v1/register) — token auth with admin cert+key
     // ========================================================================
 
     private async Task RegisterAsync(FabricRuntimeIdentity runtimeIdentity, string enrollmentId, string username, string role, string secret)
@@ -174,7 +177,6 @@ public sealed class FabricCaService : IFabricCaService
             $"{runtimeIdentity.CaUrl.TrimEnd('/')}/api/v1/register");
 
         // Fabric CA expects the raw token format "<base64-cert>.<base64-signature>"
-        // in Authorization, which does not conform to the standard scheme-based parser.
         request.Headers.TryAddWithoutValidation("Authorization", token);
         request.Content = new ByteArrayContent(bodyBytes);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
@@ -197,11 +199,14 @@ public sealed class FabricCaService : IFabricCaService
 
     private async Task<string> DoEnrollAsync(FabricRuntimeIdentity runtimeIdentity, string enrollmentId, string secret, string csrPem)
     {
-        var body = JsonConvert.SerializeObject(new
+        // Fabric CA (CFSSL) expects the full PEM CSR in a field named "certificate_request".
+        // The JSON tag comes from cfssl/signer.SignRequest.Request (`json:"certificate_request"`).
+        var requestObj = new JObject
         {
-            signingRequest = csrPem,
-            caname = runtimeIdentity.CaName,
-        });
+            ["certificate_request"] = csrPem.Replace("\r\n", "\n").Replace("\r", ""),
+            ["caname"] = runtimeIdentity.CaName
+        };
+        var body = requestObj.ToString(Formatting.None);
 
         using var http = BuildHttpClient(runtimeIdentity);
         using var request = new HttpRequestMessage(HttpMethod.Post,
@@ -220,7 +225,6 @@ public sealed class FabricCaService : IFabricCaService
                 $"Fabric CA enroll failed [{response.StatusCode}]: {responseBody}");
         }
 
-        // Response shape: { "success": true, "result": { "Cert": "<b64 pem>" } }
         var json = JsonConvert.DeserializeObject<JObject>(responseBody);
         var success = json?.Value<bool?>("success") == true;
         var certB64 = json?["result"]?["Cert"]?.Value<string>();
@@ -230,37 +234,40 @@ public sealed class FabricCaService : IFabricCaService
             throw new InvalidOperationException($"Fabric CA enroll returned failure: {responseBody}");
         }
 
-        // CA returns base64-encoded PEM cert
         return Encoding.UTF8.GetString(Convert.FromBase64String(certB64));
     }
 
     // ========================================================================
-    // Fabric CA token auth: base64(certDER) + "." + base64(ECDSA-sign(payload))
+    // Fabric CA token auth: base64(certPEM) + "." + base64(ECDSA-sign(SHA256(payload)))
     //
-    // payload = method + "." + base64(caUrl+path) + "." + base64(body)
-    // Matches fabric-ca-client lib/client.go GenTokenAuthority
+    // payload = method + "." + base64(path) + "." + base64(body) + "." + base64(cert)
+    // Matches fabric-ca util/util.go CreateToken → GenECDSAToken
+    // Server verifies using r.RequestURI (path only, not full URL).
     // ========================================================================
 
     private string BuildAuthToken(FabricRuntimeIdentity runtimeIdentity, string method, string urlPath, byte[] bodyBytes)
     {
-        if (_adminCertDer == null || _adminKey == null)
+        if (_adminCertPemBytes == null || _adminKey == null)
             throw new InvalidOperationException("Admin crypto material not loaded.");
 
+        var b64cert = Convert.ToBase64String(_adminCertPemBytes);
         var b64body = Convert.ToBase64String(bodyBytes);
-        var b64url = Convert.ToBase64String(
-            Encoding.UTF8.GetBytes($"{runtimeIdentity.CaUrl.TrimEnd('/')}{urlPath}"));
+        // Fabric CA server verifies against r.RequestURI which is the path only (e.g. "/api/v1/register")
+        var b64uri = Convert.ToBase64String(Encoding.UTF8.GetBytes(urlPath));
 
-        var sigPayload = $"{method}.{b64url}.{b64body}";
+        // payload must match Go's: method + "." + b64uri + "." + b64body + "." + b64cert
+        var sigPayload = $"{method}.{b64uri}.{b64body}.{b64cert}";
         var digest = SHA256.HashData(Encoding.UTF8.GetBytes(sigPayload));
 
         // DER-encoded ECDSA signature – matches Go's crypto/ecdsa output
         var sig = _adminKey.SignHash(digest, DSASignatureFormat.Rfc3279DerSequence);
+        var lowSSig = NormalizeEcdsaSignatureLowS(sig, _adminKey.KeySize);
 
-        return $"{Convert.ToBase64String(_adminCertDer)}.{Convert.ToBase64String(sig)}";
+        return $"{b64cert}.{Convert.ToBase64String(lowSSig)}";
     }
 
     // ========================================================================
-    // Helpers
+    // Admin identity loading — enrolls with CA if disk certs are not CA-issued
     // ========================================================================
 
     private async Task<bool> EnsureAdminLoadedAsync(FabricRuntimeIdentity runtimeIdentity)
@@ -269,51 +276,102 @@ public sealed class FabricCaService : IFabricCaService
 
         _adminKey?.Dispose();
         _adminKey = null;
-        _adminCertDer = null;
+        _adminCertPemBytes = null;
         _adminLoaded = false;
         _adminIdentityKey = runtimeIdentity.IdentityKey;
 
-        // Load admin private key
-        if (!string.IsNullOrEmpty(runtimeIdentity.AdminKeyPath) && File.Exists(runtimeIdentity.AdminKeyPath))
-        {
-            var pem = await File.ReadAllTextAsync(runtimeIdentity.AdminKeyPath);
-            _adminKey = ECDsa.Create();
-            _adminKey.ImportFromPem(pem);
-        }
-        else if (!string.IsNullOrEmpty(runtimeIdentity.AdminKeyDirectory) &&
-                 Directory.Exists(runtimeIdentity.AdminKeyDirectory))
-        {
-            var files = Directory.GetFiles(runtimeIdentity.AdminKeyDirectory, "*_sk");
-            if (files.Length == 0)
-                files = Directory.GetFiles(runtimeIdentity.AdminKeyDirectory, "*.pem");
-            if (files.Length > 0)
-            {
-                var pem = await File.ReadAllTextAsync(files[0]);
-                _adminKey = ECDsa.Create();
-                _adminKey.ImportFromPem(pem);
-            }
-        }
+        _logger.LogInformation(
+            "Loading Fabric CA admin identity. AdminUsername={AdminUsername}, CaUrl={CaUrl}",
+            _options.AdminUsername, runtimeIdentity.CaUrl);
 
-        // Load admin certificate (DER bytes extracted from PEM)
-        if (!string.IsNullOrEmpty(runtimeIdentity.AdminCertPath) && File.Exists(runtimeIdentity.AdminCertPath))
+        // Generate a fresh EC key pair for the admin identity
+        _adminKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+        try
         {
-            var certPem = await File.ReadAllTextAsync(runtimeIdentity.AdminCertPath);
-            _adminCertDer = ExtractDerFromPem(certPem, "CERTIFICATE");
+            // Create a CSR as a PEM string (with headers and line breaks) and
+            // enroll the bootstrap admin with the CA to get a CA-issued cert.
+            var request = new CertificateRequest("CN=admin", _adminKey, HashAlgorithmName.SHA256);
+            var csrDer = request.CreateSigningRequest();
+            var csrPem = "-----BEGIN CERTIFICATE REQUEST-----\n" +
+                         Convert.ToBase64String(csrDer, Base64FormattingOptions.InsertLineBreaks) +
+                         "\n-----END CERTIFICATE REQUEST-----";
+
+            var certPem = await DoEnrollWithBootstrapAuth(runtimeIdentity, csrPem);
+            _adminCertPemBytes = Encoding.ASCII.GetBytes(certPem);
+            _adminLoaded = true;
+
+            _logger.LogInformation(
+                "Successfully enrolled bootstrap admin with Fabric CA. CA-issued cert obtained.");
+            return true;
         }
-
-        if (_adminKey == null || _adminCertDer == null)
+        catch (Exception ex)
         {
-            _logger.LogWarning(
-                "Fabric CA admin crypto material not found for {IdentityKey}; CA enrollment will be skipped.",
-                runtimeIdentity.IdentityKey);
+            _logger.LogWarning(ex,
+                "Failed to enroll bootstrap admin with Fabric CA. Will be unable to register new identities.");
 
+            _adminKey?.Dispose();
+            _adminKey = null;
             return false;
         }
-
-        _adminLoaded = true;
-        _logger.LogInformation("Fabric CA admin identity loaded from {CertPath}", runtimeIdentity.AdminCertPath);
-        return true;
     }
+
+    /// <summary>
+    /// Enrolls the bootstrap admin with the CA using Basic Auth (admin:adminpw).
+    /// This is specifically for obtaining a CA-issued certificate that can then
+    /// be used to sign register tokens (which require token auth, not Basic Auth).
+    /// </summary>
+    private async Task<string> DoEnrollWithBootstrapAuth(FabricRuntimeIdentity runtimeIdentity, string csrPem)
+    {
+        // Fabric CA (CFSSL) expects the full PEM CSR in a field named "certificate_request".
+        var normalizedPem = csrPem.Replace("\r\n", "\n").Replace("\r", "");
+
+        var requestObj = new JObject
+        {
+            ["certificate_request"] = normalizedPem,
+            ["caname"] = runtimeIdentity.CaName
+        };
+        var body = requestObj.ToString(Formatting.None);
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+
+        _logger.LogDebug("Bootstrap enroll CSR PEM (first 80 chars): {Csr}",
+            normalizedPem.Length > 80 ? normalizedPem[..80] : normalizedPem);
+
+        using var http = BuildHttpClient(runtimeIdentity);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"{runtimeIdentity.CaUrl.TrimEnd('/')}/api/v1/enroll");
+
+        // Use bootstrap admin credentials (Basic Auth) for enrollment
+        var credentials = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{_options.AdminUsername}:{_options.AdminPassword}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        var response = await http.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Fabric CA bootstrap admin enroll failed [{response.StatusCode}]: {responseBody}");
+        }
+
+        var json = JsonConvert.DeserializeObject<JObject>(responseBody);
+        var success = json?.Value<bool?>("success") == true;
+        var certB64 = json?["result"]?["Cert"]?.Value<string>();
+
+        if (!success || string.IsNullOrWhiteSpace(certB64))
+        {
+            throw new InvalidOperationException($"Fabric CA bootstrap enroll returned failure: {responseBody}");
+        }
+
+        // CA returns base64-encoded PEM cert
+        return Encoding.UTF8.GetString(Convert.FromBase64String(certB64));
+    }
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
 
     private HttpClient BuildHttpClient(FabricRuntimeIdentity runtimeIdentity)
     {
@@ -377,22 +435,61 @@ public sealed class FabricCaService : IFabricCaService
         return $"{cryptoRoot.TrimEnd('/', '\\')}/peerOrganizations/{domain}/users/{enrollmentId}@{domain}/msp";
     }
 
-    private static byte[] ExtractDerFromPem(string pem, string label)
-    {
-        var header = $"-----BEGIN {label}-----";
-        var footer = $"-----END {label}-----";
-        var start = pem.IndexOf(header, StringComparison.Ordinal);
-        if (start < 0) throw new InvalidOperationException($"PEM marker '{header}' not found.");
-        start += header.Length;
-        var end = pem.IndexOf(footer, start, StringComparison.Ordinal);
-        if (end < 0) throw new InvalidOperationException($"PEM marker '{footer}' not found.");
-        var b64 = pem[start..end].Replace("\n", "").Replace("\r", "").Trim();
-        return Convert.FromBase64String(b64);
-    }
-
     private static string GenerateSecret()
     {
-        // 16-char random alphanumeric secret that Fabric CA accepts as a password
         return Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
+    }
+
+    private static byte[] NormalizeEcdsaSignatureLowS(byte[] derSignature, int keySizeBits)
+    {
+        var curveOrder = GetCurveOrder(keySizeBits);
+        if (curveOrder <= BigInteger.Zero)
+            return derSignature;
+
+        try
+        {
+            var reader = new AsnReader(derSignature, AsnEncodingRules.DER);
+            var sequence = reader.ReadSequence();
+            var rBytes = sequence.ReadIntegerBytes().ToArray();
+            var sBytes = sequence.ReadIntegerBytes().ToArray();
+            sequence.ThrowIfNotEmpty();
+            reader.ThrowIfNotEmpty();
+
+            var r = new BigInteger(rBytes, isUnsigned: true, isBigEndian: true);
+            var s = new BigInteger(sBytes, isUnsigned: true, isBigEndian: true);
+
+            var halfOrder = curveOrder >> 1;
+            if (s <= halfOrder)
+                return derSignature;
+
+            var lowS = curveOrder - s;
+
+            var writer = new AsnWriter(AsnEncodingRules.DER);
+            writer.PushSequence();
+            writer.WriteInteger(r);
+            writer.WriteInteger(lowS);
+            writer.PopSequence();
+            return writer.Encode();
+        }
+        catch
+        {
+            return derSignature;
+        }
+    }
+
+    private static BigInteger GetCurveOrder(int keySizeBits)
+    {
+        if (keySizeBits <= 256)
+            return ParseUnsignedHex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
+
+        if (keySizeBits <= 384)
+            return ParseUnsignedHex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973");
+
+        return ParseUnsignedHex("01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
+    }
+
+    private static BigInteger ParseUnsignedHex(string hex)
+    {
+        return new BigInteger(Convert.FromHexString(hex), isUnsigned: true, isBigEndian: true);
     }
 }

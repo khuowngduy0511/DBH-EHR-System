@@ -2,6 +2,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using DBH.Shared.Contracts;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace DBH.Auth.Service.Services;
 
@@ -9,15 +12,18 @@ public class OrganizationServiceClient : IOrganizationServiceClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<OrganizationServiceClient> _logger;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly string _baseUrl;
 
     public OrganizationServiceClient(
         HttpClient httpClient,
         IConfiguration configuration,
+        IHttpContextAccessor httpContextAccessor,
         ILogger<OrganizationServiceClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _httpContextAccessor = httpContextAccessor;
         _baseUrl = configuration["ServiceUrls:OrganizationService"] ?? "http://localhost:5002";
     }
 
@@ -46,6 +52,13 @@ public class OrganizationServiceClient : IOrganizationServiceClient
 
             var url = $"{_baseUrl}/api/v1/memberships";
             _logger.LogInformation("Creating membership in Organization Service: {Url}", url);
+
+            var httpContext = _httpContextAccessor.HttpContext;
+            var authHeader = httpContext?.Request?.Headers["Authorization"].ToString();
+            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = AuthenticationHeaderValue.Parse(authHeader);
+            }
 
             var response = await _httpClient.PostAsync(url, jsonContent);
             var responseContent = await response.Content.ReadAsStringAsync();

@@ -34,4 +34,10 @@ public class FabricCaOptions
 
     /// <summary>Default affiliation assigned to newly registered users, e.g. org1.department1</summary>
     public string DefaultAffiliation { get; set; } = "org1.department1";
+
+    /// <summary>CA bootstrap admin username for register requests. Usually "admin".</summary>
+    public string AdminUsername { get; set; } = "admin";
+
+    /// <summary>CA bootstrap admin password for register requests. Usually "adminpw".</summary>
+    public string AdminPassword { get; set; } = "adminpw";
 }

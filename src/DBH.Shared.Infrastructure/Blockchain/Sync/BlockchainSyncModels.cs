@@ -70,4 +70,11 @@ public class FabricCaEnrollPayload
     public string EnrollmentId { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The user's organization ID (GUID string). Used by the background worker to resolve
+    /// the correct Fabric CA (URL, CaName, crypto paths) without depending on HTTP context.
+    /// When null/empty the fallback (static FabricCaOptions) is used.
+    /// </summary>
+    public string? OrganizationId { get; set; }
 }

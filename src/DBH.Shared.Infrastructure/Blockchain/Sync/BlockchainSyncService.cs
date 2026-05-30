@@ -42,6 +42,7 @@ public interface IBlockchainSyncService
         string enrollmentId,
         string username,
         string role,
+        string? organizationId = null,
         Func<string, Task>? onFailure = null);
 
     // ─── Direct commit methods (connection check + retry + DLQ) ───
@@ -233,13 +234,15 @@ public class BlockchainSyncService : IBlockchainSyncService
         string enrollmentId,
         string username,
         string role,
+        string? organizationId = null,
         Func<string, Task>? onFailure = null)
     {
         var payload = new FabricCaEnrollPayload
         {
             EnrollmentId = enrollmentId,
             Username = username,
-            Role = role
+            Role = role,
+            OrganizationId = organizationId
         };
 
         _queue.Enqueue(new BlockchainSyncJob
@@ -251,8 +254,8 @@ public class BlockchainSyncService : IBlockchainSyncService
         });
 
         _logger.LogInformation(
-            "Enqueued Fabric CA enrollment: EnrollmentId={EnrollmentId}, Role={Role}",
-            enrollmentId, role);
+            "Enqueued Fabric CA enrollment: EnrollmentId={EnrollmentId}, Role={Role}, OrgId={OrgId}",
+            enrollmentId, role, organizationId ?? "<fallback>");
     }
 
     // ─── Direct commit methods: connection check + retry + DLQ ───

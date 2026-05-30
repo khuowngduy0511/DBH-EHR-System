@@ -672,7 +672,7 @@ public class BlockchainSyncQueue
         return result;
     }
 
-    private static string MapJobTypeToQueueName(BlockchainSyncJobType jobType)
+    public static string MapJobTypeToQueueName(BlockchainSyncJobType jobType)
     {
         return jobType switch
         {
@@ -683,6 +683,91 @@ public class BlockchainSyncQueue
             BlockchainSyncJobType.FabricCaEnrollment => "dbh.blockchain.sync.auth.queue",
             _ => MainQueue
         };
+    }
+
+    /// <summary>
+    /// Retrieves queued jobs across all known queues without consuming them.
+    /// Returns a list of tuples containing (job, queueName).
+    /// </summary>
+    public List<(BlockchainSyncJob Job, string QueueName)> GetQueuedJobs()
+    {
+        var result = new List<(BlockchainSyncJob, string)>();
+
+        EnsureChannelOpen();
+        if (_channel == null)
+        {
+            foreach (var job in _fallbackQueue.ToArray())
+            {
+                result.Add((job, _queueName));
+            }
+
+            return result;
+        }
+
+        var queueNames = KnownBlockchainQueues
+            .Append(_queueName)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var queueName in queueNames)
+        {
+            var tempMessages = new List<(ulong deliveryTag, BlockchainSyncJob job)>();
+
+            try
+            {
+                while (true)
+                {
+                    var message = _channel.BasicGet(queueName, autoAck: false);
+                    if (message == null)
+                    {
+                        break;
+                    }
+
+                    var bodyJson = Encoding.UTF8.GetString(message.Body.ToArray());
+                    BlockchainSyncJob? job = null;
+
+                    try
+                    {
+                        job = JsonSerializer.Deserialize<BlockchainSyncJob>(bodyJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to deserialize queued job message from {Queue}", queueName);
+                        _channel.BasicNack(message.DeliveryTag, multiple: false, requeue: true);
+                        continue;
+                    }
+
+                    if (job != null)
+                    {
+                        tempMessages.Add((message.DeliveryTag, job));
+                        result.Add((job, queueName));
+                    }
+                    else
+                    {
+                        _channel.BasicNack(message.DeliveryTag, multiple: false, requeue: true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to peek queued jobs from {Queue}", queueName);
+            }
+            finally
+            {
+                foreach (var (deliveryTag, _) in tempMessages)
+                {
+                    try
+                    {
+                        _channel.BasicNack(deliveryTag, multiple: false, requeue: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to requeue message during queued job peek");
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
