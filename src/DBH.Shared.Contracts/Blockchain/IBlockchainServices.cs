@@ -35,7 +35,8 @@ public interface IFabricCaService
     /// <param name="username">Human-readable name stored as a certificate attribute.</param>
     /// <param name="role">Role name used as the OU (Organizational Unit) attribute in the certificate.</param>
     /// <param name="secret">Optional CA secret to reuse for login/re-enrollment.</param>
-    Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null);
+    /// <param name="organizationId">Optional organization ID for selecting the correct CA. If not provided, resolved from JWT context.</param>
+    Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null, string? organizationId = null);
 }
 
 // ============================================================================

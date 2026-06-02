@@ -486,6 +486,7 @@ services:
       - ConnectionStrings__BlockchainDb=Host=pg_primary;Port=5432;Database=dbh_blockchain;Username=admin;Password=dbh_123
       - ServiceUrls__AuthService=http://gateway:5000
       - ServiceUrls__EhrService=http://gateway:5000
+      - ServiceUrls__OrganizationService=http://organization_service:5002
       - IpfsConfig__ApiUrl=http://ipfs:5001/api/v0
       - IpfsConfig__GatewayUrl=http://ipfs:8080/ipfs
       - IpfsConfig__DownloadPath=/tmp/ipfs_downloads
@@ -501,6 +502,7 @@ services:
       - HyperledgerFabric__CertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/signcerts/cert.pem
       - HyperledgerFabric__PrivateKeyDirectory=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/users/Admin@hospital1.ehr.com/msp/keystore
       - HyperledgerFabric__TlsCertificatePath=/tmp/fabric-crypto/peerOrganizations/hospital1.ehr.com/peers/peer0.hospital1.ehr.com/tls/ca.crt
+      - FabricCA__Enabled=true
       - FabricCA__CaUrl=https://ca_hospital1:7054
       - FabricCA__CaName=ca-hospital1
       - FabricCA__AdminUsername=admin

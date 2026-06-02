@@ -81,6 +81,9 @@
 
     builder.Services.AddHyperledgerFabric(builder.Configuration, "Auth", new[] { BlockchainSyncJobType.FabricCaEnrollment });
 
+    // Background service to enroll seed users with Fabric CA on startup
+    builder.Services.AddHostedService<SeedUserCaEnrollmentService>();
+
     // Redis Cache
     builder.Services.AddRedisCache(builder.Configuration);
 

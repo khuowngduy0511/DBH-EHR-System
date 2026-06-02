@@ -50,6 +50,11 @@ public class BlockchainAccountLoginDto
     /// Previously saved enrollment secret (for re-enrollment)
     /// </summary>
     public string? EnrollmentSecret { get; set; }
+    
+    /// <summary>
+    /// Organization affiliation (optional). If not provided, resolved from JWT context.
+    /// </summary>
+    public string? Organization { get; set; }
 }
 
 /// <summary>

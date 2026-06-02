@@ -52,7 +52,7 @@ public sealed class FabricCaService : IFabricCaService
     // Public API
     // ========================================================================
 
-    public async Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null)
+    public async Task<FabricEnrollResult> EnrollUserAsync(string enrollmentId, string username, string role, string? secret = null, string? organizationId = null)
     {
         if (!_options.Enabled)
         {
@@ -68,7 +68,21 @@ public sealed class FabricCaService : IFabricCaService
 
         try
         {
-            var runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+            // Resolve identity: use explicit organizationId if provided, else fallback to JWT context
+            FabricRuntimeIdentity runtimeIdentity;
+            if (!string.IsNullOrWhiteSpace(organizationId) && Guid.TryParse(organizationId, out var orgGuid))
+            {
+                _logger.LogInformation("Resolving Fabric identity for explicit OrgId={OrgId}", organizationId);
+                runtimeIdentity = await _identityResolver.ResolveForOrganizationAsync(orgGuid);
+            }
+            else
+            {
+                runtimeIdentity = await _identityResolver.ResolveForCurrentContextAsync();
+            }
+            _logger.LogWarning(
+                "[DEBUG-CA-FLOW] EnrollUserAsync - Resolved runtime identity: MspId={MspId}, CaUrl={CaUrl}, CaName={CaName}, IdentityKey={IdentityKey}, OrgId={OrgId}",
+                runtimeIdentity.MspId, runtimeIdentity.CaUrl, runtimeIdentity.CaName, runtimeIdentity.IdentityKey, organizationId ?? "<JWT-context>");
+
             if (!await EnsureAdminLoadedAsync(runtimeIdentity))
             {
                 _logger.LogWarning(
@@ -99,7 +113,7 @@ public sealed class FabricCaService : IFabricCaService
                 Success = true,
                 EnrollmentId = enrollmentId,
                 EnrollmentSecret = enrollmentSecret,
-                AccountStoragePath = BuildAccountStoragePath(enrollmentId),
+                AccountStoragePath = BuildAccountStoragePath(enrollmentId, runtimeIdentity),
                 Certificate = certPem,
                 PrivateKeyPem = ExportPrivateKeyPem(userKey),
             };
@@ -418,19 +432,34 @@ public sealed class FabricCaService : IFabricCaService
         return key.ExportECPrivateKeyPem();
     }
 
-    private string BuildAccountStoragePath(string enrollmentId)
+    private string BuildAccountStoragePath(string enrollmentId, FabricRuntimeIdentity? runtimeIdentity = null)
     {
         var cryptoRoot = !string.IsNullOrWhiteSpace(_fabricOptions.CryptoRoot)
             ? _fabricOptions.CryptoRoot
             : Environment.GetEnvironmentVariable("FABRIC_CRYPTO_ROOT") ?? "/tmp/fabric-crypto";
 
-        var domain = _options.CaName switch
+        // Derive domain from runtime identity's MspId when available, else fall back to CaName-based logic
+        string domain;
+        if (runtimeIdentity != null)
         {
-            "ca-hospital1" => "hospital1.ehr.com",
-            "ca-hospital2" => "hospital2.ehr.com",
-            "ca-clinic" => "clinic.ehr.com",
-            _ => "hospital1.ehr.com"
-        };
+            domain = runtimeIdentity.MspId switch
+            {
+                "Hospital1MSP" => "hospital1.ehr.com",
+                "Hospital2MSP" => "hospital2.ehr.com",
+                "ClinicMSP" => "clinic.ehr.com",
+                _ => "hospital1.ehr.com"
+            };
+        }
+        else
+        {
+            domain = _options.CaName switch
+            {
+                "ca-hospital1" => "hospital1.ehr.com",
+                "ca-hospital2" => "hospital2.ehr.com",
+                "ca-clinic" => "clinic.ehr.com",
+                _ => "hospital1.ehr.com"
+            };
+        }
 
         return $"{cryptoRoot.TrimEnd('/', '\\')}/peerOrganizations/{domain}/users/{enrollmentId}@{domain}/msp";
     }

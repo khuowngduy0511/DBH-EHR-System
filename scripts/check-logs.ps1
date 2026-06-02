@@ -1,0 +1,2 @@
+$logs = docker logs dbh_blockchain_service 2>&1
+$logs | Select-String -Pattern "ca_hospital2|Admin identity|bootstrap|IOException|SocketException|Connection refused|Failed to enroll" | ForEach-Object { $_.Line }

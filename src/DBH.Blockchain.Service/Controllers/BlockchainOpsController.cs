@@ -276,14 +276,32 @@ public class BlockchainOpsController : ControllerBase
 
         try
         {
+            // Debug: Dump all JWT claims to verify what the token contains
+            var allClaims = User.Claims.Select(c => new { c.Type, c.Value }).ToList();
+            _logger.LogWarning(
+                "[DEBUG-CA] JWT claims for blockchain account creation: {@AllClaims}, DTO.Organization: {DtoOrg}",
+                allClaims, request.Organization ?? "<null>");
+
+            // Option C: Use DTO Organization field first, fallback to JWT claim
+            var orgFromDto = request.Organization;
+            var orgFromJwt = User.FindFirstValue(ClaimTypes.GroupSid);
+            var organizationId = !string.IsNullOrWhiteSpace(orgFromDto)
+                ? orgFromDto
+                : orgFromJwt;
+
+            _logger.LogWarning(
+                "[DEBUG-CA] Organization resolution: DTO={DtoOrg}, JWT={JwtOrg}, Final={FinalOrg}",
+                orgFromDto ?? "<null>", orgFromJwt ?? "<null>", organizationId ?? "<null>");
+
             _logger.LogInformation(
-                "Creating blockchain account - EnrollmentId: {EnrollmentId}, Username: {Username}, Role: {Role}",
-                request.EnrollmentId, request.Username, request.Role);
+                "Creating blockchain account - EnrollmentId: {EnrollmentId}, Username: {Username}, Role: {Role}, OrganizationId: {OrganizationId}",
+                request.EnrollmentId, request.Username, request.Role, organizationId);
 
             var enrollResult = await _fabricCaService.EnrollUserAsync(
                 request.EnrollmentId,
                 request.Username,
-                request.Role);
+                request.Role,
+                organizationId: organizationId);
 
             var response = new BlockchainAccountResponseDto
             {
@@ -347,15 +365,33 @@ public class BlockchainOpsController : ControllerBase
 
         try
         {
+            // This endpoint is [AllowAnonymous], so User.Claims are NOT populated by ASP.NET middleware.
+            // Must manually decode the JWT to extract the groupsid claim.
+            var jwtOrgId = User.FindFirstValue(ClaimTypes.GroupSid);
+            if (string.IsNullOrWhiteSpace(jwtOrgId))
+            {
+                jwtOrgId = ExtractOrgIdFromAuthHeader();
+                _logger.LogWarning("[DEBUG-CA-LOGIN] Extracted orgId from raw Auth header: {OrgId}", jwtOrgId ?? "<null>");
+            }
+            else
+            {
+                _logger.LogWarning("[DEBUG-CA-LOGIN] Got orgId from User claims: {OrgId}", jwtOrgId);
+            }
+
+            var organizationId = !string.IsNullOrWhiteSpace(request.Organization)
+                ? request.Organization
+                : jwtOrgId;
+
             _logger.LogInformation(
-                "Logging in to blockchain account - EnrollmentId: {EnrollmentId}",
-                request.EnrollmentId);
+                "Logging in to blockchain account - EnrollmentId: {EnrollmentId}, OrganizationId: {OrganizationId}",
+                request.EnrollmentId, organizationId);
 
             var enrollResult = await _fabricCaService.EnrollUserAsync(
                 request.EnrollmentId,
                 request.Username,
                 request.Role,
-                request.EnrollmentSecret);
+                request.EnrollmentSecret,
+                organizationId: organizationId);
 
             var response = new BlockchainAccountResponseDto
             {
@@ -678,6 +714,51 @@ public class BlockchainOpsController : ControllerBase
             return null;
         }
 
+        return null;
+    }
+
+    /// <summary>
+    /// Manually decodes the JWT from the Authorization header to extract the groupsid claim.
+    /// Used by [AllowAnonymous] endpoints where ASP.NET doesn't populate User.Claims.
+    /// </summary>
+    private string? ExtractOrgIdFromAuthHeader()
+    {
+        try
+        {
+            var authHeader = HttpContext.Request.Headers.Authorization.ToString();
+            if (string.IsNullOrWhiteSpace(authHeader)) return null;
+
+            const string bearerPrefix = "Bearer ";
+            if (!authHeader.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var token = authHeader[bearerPrefix.Length..].Trim();
+            var parts = token.Split('.');
+            if (parts.Length < 2) return null;
+
+            // JWT payload is the second part, base64url encoded
+            var payload = parts[1];
+            var remainder = payload.Length % 4;
+            var padded = payload;
+            if (remainder == 2) padded = payload + "==";
+            else if (remainder == 3) padded = payload + "=";
+            
+            var payloadBytes = System.Convert.FromBase64String(padded.Replace('-', '+').Replace('_', '/'));
+            var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
+
+            using var doc = System.Text.Json.JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.TryGetProperty("http://schemas.microsoft.com/ws/2008/06/identity/claims/groupsid", out var gs))
+            {
+                var orgId = gs.GetString();
+                if (!string.IsNullOrWhiteSpace(orgId)) return orgId;
+            }
+            if (doc.RootElement.TryGetProperty("groupsid", out var gs2))
+            {
+                var orgId = gs2.GetString();
+                if (!string.IsNullOrWhiteSpace(orgId)) return orgId;
+            }
+        }
+        catch { }
         return null;
     }
 }

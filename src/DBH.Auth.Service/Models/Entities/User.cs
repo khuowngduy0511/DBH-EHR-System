@@ -32,6 +32,7 @@ public class User
     public Guid? UpdatedBy { get; set; }
 
     public string? PublicKey { get; set; }
+    public DateTime? CaEnrolledAt { get; set; }
     // Navigation properties
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
     public ICollection<UserCredential> Credentials { get; set; } = new List<UserCredential>();

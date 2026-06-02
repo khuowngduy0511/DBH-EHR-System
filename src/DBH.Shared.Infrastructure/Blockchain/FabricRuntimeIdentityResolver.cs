@@ -33,6 +33,12 @@ public sealed class FabricRuntimeIdentity
 public interface IFabricRuntimeIdentityResolver
 {
     Task<FabricRuntimeIdentity> ResolveForCurrentContextAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolve Fabric identity for a specific organization by its ID.
+    /// Fetches the org's Fabric config from Organization Service.
+    /// </summary>
+    Task<FabricRuntimeIdentity> ResolveForOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default);
 }
 
 public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolver
@@ -81,7 +87,8 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
 
         try
         {
-            var orgData = await GetOrganizationDataAsync(httpContext, orgId, cancellationToken);
+            var bearer = ExtractBearerToken(httpContext);
+            var orgData = await GetOrganizationDataAsync(orgId, bearer, cancellationToken);
             if (orgData == null)
             {
                 _logger.LogWarning("Organization metadata not found for OrgId={OrgId}; falling back to static Fabric options", orgId);
@@ -135,28 +142,118 @@ public sealed class FabricRuntimeIdentityResolver : IFabricRuntimeIdentityResolv
         }
     }
 
-    private async Task<JObject?> GetOrganizationDataAsync(HttpContext? httpContext, Guid orgId, CancellationToken cancellationToken)
+    public async Task<FabricRuntimeIdentity> ResolveForOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Resolving Fabric identity for explicit OrgId={OrgId}", organizationId);
+
+        try
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            var bearer = ExtractBearerToken(httpContext);
+            var orgData = await GetOrganizationDataAsync(organizationId, bearer, cancellationToken);
+            if (orgData == null)
+            {
+                _logger.LogWarning("Organization metadata not found for OrgId={OrgId}; falling back to static Fabric options", organizationId);
+                return BuildFallbackIdentity();
+            }
+
+            var mspId = orgData.Value<string>("fabricMspId") ?? _fabricOptions.MspId;
+            var caUrl = orgData.Value<string>("fabricCaUrl") ?? DeriveCaUrlByMsp(mspId);
+            var peerEndpoint = DerivePeerEndpoint(orgData["fabricChannelPeers"], mspId) ?? _fabricOptions.PeerEndpoint;
+            var gatewayOverride = peerEndpoint.Split(':')[0];
+
+            _logger.LogInformation(
+                "Resolved Fabric identity for OrgId={OrgId}: MspId={MspId}, PeerEndpoint={PeerEndpoint}, CaUrl={CaUrl}",
+                organizationId, mspId, peerEndpoint, caUrl);
+
+            var orgDomain = DeriveOrgDomain(mspId);
+            var orgAlias = DeriveOrgAlias(mspId);
+            var caName = DeriveCaName(caUrl, mspId);
+
+            var certPath = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "signcerts", "cert.pem");
+            var keyDir = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "users", $"Admin@{orgDomain}", "msp", "keystore");
+            var caAdminCertPath = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "msp", "signcerts", "cert.pem");
+            var caAdminKeyDir = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "msp", "keystore");
+            var tlsCert = Path.Combine(_cryptoRoot, "peerOrganizations", orgDomain, "peers", $"peer0.{orgDomain}", "tls", "ca.crt");
+            var caTls = Path.Combine(_cryptoRoot, "fabric-ca", orgAlias, "ca-cert.pem");
+
+            return new FabricRuntimeIdentity
+            {
+                IdentityKey = $"org:{organizationId}|msp:{mspId}|peer:{peerEndpoint}|cert:{certPath}|keyDir:{keyDir}",
+                MspId = mspId,
+                PeerEndpoint = peerEndpoint,
+                GatewayPeerOverride = gatewayOverride,
+                UseTls = _fabricOptions.UseTls,
+                CaUrl = caUrl,
+                CaName = caName,
+                DefaultAffiliation = _fabricCaOptions.DefaultAffiliation,
+                AdminCertPath = caAdminCertPath,
+                AdminKeyPath = null,
+                AdminKeyDirectory = caAdminKeyDir,
+                TlsCaCertPath = caTls,
+                CertificatePath = certPath,
+                PrivateKeyPath = null,
+                PrivateKeyDirectory = keyDir,
+                GatewayTlsCertificatePath = tlsCert
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed resolving Fabric identity for OrgId={OrgId}. Falling back to static options", organizationId);
+            return BuildFallbackIdentity();
+        }
+    }
+
+    private async Task<JObject?> GetOrganizationDataAsync(Guid orgId, string? bearerToken, CancellationToken cancellationToken)
     {
         var baseUrl = _configuration["ServiceUrls:OrganizationService"] ?? "http://organization_service:5002";
+        var url = $"{baseUrl.TrimEnd('/')}/api/v1/organizations/{orgId}";
+        
+        _logger.LogWarning(
+            "[DEBUG-CA-API] Calling Organization Service: Url={Url}, HasBearer={HasBearer}, BearerLen={BearerLen}",
+            url, !string.IsNullOrWhiteSpace(bearerToken), bearerToken?.Length ?? 0);
+        
         var client = _httpClientFactory.CreateClient();
 
-        var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl.TrimEnd('/')}/api/v1/organizations/{orgId}");
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
 
-        var bearer = ExtractBearerToken(httpContext);
-        if (!string.IsNullOrWhiteSpace(bearer))
+        if (!string.IsNullOrWhiteSpace(bearerToken))
         {
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearer);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
         }
 
         var response = await client.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        _logger.LogWarning(
+            "[DEBUG-CA-API] Organization Service response: StatusCode={StatusCode}, BodyFirst200={BodyPreview}",
+            (int)response.StatusCode,
+            responseBody.Length > 200 ? responseBody[..200] : responseBody);
+        
         if (!response.IsSuccessStatusCode)
         {
+            _logger.LogWarning(
+                "[DEBUG-CA-API] Organization Service returned non-success: {StatusCode}, Body={Body}",
+                (int)response.StatusCode, responseBody);
             return null;
         }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var parsed = JObject.Parse(json);
-        return parsed["data"] as JObject;
+        var parsed = JObject.Parse(responseBody);
+        var data = parsed["data"] as JObject;
+        
+        if (data != null)
+        {
+            _logger.LogWarning(
+                "[DEBUG-CA-API] Organization data resolved: fabricMspId={MspId}, fabricCaUrl={CaUrl}",
+                data.Value<string>("fabricMspId") ?? "<null>",
+                data.Value<string>("fabricCaUrl") ?? "<null>");
+        }
+        else
+        {
+            _logger.LogWarning("[DEBUG-CA-API] 'data' field was null in response");
+        }
+        
+        return data;
     }
 
     private FabricRuntimeIdentity BuildFallbackIdentity()

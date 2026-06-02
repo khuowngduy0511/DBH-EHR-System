@@ -509,7 +509,8 @@ public class BlockchainSyncBackgroundService : BackgroundService
         var enrollResult = await fabricCa.EnrollUserAsync(
             enrollmentPayload.EnrollmentId,
             enrollmentPayload.Username,
-            enrollmentPayload.Role);
+            enrollmentPayload.Role,
+            organizationId: enrollmentPayload.OrganizationId);
 
         return enrollResult.Success
             ? new BlockchainTransactionResult
